@@ -1,0 +1,16 @@
+source /rtp.vim
+set rtp+=/vimfiles
+
+filetype plugin indent on
+syntax on
+set nocompatible
+set tabstop=4
+set softtabstop=4
+set shiftwidth=4
+set expandtab
+set backspace=2
+set nofoldenable
+set foldmethod=syntax
+set foldlevelstart=10
+set foldnestmax=10
+set ttimeoutlen=0
