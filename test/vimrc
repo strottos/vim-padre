@@ -1,6 +1,4 @@
-source /rtp.vim
-set rtp+=/vimfiles
-
+execute pathogen#infect()
 filetype plugin indent on
 syntax on
 set nocompatible

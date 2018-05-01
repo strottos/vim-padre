@@ -9,7 +9,7 @@ function! s:restore_cpo()
   unlet s:save_cpo
 endfunction
 
-if exists( "g:loaded_padre_plugin" )
+if exists( 'g:loaded_padre_plugin' )
   call s:restore_cpo()
   finish
 elseif !(has('python') || has('python3'))
@@ -26,6 +26,30 @@ elseif !(has('job') && has('timers'))
   finish
 endif
 
+if has('python')
+  try
+    pydo import six
+  catch
+    echohl WarningMsg |
+          \ echomsg 'Python 2 requires six module' |
+          \ echohl None
+    call s:restore_cpo()
+    finish
+  endtry
+endif
+
+if has('python3')
+  try
+    py3do import six
+  catch
+    echohl WarningMsg |
+          \ echomsg 'Python 3 requires six module' |
+          \ echohl None
+    call s:restore_cpo()
+    finish
+  endtry
+endif
+
 let g:loaded_padre_plugin = 1
 
 if get(g:, 'padre_plugin_autostart', 1)
@@ -39,12 +63,20 @@ if get(g:, 'padre_plugin_autostart', 1)
       autocmd VimEnter * call padre#Enable()
     augroup END
   else " Manual loading with :packadd.
-    call padreEnable()
+    call padre#Enable()
   endif
 endif
 
-command -nargs=0 PadreDebug call padre#Debug()
-command -nargs=0 PadreStop call padre#Stop()
+command -nargs=? PadreDebug call padre#debugger#Debug(<f-args>)
+command -nargs=0 PadreRun call padre#debugger#Run()
+command -nargs=0 PadreBreakpoint call padre#debugger#Breakpoint()
+command -nargs=0 PadreStepIn call padre#debugger#StepIn()
+command -nargs=0 PadreStepOver call padre#debugger#StepOver()
+command -nargs=0 PadreStop call padre#debugger#Stop()
+command -nargs=1 PadrePrintVariable call padre#debugger#PrintVariable(<f-args>)
+command -nargs=0 PadreContinue call padre#debugger#Continue()
+command -nargs=0 PadreAddDataWindow call padre#debugger#AddDataWindow()
+command -nargs=0 PadreDataBufferFlick call padre#debugger#DataBufferFlick()
 
 " This is basic vim plugin boilerplate
 call s:restore_cpo()

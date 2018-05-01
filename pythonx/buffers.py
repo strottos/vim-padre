@@ -2,7 +2,6 @@
 Library for the VIM padre plugin that interfaces with VIM buffers
 """
 
-import time
 import six
 
 import utils
@@ -28,13 +27,13 @@ class BufferList(object):
     def __init__(self):
         self._buffers = []
 
-    def create_buffer(self, name, options):
+    def create_buffer(self, name, commands):
         """
         Check if a buffer exists and create it if not.
 
         Returns: The Buffer object
         """
-        buffer_object = Buffer(name, options)
+        buffer_object = Buffer(name, commands)
         self._buffers.append(buffer_object)
 
         return buffer_object
@@ -55,29 +54,29 @@ class Buffer(object):
     """
     VIM Buffer Objects
     """
-    def __init__(self, name, options):
+    def __init__(self, name, commands):
         """
         Constructor that will create a vim buffer
         """
         self._buffer_number = None
         self._buffer_name = None
-        self._create(name, options)
+        self._create(name, commands)
 
-    def _create(self, name, options):
+    def _create(self, name, commands):
         """
-        Creates a vim buffer out of the name and options supplied.
+        Creates a vim buffer out of the name and run the commands supplied.
         """
-        current_window_number = vim.eval('winnr()')
-        current_buffer_number = vim.eval('bufnr("%")')
-        vim.command('new')
-        vim.command('silent edit ' + name)
-        self._buffer_number = int(vim.eval('bufnr("%")'))
+        current_window_number = vim.eval("winnr()")
+        current_buffer_number = vim.eval("bufnr('%')")
+        vim.command("new")
+        vim.command("silent edit " + name)
+        self._buffer_number = int(vim.eval("bufnr('%')"))
         self._buffer_name = name
-        utils.run_vim_commands(["setlocal " + x for x in options])
-        vim.command('quit')
+        utils.run_vim_commands(commands)
+        vim.command("quit")
 
-        vim.command('execute "' + current_window_number + ' wincmd w"')
-        vim.command('buffer ' + current_buffer_number)
+        vim.command("execute '" + current_window_number + " wincmd w'")
+        vim.command("buffer " + current_buffer_number)
 
     @property
     def buffer_name(self):
@@ -92,6 +91,12 @@ class Buffer(object):
         Return the buffers vim buffer number
         """
         return self._buffer_number
+
+    def read(self):
+        """
+        Return the contents of the buffer
+        """
+        return vim.buffers[self.buffer_number][:]
 
     def prepend(self, line_num, text):
         """
@@ -162,11 +167,11 @@ class Buffer(object):
         """
         Expand the line_string parameter to the correct line number
 
-        :param line_string: A string containing either '%', '$' or an integer
+        :param line_string: A string containing either "%", "$" or an integer
         :return: The integer of the line_string given
         """
         edit_buffer = vim.buffers[self.buffer_number]
-        line_num = str(line_num).replace('$', str(len(edit_buffer)))
+        line_num = str(line_num).replace("$", str(len(edit_buffer)))
         line_num = eval(line_num)
 
         if line_num > len(edit_buffer):
@@ -179,14 +184,14 @@ class Buffer(object):
         Actually do a simple buffer write
         """
         edit_buffer = vim.buffers[self.buffer_number]
-        was_modifiable = edit_buffer.options['modifiable']
+        was_modifiable = edit_buffer.options["modifiable"]
         if not was_modifiable:
-            edit_buffer.options['modifiable'] = True
+            edit_buffer.options["modifiable"] = True
 
         edit_fn(line_from, line_to, text)
 
         if not was_modifiable:
-            edit_buffer.options['modifiable'] = False
+            edit_buffer.options["modifiable"] = False
 
     def _edit_function_replace_lines(self, line_from, line_to, text):
         """

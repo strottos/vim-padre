@@ -38,6 +38,12 @@ class API(object):
 #                                              stderr=subprocess.PIPE)
 #        return server_port
 
+    def get_buffers(self):
+        """
+        API call to get all windows for current tab
+        """
+        return [win.buffer.number for win in vim.windows]
+
     def create_buffer(self, name, options):
         """
         API call to created a buffer
@@ -53,8 +59,8 @@ class API(object):
         Returns None if the buffer doesn't exist otherwise returns the
         buffer number
         """
-        my_buffer = self._buffers_list.get_buffer(name)
-        return None if my_buffer is None else my_buffer.buffer_name
+        buf = self._buffers_list.get_buffer(name)
+        return None if buf is None else buf.buffer_name
 
     def get_buffer_number(self, name):
         """
@@ -63,8 +69,15 @@ class API(object):
         Returns None if the buffer doesn't exist otherwise returns the
         buffer number
         """
-        my_buffer = self._buffers_list.get_buffer(name)
-        return None if my_buffer is None else my_buffer.buffer_number
+        buf = self._buffers_list.get_buffer(name)
+        return None if buf is None else buf.buffer_number
+
+    def read_buffer(self, name):
+        """
+        API call to read the buffer specified
+        """
+        buf = self._buffers_list.get_buffer(name)
+        return None if buf is None else buf.read()
 
     def prepend_buffer(self, name, line, text):
         """

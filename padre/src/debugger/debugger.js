@@ -7,21 +7,19 @@ class Debugger {
   handle () {
     const that = this
 
-    this.debugServer.on('started', function () {
-      that.connection.on('data', function (data) {
-        console.log('DebugServer Write')
-        console.log(data)
-        if (data.toString('utf-8').trim() === 'run') {
-          that.debugServer.run()
-        }
+    this.debugServer.on('started', () => {
+      that.connection.write(`["call","padre#debugger#SignalPADREStarted",[]]`)
+
+      that.connection.on('data', async (data) => {
+        await that._handleReadData(data)
       })
 
-      that.debugServer.on('process_spawn', function (pid) {
-        that.connection.write('pid=12345\n')
+      that.debugServer.on('process_exit', function (exitCode, pid) {
+        that.connection.write(`["call","padre#debugger#ProcessExited",[0,12345]]`)
       })
 
-      that.debugServer.on('process_exit', function (exitCode) {
-        that.connection.write(`exitcode=${exitCode}\n`)
+      that.debugServer.on('process_position', function (lineNum, fileName) {
+        that.connection.write(`["call","padre#debugger#JumpToPosition",[${lineNum},"${fileName}"]]`)
       })
 
       // TODO: Socket termination
@@ -29,6 +27,54 @@ class Debugger {
       //  console.log('server disconnected');
       // })
     })
+  }
+
+  async _handleReadData (data) {
+    console.log('DebugServer Write')
+    console.log(data)
+    const message = this._interpret(data.toString('utf-8').trim())
+    if (message.cmd === 'run') {
+      const ret = await this.debugServer.run()
+      this.connection.write(`[${message.id},"OK pid=${ret.pid}"]`)
+    } else if (message.cmd === 'breakpoint') {
+      if ('file' in message.args && 'line' in message.args) {
+        const ret = await this.debugServer.breakpointFileAndLine(message.args.file, parseInt(message.args.line))
+        this.connection.write(`[${message.id},"OK line=${ret.line} file=${ret.file}"]`)
+      }
+    } else if (message.cmd === 'stepIn') {
+      await this.debugServer.stepIn()
+      this._sendStatus(message.id, 'OK')
+    } else if (message.cmd === 'stepOver') {
+      await this.debugServer.stepOver()
+      this._sendStatus(message.id, 'OK')
+    } else if (message.cmd === 'continue') {
+      await this.debugServer.continue()
+      this._sendStatus(message.id, 'OK')
+    } else if (message.cmd === 'print') {
+      if ('variable' in message.args) {
+        const ret = await this.debugServer.printVariable(message.args.variable)
+        this.connection.write(`[${message.id},"OK variable=${ret.variable} value=${ret.value} type=${ret.type}"]`)
+      }
+    }
+  }
+
+  _sendStatus (id, status) {
+    this.connection.write(`[${id},"${status}"]`)
+  }
+
+  _interpret (request) {
+    const json = JSON.parse(request)
+    const text = json[1].split(' ')
+    const args = {}
+    text.slice(1).forEach(function (x) {
+      let [key, val] = x.split('=')
+      args[key] = val
+    })
+    return {
+      id: parseInt(json[0]),
+      cmd: text[0],
+      args: args,
+    }
   }
 }
 
