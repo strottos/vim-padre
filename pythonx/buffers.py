@@ -44,7 +44,8 @@ class BufferList(object):
         Return the buffer with the specified name
         """
         for buffer_object in self._buffers:
-            if buffer_object.buffer_name == name:
+            if (type(name) is str and buffer_object.buffer_name == name) or \
+                    (type(name) is int and buffer_object.buffer_number == name):
                 return buffer_object
 
         return None

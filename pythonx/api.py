@@ -4,13 +4,10 @@ API for the VIM PADRE plugin
 Most functions in this file should be kept very short and are used
 only to let VIM interface with the Python code.
 """
-import subprocess
 
 import vim
-import time
 
 import buffers
-import network
 import utils
 
 
@@ -49,14 +46,25 @@ class API(object):
         """
         return self._buffers_list.create_buffer(name, options).buffer_number
 
-    def get_buffer(self, name):
+    def get_buffer_name(self, name):
         """
-        API call to return a vim buffer
+        API call to return the name of a vim buffer we created
 
         Returns None if the buffer doesn't exist otherwise returns the
         buffer number
         """
-        return self._buffers_list.get_buffer(name).buffer_number
+        my_buffer = self._buffers_list.get_buffer(name)
+        return None if my_buffer is None else my_buffer.buffer_name
+
+    def get_buffer_number(self, name):
+        """
+        API call to return the number of a vim buffer we created
+
+        Returns None if the buffer doesn't exist otherwise returns the
+        buffer number
+        """
+        my_buffer = self._buffers_list.get_buffer(name)
+        return None if my_buffer is None else my_buffer.buffer_number
 
     def prepend_buffer(self, name, line, text):
         """
@@ -94,7 +102,8 @@ class API(object):
             raise BufferNotFoundException(name)
         buf.replace(1, '$', None)
 
-    def get_unused_localhost_port(self):
+    @staticmethod
+    def get_unused_localhost_port():
         """
         Get a free port on localhost to run padre
         """

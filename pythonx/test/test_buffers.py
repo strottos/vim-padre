@@ -34,16 +34,25 @@ class TestBufferLists(unittest.TestCase):
         """
         Test we can create a new buffer in a BufferList
         """
+        self.assertEqual(len(self.buffer_list._buffers), 0)
         test_buffer = self.buffer_list.create_buffer('test', [])
         self.assertEqual(test_buffer.buffer_name, 'test')
-        self.assertIs(self.buffer_list.get_buffer('test'), test_buffer)
+        self.assertEqual(len(self.buffer_list._buffers), 1)
+        self.assertIs(self.buffer_list._buffers[0], test_buffer)
 
-    def test_get_buffer_in_list(self):
+    def test_get_buffer_name_in_list(self):
         """
-        Test we can retrieve a buffer from a BufferList
+        Test we can retrieve a buffer name from a BufferList
         """
         test_buffer = self.buffer_list.create_buffer('test', [])
         self.assertIs(self.buffer_list.get_buffer('test'), test_buffer)
+
+    def test_get_buffer_number_in_list(self):
+        """
+        Test we can retrieve a buffer number from a BufferList
+        """
+        test_buffer = self.buffer_list.create_buffer('test', [])
+        self.assertIs(self.buffer_list.get_buffer(test_buffer.buffer_number), test_buffer)
 
 
 class TestBuffers(unittest.TestCase):
