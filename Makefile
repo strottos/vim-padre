@@ -1,2 +1,2 @@
 all:
-	go get github.com/strottos/padre
+	cd padre && npm install

@@ -3,3 +3,5 @@
 *.swn
 *.swm
 *.pyc
+.nyc_output
+node_modules
