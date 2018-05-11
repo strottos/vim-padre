@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+
+'use strict'
+
+const net = require('net')
+
+const yargs = require('yargs')
+
+const Debugger = require('./src/debugger/debugger').Debugger
+const LLDB = require('./src/debugger/lldb/lldb').LLDB
+
+const argv = yargs.options({
+  'p': {
+    'alias': 'port',
+    'describe': 'specify port to run on',
+    'default': 12345,
+    'type': 'number'
+  },
+  'host': {
+    'describe': 'specify host to run on',
+    'default': 'localhost',
+    'type': 'string'
+  },
+  'd': {
+    'alias': 'debugger',
+    'describe': 'specify debugger to use',
+    'default': 'lldb',
+    'choices': ['lldb'],
+    'type': 'string'
+  }
+}).usage(`Usage: $0 [options] -- progname [args]
+
+A tool for building, debugging and reverse engineering in VIM
+
+Interfaces with 'lldb' and 'make' to compile and debug programs written
+in C or related languages and can communicate with the vim-padre VIM plugin
+in order to effectively use VIM as a debugging interface.`).help('h').alias('h', 'help').argv
+
+if (argv._.length === 0) {
+  console.log('Error: No program specified to run')
+  process.exit(1)
+}
+
+const server = net.createServer((connection) => {
+  const lldbServer = new LLDB(argv._[0], argv._.slice[1])
+  const mainDebugger = new Debugger(lldbServer, connection)
+  mainDebugger.handle()
+})
+
+server.listen(argv.port, argv.host, () => {
+  console.log(`Listening on ${argv.host}:${argv.port}`)
+})
