@@ -1,10 +1,6 @@
 pipeline {
   agent any
 
-  triggers {
-    pollSCM('H/5 * * * *')
-  }
-
   stages {
     stage('Build') {
       steps {
@@ -18,7 +14,7 @@ pipeline {
       }
     }
 
-    stage('Python 2 Unit Testing') {
+    stage('VIM Python 2 Unit Tests') {
       steps {
         sh'''
           #!/bin/bash
@@ -28,7 +24,7 @@ pipeline {
       }
     }
 
-    stage('Python 3 Unit Testing') {
+    stage('VIM Python 3 Unit Tests') {
       steps {
         sh'''
           #!/bin/bash
@@ -48,7 +44,7 @@ pipeline {
       }
     }
 
-    stage('Integration Tests') {
+    stage('PADRE Integration Tests') {
       steps {
         sh'''
           #!/bin/bash
@@ -60,11 +56,20 @@ pipeline {
       }
     }
 
-    stage('Vader Test') {
+    stage('Vader Unit Tests') {
       steps {
         sh'''
           #!/bin/bash
-          docker run -a stderr -e VADER_OUTPUT_FILE=/dev/stderr --rm vim-padre/test-container /vim-build/bin/vim-v8.0.0027 -u ./test/vimrc "+Vader! test/*.vader" 2>&1
+          docker run -a stderr -e VADER_OUTPUT_FILE=/dev/stderr --rm vim-padre/test-container vim '+Vader! test/unit/*.vader' 2>&1
+        '''
+      }
+    }
+
+    stage('Vader Integration Tests') {
+      steps {
+        sh'''
+          #!/bin/bash
+          docker run -a stderr -e VADER_OUTPUT_FILE=/dev/stderr --privileged --rm vim-padre/test-container vim '+Vader! test/integration/*.vader' 2>&1
         '''
       }
     }

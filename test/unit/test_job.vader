@@ -1,3 +1,5 @@
+" vim: et ts=2 sts=2 sw=2
+
 Execute(Test jobs are created and output exists):
   let t:job_id = padre#job#Start('test/pythonx/test_prog.py', {})
 
@@ -49,3 +51,30 @@ Execute(Test number of jobs running is accurate and we can stop all jobs):
   sleep 50ms
 
   AssertEqual 0, padre#job#RunningJobs()
+
+Execute(Test we can trigger a callback on output to stdout or stderr):
+  call padre#job#StopAllJobs()
+
+  let g:StdoutBuffer = []
+  let g:StderrBuffer = []
+
+  function! g:CallbackStdout(job_id, data, args)
+    call add(g:StdoutBuffer, a:data)
+    AssertEqual ['a', 'b'], a:args
+  endfunction
+
+  function! g:CallbackStderr(job_id, data, args)
+    call add(g:StderrBuffer, a:data)
+    AssertEqual ['c', 'd'], a:args
+  endfunction
+
+  let t:job_options = {'out_cb': function('g:CallbackStdout'), 'out_cb_args': ['a', 'b'], 'err_cb': function('g:CallbackStderr'), 'err_cb_args': ['c', 'd']}
+  let t:job_id = padre#job#Start('test/pythonx/test_prog.py', t:job_options)
+
+  sleep 1
+
+  AssertEqual ['Test stdout vimscript jobs', 'Testing done'], g:StdoutBuffer
+  AssertEqual ['Test stderr vimscript jobs'], g:StderrBuffer
+
+"Execute(Test we can send to stdin):
+"  AssertNotEqual t:job_id, t:original_job_id

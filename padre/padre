@@ -42,7 +42,7 @@ if (argv._.length === 0) {
 }
 
 const server = net.createServer((connection) => {
-  const lldbServer = new LLDB(argv._[0], argv._.slice[1])
+  const lldbServer = new LLDB(argv._[0], argv._.slice(1))
   const mainDebugger = new Debugger(lldbServer, connection)
   mainDebugger.handle()
 })

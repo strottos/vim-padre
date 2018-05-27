@@ -1,0 +1,308 @@
+" vim: et ts=2 sts=2 sw=2
+
+Before:
+  call padre#python#Setup()
+
+  let g:buffer_number = padre#buffer#Create('Test_Tabs', 'TestBuf', 0)
+
+After:
+  Restore
+
+Execute (Check that we can find a tab containing a buffer):
+  let g:original_number_tabs = tabpagenr('$')
+  tabnew
+  tabnew
+  execute 'buffer ' . g:buffer_number
+  tabnew
+  tabnew
+  execute 'buffer ' . g:buffer_number
+
+Then:
+  AssertEqual [g:original_number_tabs + 2, g:original_number_tabs + 4], padre#layout#GetTabNumbersContainingBufferName('Test_Tabs')
+
+  quit
+  quit
+  quit
+  quit
+
+Execute (Check we can create a new tab):
+  let g:start_tabpagenr = tabpagenr()
+
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+Then:
+  AssertEqual g:start_tabpagenr + 1, tabpagenr()
+  AssertEqual 'Test_Tabs', padre#buffer#GetBufNameForBufNum(bufnr('%'))
+
+  quit
+
+Execute (Check we can open an existing tab if it contains the buffer specified):
+  let g:original_number_tabs = tabpagenr('$')
+  tabnew
+  execute 'buffer ' . g:buffer_number
+  tabnew
+  execute 'buffer ' . g:buffer_number
+
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 0)
+
+Then:
+  AssertEqual [g:original_number_tabs + 1, g:original_number_tabs + 2], padre#layout#GetTabNumbersContainingBufferName('Test_Tabs')
+  AssertEqual g:start_tabpagenr + 1, tabpagenr()
+  AssertEqual 'Test_Tabs', padre#buffer#GetBufNameForBufNum(bufnr('%'))
+
+  quit
+  quit
+
+Execute (Check if a tab contains the buffer twice it only reports once):
+  let g:original_number_tabs = tabpagenr('$')
+  tabnew
+  execute 'buffer ' . g:buffer_number
+  split
+  execute 'buffer ' . g:buffer_number
+
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 0)
+
+Then:
+  AssertEqual [g:original_number_tabs + 1], padre#layout#GetTabNumbersContainingBufferName('Test_Tabs')
+
+  quit
+  quit
+
+Execute (Check we can create an extra tab containing the buffer specified):
+  tabnew
+  execute 'buffer ' . g:buffer_number
+
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+Then:
+  AssertEqual [g:original_number_tabs + 1, g:original_number_tabs + 2], padre#layout#GetTabNumbersContainingBufferName('Test_Tabs')
+  AssertEqual g:start_tabpagenr + 2, tabpagenr()
+  AssertEqual 'Test_Tabs', padre#buffer#GetBufNameForBufNum(bufnr('%'))
+
+  quit
+  quit
+
+Execute (Check we can close all tabs containing a buffer):
+  let g:original_number_tabs = tabpagenr('$')
+
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  vnew
+
+  AssertEqual g:original_number_tabs + 2, tabpagenr('$')
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Then:
+  AssertEqual g:original_number_tabs, tabpagenr('$')
+
+Execute (Check we can find all windows in a tab):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+  let t:test_buffer_number_2 = padre#buffer#Create('Test_Windows_2', 'TestBuf', 0)
+
+  let t:winnr = winnr()
+
+  split
+  execute 'buffer ' . t:test_buffer_number
+  split
+  execute 'buffer ' . t:test_buffer_number_2
+
+  let t:buf_list = [padre#buffer#GetBufNumForBufName('Test_Tabs'), padre#buffer#GetBufNumForBufName('Test_Windows'), padre#buffer#GetBufNumForBufName('Test_Windows_2')]
+
+Then:
+  AssertEqual sort(t:buf_list), sort(padre#layout#GetBuffersInTab())
+  AssertEqual t:winnr, winnr()
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window above the current one):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('t', 10)
+
+Then:
+  AssertNotEqual t:original_winnr, winnr()
+  wincmd k
+  Assert winheight(winnr()) <= 10
+  AssertEqual t:original_winnr, winnr()
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window below the current one):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('b', 10)
+
+Then:
+  AssertEqual t:original_winnr, winnr()
+  wincmd j
+  Assert winheight(winnr()) <= 10
+  AssertNotEqual t:original_winnr, winnr()
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window to the left of the current one):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('l', 20)
+
+Then:
+  AssertNotEqual t:original_winnr, winnr()
+  wincmd h
+  Assert winwidth(winnr()) <= 20
+  AssertEqual t:original_winnr, winnr()
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window to the right of the current one):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('r', 20)
+
+Then:
+  AssertEqual t:original_winnr, winnr()
+  wincmd r
+  AssertNotEqual t:original_winnr, winnr()
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window above the current one and load a buffer in the new window):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('t', 10, 'Test_Windows', 0)
+
+  wincmd k
+
+Then:
+  AssertEqual t:test_buffer_number, bufnr('%')
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window below the current one and load a buffer in the new window):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('b', 10, 'Test_Windows', 0)
+
+  wincmd j
+
+Then:
+  AssertEqual t:test_buffer_number, bufnr('%')
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window to the left of the current one and load a buffer in the new window):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('l', 20, 'Test_Windows', 0)
+
+  wincmd h
+
+Then:
+  AssertEqual t:test_buffer_number, bufnr('%')
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we can add a new window to the right of the current one and load a buffer in the new window):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+  let t:original_winnr = winnr()
+
+  call padre#layout#AddWindowToTab('r', 20, 'Test_Windows', 0)
+
+  wincmd l
+
+Then:
+  AssertEqual t:test_buffer_number, bufnr('%')
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we don't add a window and buffer when it exists in tab):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+
+  AssertEqual padre#layout#AddWindowToTab('b', 10, 'Test_Windows', 0), 1
+  wincmd j
+  let t:original_winnr = winnr()
+  AssertEqual padre#layout#AddWindowToTab('b', 10, 'Test_Windows', 0), 0
+
+Then:
+  AssertEqual t:original_winnr, winnr()
+  AssertEqual t:test_buffer_number, bufnr('%')
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check we add a window and buffer that exists in the current tab when requested to):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+
+  AssertEqual padre#layout#AddWindowToTab('b', 10, 'Test_Windows', 1), 1
+  wincmd j
+  let t:original_winnr = winnr()
+  AssertEqual padre#layout#AddWindowToTab('b', 10, 'Test_Windows', 1), 1
+  wincmd j
+
+Then:
+  AssertNotEqual t:original_winnr, winnr()
+  AssertEqual t:test_buffer_number, bufnr('%')
+
+  call padre#layout#CloseTabsWithBuffer('Test_Tabs')
+
+Execute (Check whether the current tab contains a window with a buffer):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+
+  Assert !padre#layout#CurrentTabContainsBuffer('Test_Windows')
+
+  execute 'buffer ' . t:test_buffer_number
+
+Then:
+  Assert padre#layout#CurrentTabContainsBuffer('Test_Windows')
+
+  quit
+
+Execute (Check we can go to a window containing a buffer in the current tab):
+  call padre#layout#OpenTabWithBuffer('Test_Tabs', 1)
+
+  let t:test_buffer_number = padre#buffer#Create('Test_Windows', 'TestBuf', 0)
+
+  new
+  vnew
+  new
+
+  execute 'buffer ' . t:test_buffer_number
+
+  wincmd w
+
+  call padre#layout#FindBufferWindowWithinTab('Test_Windows')
+
+Then:
+  AssertEqual bufnr('%'), t:test_buffer_number
+
+  quit
+  quit
+  quit
+  quit

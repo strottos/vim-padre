@@ -5,38 +5,37 @@ let s:save_cpo = &cpoptions
 set cpoptions&vim
 
 " Basic setup
-let s:PadreSetup = 0
-let s:FileSearchBufferName = ''
-let s:PadreJobId = 0
+let s:Setup = 0
 
 function! padre#Enable()
-  if s:PadreSetup
+  if s:Setup
     return
   endif
 
   call padre#python#Setup()
 
-  let l:buf_title = 'PADRE'
-  let l:options = ['noswapfile', 'buftype=nofile', 'filetype=PADRE', 'nobuflisted', 'nomodifiable']
-  call padre#buffer#Create(l:buf_title, l:options)
+  call padre#signs#Setup()
 
-  let s:PadreSetup = 1
+  call padre#debugger#Setup()
+
+  if has_key(g:, 'PadrePreprocessingCommands')
+    call padre#buffer#ReplaceBufferList('PADRE_Preprocessing', '1', '$', g:PadrePreprocessingCommands)
+  endif
+
+  let s:Setup = 1
 endfunction
 
-function! padre#Debug()
-  call padre#job#Stop(s:PadreJobId)
+function! padre#Disable()
+  call padre#debugger#Stop()
 
-  call padre#layout#OpenTabWithBuffer('PADRE', 0)
+  for l:buffer_name in ['PADRE_Main', 'PADRE_Preprocessing']
+    let l:buffer_number = padre#buffer#GetBufNumForBufName(l:buffer_name)
+    if matchstr(l:buffer_number, '\d')
+      execute 'bwipeout! ' l:buffer_number
+    endif
+  endfor
 
-  let l:padre_port = padre#util#GetUnusedLocalhostPort()
-
-  let s:PadreJobId = padre#job#Start('padre --port=' . l:padre_port, {})
-endfunction
-
-function! padre#Stop()
-  call padre#job#StopAllJobs()
-
-  call padre#layout#CloseTabsWithBuffer('PADRE')
+  let s:Setup = 0
 endfunction
 
 " This is basic vim plugin boilerplate

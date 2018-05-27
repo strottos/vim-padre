@@ -39,11 +39,50 @@ ${simple_program_body}          SEPARATOR=\n
 Debug simple program
     [Documentation]     Check that we can effectively debug a simple program
     [Tags]              Smoke
-    send to padre       run
-    ${received} =       expect from padre       pid=(\\d+)
+    ${received} =       expect from padre       \\["call","padre#debugger#SignalPADREStarted",\\[\\]\\]
+    Should Be True      ${received}[0] == True
+    Should Be True      len(${received}) == 1
+    send to padre       [1,"breakpoint line=16 file=${simple_program}.${simple_program_ext}"]\n
+    ${received} =       expect from padre       \\[1,"OK line=16 file=${simple_program}.${simple_program_ext}"\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [2,"run"]\n
+    ${received} =       expect from padre       \\[2,"OK pid=(\\d+)"\\]
     Should Be True      ${received}[0] == True
     Should Be True      len(${received}) == 2
-    ${received} =       expect from padre       exitcode=(\\d+)
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[16,"${simple_program}.${simple_program_ext}"\\]\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [3,"stepIn"]\n
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[6,"${simple_program}.${simple_program_ext}"\\]\\]
+    Should Be True      ${received}[0] == True
+    ${received} =       expect from padre       \\[3,"OK"\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [4,"stepIn"]\n
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[9,"${simple_program}.${simple_program_ext}"\\]\\]
+    Should Be True      ${received}[0] == True
+    ${received} =       expect from padre       \\[4,"OK"\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [5,"stepIn"]\n
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[12,"${simple_program}.${simple_program_ext}"\\]\\]
+    Should Be True      ${received}[0] == True
+    ${received} =       expect from padre       \\[5,"OK"\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [6,"stepOver"]\n
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[13,"${simple_program}.${simple_program_ext}"\\]\\]
+    Should Be True      ${received}[0] == True
+    ${received} =       expect from padre       \\[6,"OK"\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [7,"print variable=a"]\n
+    ${received} =       expect from padre       \\[7,"OK variable=a value=1 type=int"\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [8,"stepOver"]\n
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[14,"${simple_program}.${simple_program_ext}"\\]\\]
+    Should Be True      ${received}[0] == True
+    ${received} =       expect from padre       \\[8,"OK"\\]
+    Should Be True      ${received}[0] == True
+    send to padre       [9,"continue"]\n
+    ${received} =       expect from padre       \\[9,"OK"\\]
+    Should Be True      ${received}[0] == True
+    ${received} =       expect from padre       \\["call","padre#debugger#ProcessExited",\\[(\\d+),\\d+\\]\\]
     Should Be True      ${received}[0] == True
     Should Be True      len(${received}) == 2
     Should Be True      ${received}[1] == '0'
