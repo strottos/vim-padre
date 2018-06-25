@@ -1,3 +1,5 @@
+'use strict'
+
 const chai = require('chai')
 const sinon = require('sinon')
 
@@ -11,6 +13,7 @@ describe('Test the debugger', () => {
   beforeEach(() => {
     sandbox = sinon.createSandbox()
     testDebugServerStub = {
+      'setup': sandbox.stub(),
       'on': sandbox.stub(),
       'run': sandbox.stub(),
       'breakpointFileAndLine': sandbox.stub(),
@@ -49,13 +52,16 @@ describe('Test the debugger', () => {
     const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
     testDebugger._handleReadData = sinon.stub() // Suppress unhandled promise warning
 
-    testDebugger.handle()
+    await testDebugger.handle()
+
+    chai.expect(testDebugServerStub.setup.withArgs().callCount).to.equal(1)
 
     chai.expect(testDebugServerStub.on.withArgs('started', sinon.match.any).callCount).to.equal(1)
     chai.expect(testDebugServerStub.on.args[0][0]).to.equal('started')
 
     chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(JSON.parse(connectionStub.write.args[0][0])).to.deep.equal(["call","padre#debugger#SignalPADREStarted",[]])
+    chai.expect(JSON.parse(connectionStub.write.args[0][0]))
+        .to.deep.equal(['call', 'padre#debugger#SignalPADREStarted', []])
 
     chai.expect(connectionStub.on.callCount).to.equal(1)
     chai.expect(connectionStub.on.args[0][0]).to.equal('data')
@@ -77,14 +83,14 @@ describe('Test the debugger', () => {
     chai.expect(connectionStub.write.args[0]).to.deep.equal(['[1,"OK pid=12345"]'])
   })
 
-  it('should respond with the exit code when the process exits', () => {
+  it('should respond with the exit code when the process exits', async () => {
     testDebugServerStub.on
         .withArgs('started', sinon.match.any).callsArg(1)
         .withArgs('process_exit', sinon.match.any).callsArgWith(1, '0', '12345')
 
     const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
 
-    testDebugger.handle()
+    await testDebugger.handle()
 
     chai.expect(connectionStub.write.callCount).to.equal(2)
     chai.expect(connectionStub.write.args[1]).to.deep.equal(['["call","padre#debugger#ProcessExited",[0,12345]]'])
@@ -194,7 +200,7 @@ describe('Test the debugger', () => {
 
     const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
 
-    testDebugger.handle()
+    await testDebugger.handle()
 
     chai.expect(connectionStub.write.callCount).to.equal(2)
     console.log(connectionStub.write.args[1][0])

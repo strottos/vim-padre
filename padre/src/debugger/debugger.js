@@ -1,10 +1,14 @@
+'use strict'
+
 class Debugger {
   constructor (debugServer, connection) {
     this.debugServer = debugServer
     this.connection = connection
   }
 
-  handle () {
+  async handle () {
+    await this.debugServer.setup()
+
     const that = this
 
     this.debugServer.on('started', () => {
@@ -15,7 +19,7 @@ class Debugger {
       })
 
       that.debugServer.on('process_exit', function (exitCode, pid) {
-        that.connection.write(`["call","padre#debugger#ProcessExited",[0,12345]]`)
+        that.connection.write(`["call","padre#debugger#ProcessExited",[${exitCode},${pid}]]`)
       })
 
       that.debugServer.on('process_position', function (lineNum, fileName) {
@@ -43,23 +47,19 @@ class Debugger {
       }
     } else if (message.cmd === 'stepIn') {
       await this.debugServer.stepIn()
-      this._sendStatus(message.id, 'OK')
+      this.connection.write(`[${message.id},"OK"]`)
     } else if (message.cmd === 'stepOver') {
       await this.debugServer.stepOver()
-      this._sendStatus(message.id, 'OK')
+      this.connection.write(`[${message.id},"OK"]`)
     } else if (message.cmd === 'continue') {
       await this.debugServer.continue()
-      this._sendStatus(message.id, 'OK')
+      this.connection.write(`[${message.id},"OK"]`)
     } else if (message.cmd === 'print') {
       if ('variable' in message.args) {
         const ret = await this.debugServer.printVariable(message.args.variable)
         this.connection.write(`[${message.id},"OK variable=${ret.variable} value=${ret.value} type=${ret.type}"]`)
       }
     }
-  }
-
-  _sendStatus (id, status) {
-    this.connection.write(`[${id},"${status}"]`)
   }
 
   _interpret (request) {

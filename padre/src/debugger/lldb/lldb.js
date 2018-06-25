@@ -1,3 +1,5 @@
+'use strict'
+
 const stream = require('stream')
 
 const nodePty = require('node-pty')
@@ -8,10 +10,15 @@ class LLDB extends stream.Transform {
 
     this._properties = {}
 
-    if (!args) {
-      args = []
+    this.args = args
+    this.progName = progName
+    if (!this.args) {
+      this.args = []
     }
-    const exe = this.exe = nodePty.spawn('lldb', ['--', progName, ...args])
+  }
+
+  setup () {
+    const exe = this.exe = nodePty.spawn('lldb', ['--', this.progName, ...this.args])
 
     exe.pipe(this).pipe(exe)
 
@@ -105,15 +112,15 @@ class LLDB extends stream.Transform {
 
     for (let line of text.split('\r\n')) {
       for (let f of [
-          this._checkStarted,
-          this._checkPosition,
-          this._checkProcessLaunched,
-          this._checkProcessExited,
-          this._checkBreakpointSet,
-          this._checkStepIn,
-          this._checkStepOver,
-          this._checkContinue,
-          this._checkVariable,
+        this._checkStarted,
+        this._checkPosition,
+        this._checkProcessLaunched,
+        this._checkProcessExited,
+        this._checkBreakpointSet,
+        this._checkStepIn,
+        this._checkStepOver,
+        this._checkContinue,
+        this._checkVariable,
       ]) {
         if (f.call(this, line.trim())) {
           break

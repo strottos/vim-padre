@@ -1,3 +1,5 @@
+'use strict'
+
 const chai = require('chai')
 const sinon = require('sinon')
 
@@ -46,6 +48,8 @@ describe('Test Spawning LLDB', () => {
   it('should successfully spawn and communicate with LLDB', () => {
     const lldbDebugger = new lldb.LLDB('./test')
 
+    lldbDebugger.setup()
+
     chai.expect(spawnStub.callCount).to.equal(1)
     chai.expect(spawnStub.args[0]).to.deep.equal(['lldb', ['--', './test']])
 
@@ -61,7 +65,8 @@ describe('Test Spawning LLDB', () => {
   })
 
   it('should correctly spawn LLDB when arguments are used', () => {
-    new lldb.LLDB('./test', ['--arg1', '--arg2=test', '-a', '--', 'testing'])
+    const lldbDebugger = new lldb.LLDB('./test', ['--arg1', '--arg2=test', '-a', '--', 'testing'])
+    lldbDebugger.setup()
 
     chai.expect(spawnStub.callCount).to.equal(1)
     chai.expect(spawnStub.args[0]).to.deep.equal(['lldb', ['--', './test', '--arg1', '--arg2=test', '-a', '--', 'testing']])
@@ -69,11 +74,14 @@ describe('Test Spawning LLDB', () => {
 
   it('should be able to write to and start LLDB', () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
 
     let strings = [`(lldb) target create "./test"`,
-        `Current executable set to './test' (x86_64).`,
-        `(lldb) `, `(lldb) `]
+      `Current executable set to './test' (x86_64).`,
+      `(lldb) `, `(lldb) `
+    ]
     for (let s of strings) {
       lldbDebugger.write(s + '\n')
     }
@@ -84,6 +92,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should be able to process multiline output with bash colour codes from LLDB', () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
 
     lldbDebugger.write('Current executable set to \'./test\' (x86_64).\r\n(lldb) ' +
@@ -97,6 +107,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should be able to launch a process and report it', async () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     lldbDebugger.exe.write.resetHistory()
 
     const runPromise = lldbDebugger.run()
@@ -115,6 +127,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should report a process finishing', () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
 
     lldbDebugger._properties.pid = '12345'
@@ -127,6 +141,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should allow the debugger to set a breakpoint in LLDB', async () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     lldbDebugger.exe.write.resetHistory()
 
     const breakpointPromise = lldbDebugger.breakpointFileAndLine('main.c', 20)
@@ -147,6 +163,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should allow the debugger to step in in LLDB', async () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     lldbDebugger.exe.write.resetHistory()
 
     const stepInPromise = lldbDebugger.stepIn()
@@ -164,6 +182,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should allow the debugger to step over in LLDB', async () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     lldbDebugger.exe.write.resetHistory()
 
     const stepOverPromise = lldbDebugger.stepOver()
@@ -181,6 +201,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should allow the debugger to continue in LLDB', async () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     lldbDebugger.exe.write.resetHistory()
     lldbDebugger._properties.pid = '12345'
 
@@ -198,6 +220,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should allow the debugger to print integers in LLDB', async () => {
     const lldbDebugger = new lldb.LLDB('./test')
+    lldbDebugger.setup()
+
     lldbDebugger.exe.write.resetHistory()
 
     const printVariablePromise = lldbDebugger.printVariable('abc')
@@ -218,7 +242,8 @@ describe('Test Spawning LLDB', () => {
 
   it('should report the current position when reported by LLDB', async () => {
     const lldbDebugger = new lldb.LLDB('./test')
-    lldbDebugger.exe.write.resetHistory()
+    lldbDebugger.setup()
+
     const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
 
     lldbDebugger.write(`    frame #0: 0x0000000100000f86 test_prog\`main at test_prog.c:10`)

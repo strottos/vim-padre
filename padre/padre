@@ -8,6 +8,7 @@ const yargs = require('yargs')
 
 const Debugger = require('./src/debugger/debugger').Debugger
 const LLDB = require('./src/debugger/lldb/lldb').LLDB
+const NodeInspect = require('./src/debugger/nodeinspect/nodeinspect').NodeInspect
 
 const argv = yargs.options({
   'p': {
@@ -25,7 +26,7 @@ const argv = yargs.options({
     'alias': 'debugger',
     'describe': 'specify debugger to use',
     'default': 'lldb',
-    'choices': ['lldb'],
+    'choices': ['lldb', 'node'],
     'type': 'string'
   }
 }).usage(`Usage: $0 [options] -- progname [args]
@@ -41,10 +42,29 @@ if (argv._.length === 0) {
   process.exit(1)
 }
 
-const server = net.createServer((connection) => {
-  const lldbServer = new LLDB(argv._[0], argv._.slice(1))
-  const mainDebugger = new Debugger(lldbServer, connection)
-  mainDebugger.handle()
+const getDebugServer = (type) => {
+  let DebugServerClass
+  let options = {}
+
+  switch (type) {
+  case 'lldb':
+    DebugServerClass = LLDB
+    break
+  case 'node':
+    DebugServerClass = NodeInspect
+    options['wsLib'] = require('ws') // Need to use dependency injection for testing
+    break
+  }
+
+  const debugServer = new DebugServerClass(argv._[0], argv._.slice(1), options)
+
+  return debugServer
+}
+
+const server = net.createServer(async (connection) => {
+  const debugServer = getDebugServer(argv.debugger)
+  const mainDebugger = new Debugger(debugServer, connection)
+  await mainDebugger.handle()
 })
 
 server.listen(argv.port, argv.host, () => {
