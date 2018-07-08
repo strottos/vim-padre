@@ -96,7 +96,7 @@ function! padre#buffer#PrependBufferString(name, line, text)
 endfunction
 
 function! padre#buffer#AppendBufferString(name, line, text)
-  return padre#python#CallAPI('append_buffer("' . a:name . '", "' . a:line . '", "' . substitute(substitute(a:text, '"', '\\"', 'g'), '', '\\n', 'g') . '")')
+  return padre#python#CallAPI('append_buffer("' . a:name . '", "' . a:line . '", "' . substitute(substitute(substitute(a:text, '\\', '\\\\', 'g'), '"', '\\"', 'g'), '', '\\n', 'g') . '")')
 endfunction
 
 function! padre#buffer#PrependBufferList(name, line, text)

@@ -5,3 +5,8 @@
 *.pyc
 .nyc_output
 node_modules
+test/progs/test_prog
+test/progs/test_prog.dSYM/
+padre/integration/log.html
+padre/integration/output.xml
+padre/integration/report.html

@@ -38,15 +38,29 @@ function! padre#debugger#Debug(...)
   " TODO: Fix this
   let s:NumDataWindows = 0
 
+  let l:file = ''
+  let l:debugger = 'lldb'
+
+  echom a:1
   if a:0 > 0
-    let l:file = a:1
-  elseif get(g:, 'PadreDebugProgram', '') != ''
-    let l:file = g:PadreDebugProgram
-  elseif s:PadreDebugProgram != ''
-    let l:file = s:PadreDebugProgram
-  else
-    echoerr 'PADRE Program not found, please specify'
-    return
+    let l:match = matchlist(a:1, '^--debugger=\([a-z]*\)$')
+    if !empty(l:match)
+      let l:debugger = l:match[1]
+      let l:file = a:2
+    else
+      let l:file = a:1
+    endif
+  endif
+
+  if l:file == ''
+    if get(g:, 'PadreDebugProgram', '') != ''
+      let l:file = g:PadreDebugProgram
+    elseif s:PadreDebugProgram != ''
+      let l:file = s:PadreDebugProgram
+    else
+      echoerr 'PADRE Program not found, please specify'
+      return
+    endif
   endif
 
   call padre#buffer#ClearBuffer('PADRE_Stdio')
@@ -60,7 +74,7 @@ function! padre#debugger#Debug(...)
   let l:padrePort = padre#util#GetUnusedLocalhostPort()
 
   " TODO: Check for errors and report
-  let l:command = s:PluginRoot . '/padre/padre --port=' . l:padrePort . ' ' . l:file
+  let l:command = s:PluginRoot . '/padre/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' ' . l:file
   let l:jobOptions = {'out_cb': function('padre#debugger#StdoutCallback'), 'err_cb': function('padre#debugger#StderrCallback')}
   let s:JobId = padre#job#Start(l:command, l:jobOptions)
 
@@ -212,7 +226,12 @@ function! padre#debugger#JumpToPosition(line, file)
   let l:msg = 'Stopped line=' . a:line . ' file=' . a:file
   call padre#buffer#AppendBufferList('PADRE_Main', '$', [l:msg])
 
-  let l:fileToLoad = s:PresentDirectory . '/' . findfile(a:file, s:PresentDirectory . '/**')
+  if a:file[0] == '/'
+    let l:fileToLoad = a:file
+  else
+    let l:fileToLoad = s:PresentDirectory . '/' . findfile(a:file, s:PresentDirectory . '/**')
+  endif
+
   if l:fileToLoad != s:CurrentFileLoaded
     call padre#layout#OpenTabWithBuffer('PADRE_Main', 0)
     call padre#layout#FindBufferWindowWithinTab('PADRE_Main')
