@@ -20,7 +20,7 @@ function! padre#debugger#Setup()
   call padre#buffer#Create('PADRE_Stdio', 'PADRE_Data', 1)
   call padre#buffer#Create('PADRE_Stdout', 'PADRE_Data', 0)
   call padre#buffer#Create('PADRE_Stderr', 'PADRE_Data', 0)
-  call padre#buffer#Create('PADRE_Preprocessing', 'PADRE_Preprocessing', 1)
+  " call padre#buffer#Create('PADRE_Preprocessing', 'PADRE_Preprocessing', 1)
 
   call padre#buffer#SetMainPadreKeyBindings('PADRE_Main')
   call padre#buffer#SetOnlyWriteableAtBottom('PADRE_Stdio')
@@ -35,28 +35,49 @@ function! padre#debugger#IsRunning()
 endfunction
 
 function! padre#debugger#Debug(...)
-  " TODO: Fix this
   call padre#layout#CloseTabsWithBuffer('PADRE_Main')
   let s:NumDataWindows = 0
 
-  let l:file = ''
+  let l:program = ''
   let l:debugger = 'lldb'
 
-  if a:0 > 0
-    let l:match = matchlist(a:1, '^--debugger=\([a-z]*\)$')
-    if !empty(l:match)
-      let l:debugger = l:match[1]
-      let l:file = a:2
-    else
-      let l:file = a:1
-    endif
-  endif
+  let l:args = a:000
+  let l:process_vim_args = 1
 
-  if l:file == ''
-    if get(g:, 'PadreDebugProgram', '') != ''
-      let l:file = g:PadreDebugProgram
-    elseif s:PadreDebugProgram != ''
-      let l:file = s:PadreDebugProgram
+  while len(l:args) > 0
+    let l:arg = l:args[0]
+    let l:args = l:args[1:]
+
+    let l:match = matchlist(l:arg, '^--debugger=\([a-z]*\)$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:debugger = l:match[1]
+      continue
+    endif
+
+    let l:match = matchlist(l:arg, '^-d=\([a-z]*\)$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:debugger = l:match[1]
+      continue
+    endif
+
+    let l:match = matchlist(l:arg, '^--$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:process_vim_args = 0
+      continue
+    endif
+
+    if l:program == ''
+      let l:program = l:arg
+    else
+      let l:program .= ' ' . l:arg
+    endif
+  endwhile
+
+  if l:program == ''
+    if s:PadreDebugProgram != ''
+      let l:program = s:PadreDebugProgram
+    elseif get(g:, 'PadreDebugProgram', '') != ''
+      let l:program = g:PadreDebugProgram
     else
       echoerr 'PADRE Program not found, please specify'
       return
@@ -74,7 +95,7 @@ function! padre#debugger#Debug(...)
   let l:padrePort = padre#util#GetUnusedLocalhostPort()
 
   " TODO: Check for errors and report
-  let l:command = s:PluginRoot . '/padre/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' ' . l:file
+  let l:command = s:PluginRoot . '/padre/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' -- ' . l:program
   let l:jobOptions = {'out_cb': function('padre#debugger#StdoutCallback'), 'err_cb': function('padre#debugger#StderrCallback')}
   let s:JobId = padre#job#Start(l:command, l:jobOptions)
 
@@ -204,10 +225,12 @@ function! padre#debugger#BreakpointCallback(channel_id, data)
 endfunction
 
 function! padre#debugger#StepInCallback(channel_id, data)
+  echom a:data
   " TODO: Error Handling?
 endfunction
 
 function! padre#debugger#StepOverCallback(channel_id, data)
+  echom a:data
   " TODO: Error Handling?
 endfunction
 
@@ -258,9 +281,15 @@ function! padre#debugger#JumpToPosition(line, file)
   endif
 
   call padre#signs#ReplaceCodePointer(a:line)
+
+  execute 'normal ' . a:line . 'G'
 endfunction
 
 function! padre#debugger#ProcessExited(exit_code, pid)
   call padre#debugger#Stop()
   call padre#buffer#AppendBuffer('PADRE_Main', ['Process ' . a:pid . ' finished with exit code=' . a:exit_code])
+endfunction
+
+function! padre#debugger#Error(error_string)
+  call padre#buffer#AppendBuffer('PADRE_Main', ['Error: ' . a:error_string])
 endfunction

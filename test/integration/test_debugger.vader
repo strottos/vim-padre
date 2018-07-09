@@ -1,7 +1,7 @@
 " vim: et ts=2 sts=2 sw=2
 
 Before:
-  let g:PadrePreprocessingCommands = ['Command 1', 'Command 2']
+  "let g:PadrePreprocessingCommands = ['Command 1', 'Command 2']
 
   call padre#Enable()
 
@@ -114,13 +114,13 @@ Then:
 "Execute (The preprocessing buffer displays any preprocessor commands from the config):
 "  AssertEqual g:PadrePreprocessingCommands, padre#buffer#ReadBuffer('PADRE_Preprocessing')
 
-Execute (The preprocessing buffer displays when requested):
-  call padre#preprocessing#CreatePreprocessingWindow()
-
-  wincmd b
-
-  AssertEqual 'PADRE_Preprocessing', &filetype
-  AssertEqual 'PADRE_Preprocessing', padre#buffer#GetBufNameForBufNum(bufnr('%'))
+"Execute (The preprocessing buffer displays when requested):
+"  call padre#preprocessing#CreatePreprocessingWindow()
+"
+"  wincmd b
+"
+"  AssertEqual 'PADRE_Preprocessing', &filetype
+"  AssertEqual 'PADRE_Preprocessing', padre#buffer#GetBufNameForBufNum(bufnr('%'))
 
 Execute (Check the stdout and stderr callback functions adds to the correct buffer):
   tabnew

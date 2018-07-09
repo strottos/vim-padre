@@ -73,8 +73,8 @@ function! padre#buffer#SetMainPadreKeyBindings(name)
   call s:LoadBuffer(a:name)
 
   nnoremap <silent> <buffer> r :PadreRun<cr>
-  nnoremap <silent> <buffer> s :PadreStepIn<cr>
-  nnoremap <silent> <buffer> n :PadreStepOver<cr>
+  nnoremap <silent> <buffer> S :PadreStepIn<cr>
+  nnoremap <silent> <buffer> s :PadreStepOver<cr>
   vnoremap <silent> <buffer> p y:PadrePrintVariable <C-R>"<cr>
   nnoremap <silent> <buffer> C :PadreContinue<cr>
 
@@ -87,8 +87,8 @@ function! padre#buffer#UnsetPadreKeyBindings(name)
   call s:LoadBuffer(a:name)
 
   nnoremap <silent> <buffer> r r
+  nnoremap <silent> <buffer> S S
   nnoremap <silent> <buffer> s s
-  nnoremap <silent> <buffer> n n
   vnoremap <silent> <buffer> p p
   nnoremap <silent> <buffer> C C
 

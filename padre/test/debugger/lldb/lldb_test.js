@@ -59,9 +59,9 @@ describe('Test Spawning LLDB', () => {
     chai.expect(lldbPipeStub.callCount).to.equal(1)
     chai.expect(lldbPipeStub.args[0]).to.deep.equal([exeStub])
 
-    chai.expect(exeStub.write.callCount).to.equal(2)
-    chai.expect(exeStub.write.args[0]).to.deep.equal(['settings set stop-line-count-after 0\n'])
-    chai.expect(exeStub.write.args[1]).to.deep.equal(['settings set stop-line-count-before 0\n'])
+    chai.expect(exeStub.write.callCount).to.equal(3)
+    chai.expect(exeStub.write.args[0]).to.deep.equal([`settings set stop-line-count-after 0\n`])
+    chai.expect(exeStub.write.args[1]).to.deep.equal([`settings set stop-line-count-before 0\n`])
   })
 
   it('should correctly spawn LLDB when arguments are used', () => {
@@ -173,7 +173,7 @@ describe('Test Spawning LLDB', () => {
     chai.expect(lldbDebugger.exe.write.args[0]).to.deep.equal(['thread step-in\n'])
 
     lldbDebugger.write(`* thread #1, queue = 'com.apple.main-thread', stop reason = step in`)
-    lldbDebugger.write(`    frame #0: 0x0000000100000f4d test\`main at test.c:20`)
+    lldbDebugger.write(`    frame #0: test\`main at test.c:20`)
 
     const ret = await stepInPromise
 
@@ -192,7 +192,7 @@ describe('Test Spawning LLDB', () => {
     chai.expect(lldbDebugger.exe.write.args[0]).to.deep.equal(['thread step-over\n'])
 
     lldbDebugger.write(`* thread #1, queue = 'com.apple.main-thread', stop reason = step over`)
-    lldbDebugger.write(`    frame #0: 0x0000000100000f4d test\`main at test.c:20`)
+    lldbDebugger.write(`    frame #0: test\`main at test.c:20`)
 
     const ret = await stepOverPromise
 
@@ -246,9 +246,9 @@ describe('Test Spawning LLDB', () => {
 
     const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
 
-    lldbDebugger.write(`    frame #0: 0x0000000100000f86 test_prog\`main at test_prog.c:10`)
+    lldbDebugger.write(`    frame #0: test_prog\`main(argc=1, 0x000012345678abcd) at /home/test/test_prog.c:10`)
 
     chai.expect(lldbEmitStub.callCount).to.equal(1)
-    chai.expect(lldbEmitStub.args[0]).to.deep.equal(['process_position', 10, 'test_prog.c'])
+    chai.expect(lldbEmitStub.args[0]).to.deep.equal(['process_position', 10, '/home/test/test_prog.c'])
   })
 })

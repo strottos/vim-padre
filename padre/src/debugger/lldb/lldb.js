@@ -22,8 +22,9 @@ class LLDB extends stream.Transform {
 
     exe.pipe(this).pipe(exe)
 
-    exe.write('settings set stop-line-count-after 0\n')
-    exe.write('settings set stop-line-count-before 0\n')
+    exe.write(`settings set stop-line-count-after 0\n`)
+    exe.write(`settings set stop-line-count-before 0\n`)
+    exe.write(`settings set frame-format frame #\${frame.index}: {\${module.file.basename}{\`\${function.name-with-args}{\${frame.no-debug}\${function.pc-offset}}}}{ at \${line.file.fullpath}:\${line.number}}\\n\n`)
   }
 
   async run () {
@@ -143,7 +144,7 @@ class LLDB extends stream.Transform {
   }
 
   _checkPosition (line) {
-    const match = line.match(/^frame #0: 0x[0-9a-f]* \S+`\S+ at (\S+):(\d+)$/)
+    const match = line.match(/^frame #0: \S+`\S+\(.*\) at (\S+):(\d+)$/)
     if (match) {
       console.log('Found position')
       const lineNum = parseInt(match[2])

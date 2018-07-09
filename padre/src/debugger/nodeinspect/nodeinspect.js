@@ -1,6 +1,6 @@
 'use strict'
 
-const stream = require('stream')
+const eventEmitter = require('events')
 const path = require('path')
 const _ = require('lodash')
 
@@ -8,7 +8,7 @@ const axios = require('axios')
 
 const nodeProcess = require('./node_process')
 
-class NodeInspect extends stream.Transform {
+class NodeInspect extends eventEmitter {
   constructor (progName, args, options) {
     super()
 
@@ -28,8 +28,17 @@ class NodeInspect extends stream.Transform {
 
     const that = this
 
+    console.log('here')
     this.nodeProcess.on('nodestarted', async () => {
-      const setup = await axios.get('http://localhost:9229/json')
+      let setup
+      try {
+        console.log('here2')
+        setup = await axios.get('http://localhost:9229/json')
+      } catch (error) {
+        console.log('here3')
+        that.emit('padre_error', error)
+        return
+      }
 
       that.ws = new that._wsLib(`ws://localhost:9229/${setup.data[0].id}`)
 
@@ -49,13 +58,6 @@ class NodeInspect extends stream.Transform {
     console.log('Sending to debugger')
     console.log(Object.assign({}, {'id': id}, data))
     return this.ws.send(JSON.stringify(Object.assign({}, {'id': id}, data)))
-  }
-
-  _transform (chunk, encoding, callback) {
-    console.log('Node Write')
-    console.log(chunk.toString('utf-8'))
-
-    callback()
   }
 
   async run () {

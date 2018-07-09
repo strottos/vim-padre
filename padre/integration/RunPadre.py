@@ -14,6 +14,8 @@ class RunPadre:
 
     def __init__(self):
         self._buffer = ''
+        self.socket = None
+        self.child = None
 
     def run_padre(self, args):
         logger.info("Spawning Padre with args {}".format(args))
@@ -37,11 +39,14 @@ class RunPadre:
         self.socket.send(s.encode("utf-8"))
 
     def expect_from_padre(self, pattern):
-        logger.info("Retrieving from Padre while expecting: {}".format(pattern.encode("utf-8")))
+        logger.info("Retrieving from Padre while expecting: {}"
+                    .format(pattern.encode("utf-8")))
         if not self._buffer:
             self._buffer += self.socket.recv(4096).decode("utf-8")
         logger.info("Received: {}".format(self._buffer.encode("utf-8")))
-        logger.info("re.compile({}).match({})".format(pattern.encode('utf-8'), self._buffer.encode('utf-8')))
+        logger.info("re.compile({}).match({})"
+                    .format(pattern.encode('utf-8'),
+                            self._buffer.encode('utf-8')))
         res = re.compile(pattern).match(self._buffer)
         self._buffer = self._buffer[len(res[0]):]
         if not res:

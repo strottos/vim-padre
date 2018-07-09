@@ -3,15 +3,13 @@
 const chai = require('chai')
 const sinon = require('sinon')
 
-const stream = require('stream')
-
 const axios = require('axios')
 const WebSocket = require('ws')
 
 const nodeinspect = require.main.require('src/debugger/nodeinspect/nodeinspect')
 const nodeProcess = require.main.require('src/debugger/nodeinspect/node_process')
 
-describe('Test Spawning Node with Inspect', () => {
+describe('Test Spawning and Debugging Node with Inspect', () => {
   let sandbox = null
   let axiosGetStub = null
   let nodeProcessStub = null
@@ -55,14 +53,6 @@ describe('Test Spawning Node with Inspect', () => {
 
   afterEach(() => {
     sandbox.restore()
-  })
-
-  it('should be a Transform stream', () => {
-    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'], {wsLib: wsStub})
-
-    for (let property in stream.Transform()) {
-      chai.expect(nodeDebugger).to.have.property(property)
-    }
   })
 
   it('should be possible to send strings to the debugger', async () => {
@@ -368,5 +358,53 @@ describe('Test Spawning Node with Inspect', () => {
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
     chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['process_position', 40, '/Users/stevent/code/personal/vim-padre/padre/padre'])
+  })
+})
+
+describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
+  let sandbox = null
+  let axiosGetStub = null
+  let nodeProcessStub = null
+  let nodeProcessStubOn = null
+  let wsStub = null
+  let wsStubReturns = null
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox()
+
+    nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
+    nodeProcessStubOn = sandbox.stub()
+    nodeProcessStub.withArgs().returns({
+      setup: sandbox.stub(),
+      on: nodeProcessStubOn,
+    })
+    nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)
+
+    axiosGetStub = sandbox.stub(axios, 'get')
+
+    wsStub = sandbox.mock()
+    wsStubReturns = sandbox.createStubInstance(WebSocket)
+    wsStub.returns(wsStubReturns)
+  })
+
+  afterEach(() => {
+    sandbox.restore()
+  })
+
+  it('should throw an error when it can\'t request to node inspect', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'], {wsLib: wsStub})
+
+    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
+    axiosGetStub.withArgs('http://localhost:9229/json')
+        .returns({then: x => undefined, catch: x => x(new Error('Test Error'))})
+
+    console.log(nodeDebuggerEmitStub.callCount)
+    await nodeDebugger.setup()
+
+    console.log(nodeDebuggerEmitStub.callCount)
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'Test Error'])
   })
 })

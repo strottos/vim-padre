@@ -206,4 +206,31 @@ describe('Test the debugger', () => {
     console.log(connectionStub.write.args[1][0])
     chai.expect(JSON.parse(connectionStub.write.args[1][0])).to.deep.equal(['call', 'padre#debugger#JumpToPosition', [10, 'test.c']])
   })
+
+  it('should catch an error thrown by the debug server and report it', async () => {
+    testDebugServerStub.run.rejects('Test Error')
+
+    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+
+    await testDebugger._handleReadData(Buffer.from('[1,"run"]'))
+
+    chai.expect(testDebugServerStub.run.callCount).to.equal(1)
+    chai.expect(testDebugServerStub.run.args[0]).to.deep.equal([])
+
+    chai.expect(connectionStub.write.callCount).to.equal(1)
+    chai.expect(connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Error",["Test Error"]]'])
+  })
+
+  it('should report an error when an error is emitted by the debug server', async () => {
+    testDebugServerStub.on
+        .withArgs('started', sinon.match.any).callsArg(1)
+        .withArgs('padre_error', sinon.match.any).callsArgWith(1, 'Test Error')
+
+    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+
+    await testDebugger.handle()
+
+    chai.expect(connectionStub.write.callCount).to.equal(2)
+    chai.expect(connectionStub.write.args[1]).to.deep.equal(['["call","padre#debugger#Error",["Test Error"]]'])
+  })
 })

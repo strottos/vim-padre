@@ -49,25 +49,25 @@ Debug simple program
     ${received} =       expect from padre       \\[2,"OK pid=(\\d+)"\\]
     Should Be True      ${received}[0] == True
     Should Be True      len(${received}) == 2
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[16,"${simple_program}.${simple_program_ext}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[16,".*\\/${simple_program}.${simple_program_ext}"\\]\\]
     Should Be True      ${received}[0] == True
     send to padre       [3,"stepIn"]\n
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[6,"${simple_program}.${simple_program_ext}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[6,".*\\/${simple_program}.${simple_program_ext}"\\]\\]
     Should Be True      ${received}[0] == True
     ${received} =       expect from padre       \\[3,"OK"\\]
     Should Be True      ${received}[0] == True
     send to padre       [4,"stepIn"]\n
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[9,"${simple_program}.${simple_program_ext}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[9,".*\\/${simple_program}.${simple_program_ext}"\\]\\]
     Should Be True      ${received}[0] == True
     ${received} =       expect from padre       \\[4,"OK"\\]
     Should Be True      ${received}[0] == True
     send to padre       [5,"stepIn"]\n
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[12,"${simple_program}.${simple_program_ext}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[12,".*\\/${simple_program}.${simple_program_ext}"\\]\\]
     Should Be True      ${received}[0] == True
     ${received} =       expect from padre       \\[5,"OK"\\]
     Should Be True      ${received}[0] == True
     send to padre       [6,"stepOver"]\n
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[13,"${simple_program}.${simple_program_ext}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[13,".*\\/${simple_program}.${simple_program_ext}"\\]\\]
     Should Be True      ${received}[0] == True
     ${received} =       expect from padre       \\[6,"OK"\\]
     Should Be True      ${received}[0] == True
@@ -75,7 +75,7 @@ Debug simple program
     ${received} =       expect from padre       \\[7,"OK variable=a value=1 type=int"\\]
     Should Be True      ${received}[0] == True
     send to padre       [8,"stepOver"]\n
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[14,"${simple_program}.${simple_program_ext}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[14,".*\\/${simple_program}.${simple_program_ext}"\\]\\]
     Should Be True      ${received}[0] == True
     ${received} =       expect from padre       \\[8,"OK"\\]
     Should Be True      ${received}[0] == True

@@ -67,7 +67,7 @@ if get(g:, 'padre_plugin_autostart', 1)
   endif
 endif
 
-command -nargs=* PadreDebug call padre#debugger#Debug(<f-args>)
+command -nargs=* -complete=file PadreDebug call padre#debugger#Debug(<f-args>)
 command -nargs=0 PadreRun call padre#debugger#Run()
 command -nargs=0 PadreBreakpoint call padre#debugger#Breakpoint()
 command -nargs=0 PadreStepIn call padre#debugger#StepIn()
