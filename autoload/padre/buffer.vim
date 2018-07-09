@@ -4,8 +4,10 @@
 "
 " Libraries for manipulating buffers.
 
+let s:BufferNames = {}
+let s:BufferNums = {}
+
 function! s:LoadBuffer(name)
-  tabnew
   let l:buffer_number = padre#buffer#GetBufNumForBufName(a:name)
   if l:buffer_number == v:none
     let l:buffer_number = bufnr(a:name)
@@ -14,21 +16,35 @@ function! s:LoadBuffer(name)
 endfunction
 
 " Create a buffer
-"
-" Arguments:
-"   - writeable: Takes one of the following
-"       0: Totally non-modifiable (without you hacking it)
-"       1: Totally modifiable
-"       2: Only the last line modifiable similar to a terminal
 function! padre#buffer#Create(name, filetype, writeable)
-  let l:options = ['setlocal noswapfile', 'setlocal buftype=nofile', 'setlocal filetype=' . a:filetype, 'setlocal nobuflisted']
+  let l:current_winnr = winnr()
+  let l:current_bufnr = bufnr('%')
+  tabnew
+  execute "silent edit " . a:name
+
+  setlocal noswapfile
+  setlocal buftype=nofile
+  execute "setlocal filetype=" . a:filetype
+  setlocal nobuflisted
   if a:writeable == 0
-    call add(l:options, 'setlocal nomodifiable')
+    setlocal nomodifiable
   endif
-  return padre#python#CallAPI('create_buffer("' . a:name . '", ["' . join(l:options, '","') . '"])')
+  let l:new_bufnr = bufnr('%')
+
+  quit
+
+  execute l:current_winnr . "wincmd w"
+  execute "buffer " . l:current_bufnr
+
+  execute 'let s:BufferNames.' . l:new_bufnr . ' = "' . a:name . '"'
+  execute 'let s:BufferNums.' . a:name . ' = ' . l:new_bufnr
+
+  return l:new_bufnr
 endfunction
 
 function! padre#buffer#SetOnlyWriteableAtBottom(name)
+  tabnew
+
   call s:LoadBuffer(a:name)
 
   setlocal modifiable
@@ -52,6 +68,8 @@ function! padre#buffer#SetOnlyWriteableAtBottom(name)
 endfunction
 
 function! padre#buffer#SetMainPadreKeyBindings(name)
+  tabnew
+
   call s:LoadBuffer(a:name)
 
   nnoremap <silent> <buffer> r :PadreRun<cr>
@@ -64,6 +82,8 @@ function! padre#buffer#SetMainPadreKeyBindings(name)
 endfunction
 
 function! padre#buffer#UnsetPadreKeyBindings(name)
+  tabnew
+
   call s:LoadBuffer(a:name)
 
   nnoremap <silent> <buffer> r r
@@ -76,11 +96,23 @@ function! padre#buffer#UnsetPadreKeyBindings(name)
 endfunction
 
 function! padre#buffer#GetBufNameForBufNum(num)
-  return padre#python#CallAPI('get_buffer_name(' . a:num . ')')
+  let l:num = string(a:num)
+  if index(keys(s:BufferNames), l:num) != -1
+    return s:BufferNames[l:num]
+  endif
+  return ''
 endfunction
 
 function! padre#buffer#GetBufNumForBufName(name)
-  return padre#python#CallAPI('get_buffer_number("' . a:name . '")')
+  return s:BufferNums[a:name]
+endfunction
+
+function! padre#buffer#GetBufferNumbers()
+  return values(s:BufferNums)
+endfunction
+
+function! padre#buffer#GetBufferNames()
+  return values(s:BufferNames)
 endfunction
 
 function! padre#buffer#LoadBufferName(name)
@@ -88,29 +120,68 @@ function! padre#buffer#LoadBufferName(name)
 endfunction
 
 function! padre#buffer#ReadBuffer(name)
-  return padre#python#CallAPI('read_buffer("' . a:name . '")')
+  let l:bufnr = padre#buffer#GetBufNumForBufName(a:name)
+  return getbufline(l:bufnr, 1, '$')
 endfunction
 
-function! padre#buffer#PrependBufferString(name, line, text)
-  return padre#python#CallAPI('prepend_buffer("' . a:name . '", "' . a:line . '", "' . substitute(a:text, '"', '\\"', 'g') . '")')
+function! padre#buffer#AppendBufferString(name, text)
+  let l:bufnr = padre#buffer#GetBufNumForBufName(a:name)
+  let l:was_modifiable = getbufvar(l:bufnr, '&modifiable')
+
+  let l:text = split(a:text, "\n")
+  if len(l:text) > 0
+    let l:text[0] = getbufline(l:bufnr, '$')[0] . l:text[0]
+  endif
+
+  if l:was_modifiable == 0
+    call setbufvar(l:bufnr, '&modifiable', 1)
+  endif
+
+  call setbufline(l:bufnr, '$', l:text)
+
+  if l:was_modifiable == 0
+    call setbufvar(l:bufnr, '&modifiable', 0)
+  endif
 endfunction
 
-function! padre#buffer#AppendBufferString(name, line, text)
-  return padre#python#CallAPI('append_buffer("' . a:name . '", "' . a:line . '", "' . substitute(substitute(substitute(a:text, '\\', '\\\\', 'g'), '"', '\\"', 'g'), '', '\\n', 'g') . '")')
+function! padre#buffer#AppendBuffer(name, text)
+  let l:bufnr = padre#buffer#GetBufNumForBufName(a:name)
+  let l:was_modifiable = getbufvar(l:bufnr, '&modifiable')
+
+  let l:text = a:text + ['']
+
+  if l:was_modifiable == 0
+    call setbufvar(l:bufnr, '&modifiable', 1)
+  endif
+
+  call setbufline(l:bufnr, '$', l:text)
+
+  if l:was_modifiable == 0
+    call setbufvar(l:bufnr, '&modifiable', 0)
+  endif
 endfunction
 
-function! padre#buffer#PrependBufferList(name, line, text)
-  return padre#python#CallAPI('prepend_buffer("' . a:name . '", "' . a:line . '", ["' . join(a:text, '","') . '"])')
-endfunction
-
-function! padre#buffer#AppendBufferList(name, line, text)
-  return padre#python#CallAPI('append_buffer("' . a:name . '", "' . a:line . '", ["' . join(a:text, '","') . '"])')
-endfunction
-
-function! padre#buffer#ReplaceBufferList(name, line_from, line_to, text)
-  return padre#python#CallAPI('replace_buffer("' . a:name . '", "' . a:line_from . '", "' . a:line_to . '", ["' . join(a:text, '","') . '"])')
+function! padre#buffer#ReplaceBuffer(name, text)
+  call padre#buffer#ClearBuffer(a:name)
+  return padre#buffer#AppendBuffer(a:name, a:text)
+  "return padre#python#CallAPI('replace_buffer("' . a:name . '", "' . a:line_from . '", "' . a:line_to . '", ["' . join(a:text, '","') . '"])')
 endfunction
 
 function! padre#buffer#ClearBuffer(name)
-  return padre#python#CallAPI('clear_buffer("' . a:name . '")')
+  tabnew
+  execute 'buffer ' . padre#buffer#GetBufNumForBufName(a:name)
+
+  let l:was_modifiable = &modifiable
+
+  if l:was_modifiable == 0
+    setlocal modifiable
+  endif
+
+  normal 1GdG
+
+  if l:was_modifiable == 0
+    setlocal nomodifiable
+  endif
+
+  quit
 endfunction

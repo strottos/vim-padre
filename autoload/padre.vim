@@ -19,7 +19,7 @@ function! padre#Enable()
   call padre#debugger#Setup()
 
   if has_key(g:, 'PadrePreprocessingCommands')
-    call padre#buffer#ReplaceBufferList('PADRE_Preprocessing', '1', '$', g:PadrePreprocessingCommands)
+    call padre#buffer#ReplaceBuffer('PADRE_Preprocessing', g:PadrePreprocessingCommands)
   endif
 
   let s:Setup = 1

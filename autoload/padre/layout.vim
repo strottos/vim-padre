@@ -66,7 +66,11 @@ function! padre#layout#CloseTabsWithBuffer(buffer_name)
 endfunction
 
 function! padre#layout#GetBuffersInTab()
-  return padre#python#CallAPI('get_buffers()')
+  let l:ret = []
+  for l:winid in gettabinfo(tabpagenr())[0].windows
+    call add(l:ret, getwininfo(l:winid)[0].bufnr)
+  endfor
+  return l:ret
 endfunction
 
 function! padre#layout#FindBufferWindowWithinTab(bufName)
@@ -89,8 +93,8 @@ endfunction
 "       optional)
 "   - buffer_name: The name of the buffer to show
 "   - create_new: Defaults to 1 indicating we always create a new window. If
-"       set to 0 we look for a tab with the existing bufferand open that,
-"       otherwise
+"       set to 0 we look for a tab with the existing buffer and open that,
+"       otherwise we create one
 function! padre#layout#AddWindowToTab(pos, size, ...)
   let l:create_new = 1
 
@@ -100,7 +104,7 @@ function! padre#layout#AddWindowToTab(pos, size, ...)
 
   if a:0 == 2 && a:2 == 0
     for l:buf_number in padre#layout#GetBuffersInTab()
-      if padre#buffer#GetBufNameForBufNum(l:buf_number) == l:buffer_name
+      if padre#buffer#GetBufNameForBufNum(l:buf_number) ==# l:buffer_name
         let l:create_new = 0
         break
       endif

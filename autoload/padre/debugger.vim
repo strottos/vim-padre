@@ -36,12 +36,12 @@ endfunction
 
 function! padre#debugger#Debug(...)
   " TODO: Fix this
+  call padre#layout#CloseTabsWithBuffer('PADRE_Main')
   let s:NumDataWindows = 0
 
   let l:file = ''
   let l:debugger = 'lldb'
 
-  echom a:1
   if a:0 > 0
     let l:match = matchlist(a:1, '^--debugger=\([a-z]*\)$')
     if !empty(l:match)
@@ -83,6 +83,8 @@ function! padre#debugger#Debug(...)
   call padre#socket#Connect('localhost', l:padrePort)
 
   call padre#layout#OpenTabWithBuffer('PADRE_Main', 0)
+
+  call padre#debugger#AddDataWindow()
 endfunction
 
 function! padre#debugger#Run()
@@ -133,6 +135,8 @@ function! padre#debugger#AddDataWindow()
   let l:created = 0
   let l:item = 0
 
+  let l:original_winnr = winnr()
+
   if s:NumDataWindows == 0
     let l:pos = 'r'
   elseif s:NumDataWindows == 1 || s:NumDataWindows == 2
@@ -143,10 +147,12 @@ function! padre#debugger#AddDataWindow()
     echoerr 'Only 3 data windows currently supported'
   endif
 
-  while !l:created
+  while !l:created && l:item < len(s:DataItems)
     let l:created = padre#layout#AddWindowToTab(l:pos, 40, get(s:DataItems, l:item), 0)
     let l:item += 1
   endwhile
+
+  execute l:original_winnr . 'wincmd w'
 
   let s:NumDataWindows += 1
 endfunction
@@ -164,8 +170,7 @@ endfunction
 
 function! padre#debugger#SignalPADREStarted()
   let s:Running = 1
-  call padre#buffer#ClearBuffer('PADRE_Main')
-  call padre#buffer#AppendBufferString('PADRE_Main', '$', 'PADRE debugger open')
+  call padre#buffer#ReplaceBuffer('PADRE_Main', ['PADRE debugger open'])
 
   for l:breakpoint in padre#signs#GetAllBreakpointSigns()
     call s:SetBreakpointInDebugger(l:breakpoint['line'], l:breakpoint['file'])
@@ -176,29 +181,25 @@ function! padre#debugger#RunCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
   if !empty(l:match)
     let l:msg = 'Process ' . l:match[1] . ' Running'
-    call padre#buffer#AppendBufferList('PADRE_Main', '$', [l:msg])
+    call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
   endif
 endfunction
 
 function! padre#debugger#StdoutCallback(jobId, data, args)
-  call padre#buffer#AppendBufferString('PADRE_Stdio', '$', a:data)
-  call padre#buffer#AppendBufferList('PADRE_Stdio', '$', [])
-  call padre#buffer#AppendBufferString('PADRE_Stdout', '$', a:data)
-  call padre#buffer#AppendBufferList('PADRE_Stdout', '$', [])
+  call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
+  call padre#buffer#AppendBuffer('PADRE_Stdout', [a:data])
 endfunction
 
 function! padre#debugger#StderrCallback(jobId, data, args)
-  call padre#buffer#AppendBufferString('PADRE_Stdio', '$', a:data)
-  call padre#buffer#AppendBufferList('PADRE_Stdio', '$', [])
-  call padre#buffer#AppendBufferString('PADRE_Stderr', '$', a:data)
-  call padre#buffer#AppendBufferList('PADRE_Stderr', '$', [])
+  call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
+  call padre#buffer#AppendBuffer('PADRE_Stderr', [a:data])
 endfunction
 
 function! padre#debugger#BreakpointCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK line=\(\d\+\) file=\(\S\+\)$')
   if !empty(l:match)
     let l:msg = 'Breakpoint set line=' . l:match[1] . ', file=' . l:match[2]
-    call padre#buffer#AppendBufferList('PADRE_Main', '$', [l:msg])
+    call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
   endif
 endfunction
 
@@ -214,7 +215,7 @@ function! padre#debugger#PrintVariableCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK variable=\(\S\+\) value=\(\d\+\) type=\S\+$')
   if !empty(l:match)
     let l:msg = 'Variable ' . l:match[1] . '=' . l:match[2]
-    call padre#buffer#AppendBufferList('PADRE_Main', '$', [l:msg])
+    call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
   endif
 endfunction
 
@@ -224,7 +225,7 @@ endfunction
 
 function! padre#debugger#JumpToPosition(line, file)
   let l:msg = 'Stopped line=' . a:line . ' file=' . a:file
-  call padre#buffer#AppendBufferList('PADRE_Main', '$', [l:msg])
+  call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
 
   if a:file[0] == '/'
     let l:fileToLoad = a:file
@@ -261,5 +262,5 @@ endfunction
 
 function! padre#debugger#ProcessExited(exit_code, pid)
   call padre#debugger#Stop()
-  call padre#buffer#AppendBufferList('PADRE_Main', '$', ['Process ' . a:pid . ' finished with exit code=' . a:exit_code])
+  call padre#buffer#AppendBuffer('PADRE_Main', ['Process ' . a:pid . ' finished with exit code=' . a:exit_code])
 endfunction
