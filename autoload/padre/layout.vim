@@ -76,6 +76,10 @@ endfunction
 function! padre#layout#FindBufferWindowWithinTab(bufName)
   let l:original_winnr = winnr()
 
+  if winnr('$') == 1
+    return
+  endif
+
   for l:num in range(1, winnr('$'))
     wincmd w
     if bufname('%') == a:bufName
@@ -83,7 +87,7 @@ function! padre#layout#FindBufferWindowWithinTab(bufName)
     endif
   endfor
 
-  wincmd
+  execute l:original_winnr . ' wincmd'
 endfunction
 
 " Arguments:

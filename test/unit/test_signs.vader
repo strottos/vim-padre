@@ -4,13 +4,7 @@ Before:
   execute 'sign unplace *'
 
   tabnew
-  edit test_file
-  setlocal noswapfile
-  setlocal buftype=nofile
-  setlocal nobuflisted
-  setlocal modifiable
-
-  execute "normal! 2iabc\<cr>def\<cr>123\<cr>\<esc>"
+  edit test/progs/test_func.c
 
   call padre#signs#Setup()
 
@@ -21,16 +15,15 @@ After:
 
 Execute (We can set a breakpoint and get it's file and line number):
   call cursor(2,1)
-  let t:BreakpointExpected = {'file': expand('%:p:h') . '/test_file', 'line': '2'}
-  sleep 2
+  let t:BreakpointExpected = {'file': 'test/progs/test_func.c', 'line': '2'}
   AssertEqual t:BreakpointExpected, padre#signs#ToggleBreakpoint()
 
 Then:
-  AssertEqual [t:BreakpointExpected], padre#signs#GetAllBreakpointSignsForFile(expand('%:p:h') . '/test_file')
+  AssertEqual [t:BreakpointExpected], padre#signs#GetAllBreakpointSignsForFile('test/progs/test_func.c')
 
 Execute (We can set a breakpoint and get it's file and line number):
   call cursor(2,1)
-  let t:Filename = expand('%:p:h') . '/test_file'
+  let t:Filename = 'test/progs/test_func.c'
   AssertEqual {'file': t:Filename, 'line': '2'}, padre#signs#ToggleBreakpoint()
   normal j
   AssertEqual {'file': t:Filename, 'line': '3'}, padre#signs#ToggleBreakpoint()
@@ -51,21 +44,15 @@ Then:
 
 Execute (We can set a breakpoint in separate files):
   call cursor(2,1)
-  AssertEqual {'file': expand('%:p:h') . '/test_file', 'line': '2'}, padre#signs#ToggleBreakpoint()
+  AssertEqual {'file': 'test/progs/test_func.c', 'line': '2'}, padre#signs#ToggleBreakpoint()
 
   tabnew
-  edit test/test_file_2
-  setlocal noswapfile
-  setlocal buftype=nofile
-  setlocal nobuflisted
-  setlocal modifiable
-
-  execute "normal! iabc\<cr>def\<cr>123\<cr>\<esc>"
+  edit test/progs/test_prog.c
 
   call cursor(3,1)
-  AssertEqual {'file': expand('%:p:h') . '/test_file_2', 'line': '3'}, padre#signs#ToggleBreakpoint()
+  AssertEqual {'file': 'test/progs/test_prog.c', 'line': '3'}, padre#signs#ToggleBreakpoint()
 
-  AssertEqual [{'file': expand('%:p:h') . '/test_file', 'line': '2'}, {'file': expand('%:p:h') . '/test/test_file_2', 'line': '3'},], padre#signs#GetAllBreakpointSigns()
+  AssertEqual [{'file': 'test/progs/test_func.c', 'line': '2'}, {'file': 'test/progs/test_prog.c', 'line': '3'},], padre#signs#GetAllBreakpointSigns()
 
   quit
 
@@ -81,9 +68,6 @@ Execute (We can add a code pointer to a file):
       let l:match = matchlist(l:line, 'Signs for \(\S\+\):$')
       if len(l:match) != 0
         let l:filename = l:match[1]
-        if l:filename[0] != '/'
-          let l:filename = expand('%:p:h') . '/' . l:filename
-        endif
       endif
       let l:match = matchlist(l:line, '^    line=\(\d\+\) * id=\(\d\+\) * name=PadreDebugPointer$')
       if len(l:match) != 0
@@ -98,20 +82,14 @@ Execute (We can add a code pointer to a file):
 
   call padre#signs#ReplaceCodePointer(2)
 
-  AssertEqual {'file': expand('%:p:h') . '/test_file', 'line': '2'}, g:GetCurrentPointer()
+  AssertEqual {'file': 'test/progs/test_func.c', 'line': '2'}, g:GetCurrentPointer()
 
   tabnew
-  edit test_file_2
-  setlocal noswapfile
-  setlocal buftype=nofile
-  setlocal nobuflisted
-  setlocal modifiable
-
-  execute "normal! iabc\<cr>def\<cr>123\<cr>\<esc>"
+  edit test/progs/test_prog.c
 
   call padre#signs#ReplaceCodePointer(3)
 
-  AssertEqual {'file': expand('%:p:h') . '/test_file_2', 'line': '3'}, g:GetCurrentPointer()
+  AssertEqual {'file': 'test/progs/test_prog.c', 'line': '3'}, g:GetCurrentPointer()
 
   quit
 

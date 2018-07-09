@@ -52,7 +52,6 @@ const getDebugServer = (type) => {
     break
   case 'node':
     DebugServerClass = NodeInspect
-    options['wsLib'] = require('ws') // Need to use dependency injection for testing
     break
   }
 
@@ -64,7 +63,7 @@ const getDebugServer = (type) => {
 const server = net.createServer(async (connection) => {
   const debugServer = getDebugServer(argv.debugger)
   const mainDebugger = new Debugger(debugServer, connection)
-  await mainDebugger.handle()
+  await mainDebugger.setup()
 })
 
 server.listen(argv.port, argv.host, () => {

@@ -18,7 +18,10 @@ After:
 Execute (Check we can create a buffer and get the buffer name for a buffer number):
   AssertEqual 'Test_Buffer', padre#buffer#GetBufNameForBufNum(g:writable_buffer_number)
 
-Execute (Check return nothing for a buffer number not created by this plugin):
+Execute (Check we can get the buffer number for a buffer name):
+  AssertEqual g:writable_buffer_number, padre#buffer#GetBufNumForBufName('Test_Buffer')
+
+Execute (Check we return nothing for a buffer number not created by this plugin):
   tabnew
   execute "silent edit Test_Buffer_2"
 
@@ -30,10 +33,7 @@ Execute (Check return nothing for a buffer number not created by this plugin):
 
   quit
 
-Execute (Check we can get the buffer number for a buffer name):
-  AssertEqual g:writable_buffer_number, padre#buffer#GetBufNumForBufName('Test_Buffer')
-
-Execute (Check we can create a read only buffer and get the buffer number for a buffer name):
+Execute (Check we can create a read only buffer and get the buffer number for it):
   tabnew
   execute 'buffer ' . g:static_buffer_number
 
@@ -46,7 +46,7 @@ Execute (Check we can create a read only buffer and get the buffer number for a 
 
   quit
 
-Execute (Check we can create a read only buffer and get the buffer name for a buffer number):
+Execute (Check we can create a read only buffer and get the buffer name for it):
   tabnew
   call padre#buffer#LoadBufferName('Test_Buffer')
   AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('Test_Buffer')
@@ -91,7 +91,7 @@ Execute (Check we can replace buffer):
 
   AssertEqual ['TEST LINE 1', 'TEST LINE 2', 'TEST LINE 3', ''], padre#buffer#ReadBuffer('Test_Buffer')
 
-Execute (Check we can still edit a non-modifiable buffer):
+Execute (Check PADRE plugin can still edit a non-modifiable buffer):
   split
   execute 'buffer ' . g:writable_buffer_number
 
@@ -195,3 +195,24 @@ Execute (Check we can create a terminal style buffer and only write to the last 
   AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'dbyz'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
 
   quit
+
+Execute (Check a buffer scrolls when appended to if we're currently at the bottom):
+  for t:line_num in range(1, winheight(winnr()) + 2)
+    call padre#buffer#AppendBuffer('Test_Buffer', ['Test ' . t:line_num])
+    let t:line_num += 1
+  endfor
+  normal G
+  let t:current_buffer_line = getpos('.')[1]
+
+  call padre#buffer#AppendBuffer('Test_Buffer', ['Test new line 1', 'Test new line 2'])
+  AssertEqual t:current_buffer_line + 2, getpos('.')[1]
+
+Execute (Check a buffer doesn't scrolls when appended to if we're not currently at the bottom):
+  for t:line_num in range(1, winheight(winnr()) + 2)
+    call padre#buffer#AppendBuffer('Test_Buffer', ['Test ' . t:line_num])
+    let t:line_num += 1
+  endfor
+  normal 1G
+
+  call padre#buffer#AppendBuffer('Test_Buffer', ['Test new line 1', 'Test new line 2'])
+  AssertEqual 1, getpos('.')[1]
