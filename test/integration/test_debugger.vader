@@ -33,12 +33,19 @@ Then:
 
   unlet t:padre_buf_num
 
+  quit
+  quit
+
 Execute (Check when we run twice the same tab is open):
   PadreDebug test/progs/test_prog
   PadreDebug test/progs/test_prog
 
 Then:
   AssertEqual 1, len(padre#layout#GetTabNumbersContainingBufferName('PADRE_Main'))
+  AssertEqual 2, len(padre#layout#GetBuffersInTab())
+
+  quit
+  quit
 
 Execute (Check when we run PADRE followed by the stop command we have no tab or padre process running):
   PadreDebug test/progs/test_prog
@@ -48,18 +55,6 @@ Execute (Check when we run PADRE followed by the stop command we have no tab or 
 
 Then:
   AssertEqual 0, padre#job#RunningJobs()
-
-Execute (Check when we are in another tab with the PADRE_Main tab open then we jump back to the existing PADRE_Main tab):
-  PadreDebug test/progs/test_prog
-  tabnew
-  let g:tab_to_close = tabpagenr()
-  PadreDebug test/progs/test_prog
-
-Then:
-  AssertEqual padre#layout#GetTabNumbersContainingBufferName('PADRE_Main')[0], tabpagenr()
-
-  execute g:tab_to_close . 'tabnext'
-  quit
 
 Execute (We can add a new data window to the PADRE debugging tab):
   PadreStop
@@ -72,9 +67,10 @@ Execute (We can add a new data window to the PADRE debugging tab):
 Then:
   AssertEqual winnr(), t:original_winnr
   wincmd l
+  wincmd j
   AssertNotEqual winnr(), t:original_winnr
   AssertEqual winnr(), winnr('$')
-  AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')
+  AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('PADRE_Stdout')
 
   quit
 
@@ -84,11 +80,10 @@ Execute (We can add a window to the PADRE debugging tab and flick through the da
 
   PadreAddDataWindow
   wincmd l
+  wincmd j
   PadreDataBufferFlick
 
 Then:
-  AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('PADRE_Stdout')
-  PadreDataBufferFlick
   AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('PADRE_Stderr')
 
   quit
@@ -97,7 +92,6 @@ Execute (We can add three new windows to the PADRE debugging tab):
   PadreStop
   PadreDebug test/progs/test_prog
 
-  PadreAddDataWindow
   PadreAddDataWindow
   PadreAddDataWindow
   wincmd l
@@ -117,8 +111,8 @@ Then:
   quit
   quit
 
-Execute (The preprocessing buffer displays any preprocessor commands from the config):
-  AssertEqual g:PadrePreprocessingCommands, padre#buffer#ReadBuffer('PADRE_Preprocessing')
+"Execute (The preprocessing buffer displays any preprocessor commands from the config):
+"  AssertEqual g:PadrePreprocessingCommands, padre#buffer#ReadBuffer('PADRE_Preprocessing')
 
 Execute (The preprocessing buffer displays when requested):
   call padre#preprocessing#CreatePreprocessingWindow()
@@ -129,6 +123,12 @@ Execute (The preprocessing buffer displays when requested):
   AssertEqual 'PADRE_Preprocessing', padre#buffer#GetBufNameForBufNum(bufnr('%'))
 
 Execute (Check the stdout and stderr callback functions adds to the correct buffer):
+  tabnew
+  execute 'buffer ' . padre#buffer#GetBufNumForBufName('PADRE_Stdio')
+  tabnew
+  execute 'buffer ' . padre#buffer#GetBufNumForBufName('PADRE_Stdout')
+  tabnew
+  execute 'buffer ' . padre#buffer#GetBufNumForBufName('PADRE_Stderr')
   call padre#buffer#ClearBuffer('PADRE_Stdio')
   call padre#buffer#ClearBuffer('PADRE_Stdout')
   call padre#buffer#ClearBuffer('PADRE_Stderr')
@@ -140,7 +140,16 @@ Then:
   AssertEqual ['Test stdout', ''], padre#buffer#ReadBuffer('PADRE_Stdout')
   AssertEqual ['Test stderr', ''], padre#buffer#ReadBuffer('PADRE_Stderr')
 
+  quit
+  quit
+  quit
+
 Execute (Check PADRE debugger starts and writes to the buffers):
+  tabnew
+  execute 'buffer ' . padre#buffer#GetBufNumForBufName('PADRE_Stdio')
+  tabnew
+  execute 'buffer ' . padre#buffer#GetBufNumForBufName('PADRE_Stdout')
+
   PadreDebug test/progs/test_prog
 
   sleep 500ms
@@ -150,6 +159,9 @@ Then:
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Stdio')[0], '^Listening on localhost:\d\+$'))
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Stdout')[0], '^Listening on localhost:\d\+$'))
 
+  quit
+  quit
+
 Execute (Check when we run twice only one PADRE debugger is running):
   PadreDebug test/progs/test_prog
   sleep 100ms
@@ -158,12 +170,6 @@ Execute (Check when we run twice only one PADRE debugger is running):
 
 Then:
   AssertEqual 1, padre#job#RunningJobs()
-
-Execute (Check we can send a simple run command to PADRE):
-  PadreDebug test/progs/test_prog
-  sleep 1
-
-  PadreRun
 
 Execute (Check we can debug a simple C program):
   tabnew
@@ -190,18 +196,18 @@ Execute (Check we can debug a simple C program):
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[2], '^Process \d\+ Running$'))
   AssertEqual 'Stopped line=6 file=test_prog.c', padre#buffer#ReadBuffer('PADRE_Main')[3]
 
-  AssertEqual [bufnr(g:mainFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main')], padre#layout#GetBuffersInTab()
+  AssertEqual [bufnr(g:mainFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')], padre#layout#GetBuffersInTab()
 
   normal s
   sleep 1
 
-  AssertEqual [bufnr(g:funcFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main')], padre#layout#GetBuffersInTab()
+  AssertEqual [bufnr(g:funcFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')], padre#layout#GetBuffersInTab()
   AssertEqual 'Stopped line=2 file=test_func.c', padre#buffer#ReadBuffer('PADRE_Main')[4]
 
   normal n
   sleep 1
 
-  AssertEqual [bufnr(g:funcFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main')], padre#layout#GetBuffersInTab()
+  AssertEqual [bufnr(g:funcFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')], padre#layout#GetBuffersInTab()
   AssertEqual 'Stopped line=3 file=test_func.c', padre#buffer#ReadBuffer('PADRE_Main')[5]
 
   call cursor(3,12)
