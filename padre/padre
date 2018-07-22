@@ -52,7 +52,6 @@ const getDebugServer = (type) => {
     break
   case 'node':
     DebugServerClass = NodeInspect
-    options['wsLib'] = require('ws') // Need to use dependency injection for testing
     break
   }
 

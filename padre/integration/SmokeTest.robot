@@ -36,7 +36,7 @@ ${simple_program_body}          SEPARATOR=\n
 
 
 *** Test Cases ***
-Debug simple program
+Debug simple C program
     [Documentation]     Check that we can effectively debug a simple program
     [Tags]              Smoke
     ${received} =       expect from padre       \\["call","padre#debugger#SignalPADREStarted",\\[\\]\\]
