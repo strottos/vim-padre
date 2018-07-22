@@ -144,7 +144,7 @@ class LLDB extends stream.Transform {
   }
 
   _checkPosition (line) {
-    const match = line.match(/^frame #0: \S+`\S+\(.*\) at (\S+):(\d+)$/)
+    const match = line.match(/^frame #0: \S+`\S+ at (\S+):(\d+)$/)
     if (match) {
       console.log('Found position')
       const lineNum = parseInt(match[2])

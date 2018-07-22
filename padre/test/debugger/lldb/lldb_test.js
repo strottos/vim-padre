@@ -246,7 +246,7 @@ describe('Test Spawning LLDB', () => {
 
     const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
 
-    lldbDebugger.write(`    frame #0: test_prog\`main(argc=1, 0x000012345678abcd) at /home/test/test_prog.c:10`)
+    lldbDebugger.write(`    frame #0: test_prog\`main at /home/test/test_prog.c:10`)
 
     chai.expect(lldbEmitStub.callCount).to.equal(1)
     chai.expect(lldbEmitStub.args[0]).to.deep.equal(['process_position', 10, '/home/test/test_prog.c'])
