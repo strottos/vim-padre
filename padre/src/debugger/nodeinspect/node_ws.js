@@ -12,6 +12,8 @@ class NodeWS extends eventEmitter {
     this._requests = {}
     this._properties = {}
     this._wsLib = wsLib
+
+    this._handleSocketWrite = this._handleSocketWrite.bind(this)
   }
 
   async setup () {

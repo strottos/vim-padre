@@ -1,7 +1,7 @@
 'use strict'
 
 const eventEmitter = require('events')
-const path = require('path')
+const fs = require('fs')
 const _ = require('lodash')
 
 const nodeProcess = require('./node_process')
@@ -17,7 +17,7 @@ class NodeInspect extends eventEmitter {
     this._properties = {}
     this._scripts = []
 
-    this._handleSocketWrite = this._handleDataWrite.bind(this)
+    this._handleDataWrite = this._handleDataWrite.bind(this)
     this._checkStarted = this._checkStarted.bind(this)
   }
 
@@ -50,13 +50,27 @@ class NodeInspect extends eventEmitter {
   }
 
   async breakpointFileAndLine (file, lineNum) {
+    let fileFullPath
+    try {
+      fileFullPath = fs.realpathSync(file)
+    } catch (error) {
+      console.log(error)
+      return
+    }
     console.log('NodeInspect Input: Breakpoint')
 
     console.log('Scripts')
     console.log(this._scripts)
 
     const scriptId = _.get(this._scripts.filter((x) => {
-      return path.resolve(x.location) === path.resolve(file)
+      let xFullPath
+      try {
+        xFullPath = fs.realpathSync(x.location)
+      } catch (error) {
+        console.log(error)
+        return false
+      }
+      return xFullPath === fileFullPath
     }), '0.id')
 
     console.log(scriptId)
@@ -171,7 +185,7 @@ class NodeInspect extends eventEmitter {
       this._checkStarted()
       break
     case 'Debugger.setBreakpoint':
-      fileName = path.resolve(_.get(this._scripts.filter((x) => {
+      fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
         return x.id === data.result.actualLocation.scriptId
       }), '0.location'))
 
@@ -199,7 +213,7 @@ class NodeInspect extends eventEmitter {
       break
     case 'Debugger.paused':
       if (_.isEmpty(data.params.callFrames[0].url)) {
-        fileName = path.resolve(_.get(this._scripts.filter((x) => {
+        fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
           return x.id === data.result.actualLocation.scriptId
         }), '0.location'))
       } else {

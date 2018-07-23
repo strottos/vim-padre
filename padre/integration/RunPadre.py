@@ -33,6 +33,22 @@ class RunPadre:
         self.socket = socket.socket()
         self.socket.connect(("localhost", port))
 
+    def run_padre_node(self, args):
+        logger.info("Spawning Padre with args {}".format(args))
+        program = os.path.realpath(os.getcwd() + "/../padre")
+        run_list = [program, '-d', 'node', '--']
+        if isinstance(args, list):
+            run_list.extend(args)
+        else:
+            run_list.extend(args.split(' '))
+        logger.info("Running command {}".format(run_list))
+        self.child = subprocess.Popen(run_list)
+        port = 12345
+
+        time.sleep(1)
+        self.socket = socket.socket()
+        self.socket.connect(("localhost", port))
+
     def send_to_padre(self, s):
         logger.info("Sending: {}".format(s.encode("utf-8")))
         time.sleep(2)
