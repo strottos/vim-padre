@@ -142,50 +142,68 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
   })
 })
 
-//describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
-//  let sandbox = null
-//  let axiosGetStub = null
-//  let nodeProcessStub = null
-//  let nodeProcessStubOn = null
-//  let wsStub = null
-//  let wsStubReturns = null
-//
-//  beforeEach(() => {
-//    sandbox = sinon.createSandbox()
-//
-//    nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
-//    nodeProcessStubOn = sandbox.stub()
-//    nodeProcessStub.withArgs().returns({
-//      setup: sandbox.stub(),
-//      on: nodeProcessStubOn,
-//    })
-//    nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)
-//
-//    axiosGetStub = sandbox.stub(axios, 'get')
-//
-//    wsStub = sandbox.mock()
-//    wsStubReturns = sandbox.createStubInstance(WebSocket)
-//    wsStub.returns(wsStubReturns)
-//  })
-//
-//  afterEach(() => {
-//    sandbox.restore()
-//  })
-//
-//  it('should throw an error when it can\'t request to node inspect', async () => {
-//    const nodeWS = new nodeinspect.NodeInspect('./test', ['--arg1'], {wsLib: wsStub})
-//
-//    const nodeWSEmitStub = sandbox.stub(nodeWS, 'emit')
-//    nodeWSEmitStub.callThrough()
-//
-//    axiosGetStub.withArgs('http://localhost:9229/json')
-//        .returns({then: x => undefined, catch: x => x(new Error('Test Error'))})
-//
-//    console.log(nodeWSEmitStub.callCount)
-//    await nodeWS.setup()
-//
-//    console.log(nodeWSEmitStub.callCount)
-//    chai.expect(nodeWSEmitStub.callCount).to.equal(1)
-//    chai.expect(nodeWSEmitStub.args[0]).to.deep.equal(['padre_error', 'Test Error'])
-//  })
-//})
+describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
+  let sandbox = null
+  let axiosGetStub = null
+  let wsStub = null
+  let wsStubReturns = null
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox()
+
+    axiosGetStub = sandbox.stub(axios, 'get')
+
+    wsStub = sandbox.mock()
+    wsStubReturns = sandbox.createStubInstance(WebSocket)
+    wsStub.returns(wsStubReturns)
+  })
+
+  afterEach(() => {
+    sandbox.restore()
+  })
+
+  it('should throw an error when it can\'t do this initial HTTP request to node inspect', async () => {
+    const nodeWS = new NodeWS(wsStub)
+
+    const nodeWSEmitStub = sandbox.stub(nodeWS, 'emit')
+
+    axiosGetStub.withArgs('http://localhost:9229/json')
+        .rejects('Test Error')
+
+    await nodeWS.setup()
+
+    chai.expect(nodeWSEmitStub.callCount).to.equal(1)
+    chai.expect(nodeWSEmitStub.args[0][0]).to.equal('padre_error')
+    chai.expect(nodeWSEmitStub.args[0][1].name).to.equal('Test Error')
+  })
+
+  it('should throw an error when it can\'t request over the WS', async () => {
+    const nodeWS = new NodeWS(wsStub)
+    nodeWS.ws = wsStubReturns
+
+    const nodeWSEmitStub = sandbox.stub(nodeWS, 'emit')
+
+    nodeWS.ws.send.rejects('Test Error')
+
+    await nodeWS.sendToDebugger({
+      'method': 'doesNotExist'
+    })
+
+    chai.expect(nodeWSEmitStub.callCount).to.equal(1)
+    chai.expect(nodeWSEmitStub.args[0][0]).to.equal('padre_error')
+    chai.expect(nodeWSEmitStub.args[0][1].name).to.equal('Test Error')
+  })
+
+  it('should throw an error when it can\'t read JSON', async () => {
+    const nodeWS = new NodeWS(wsStub)
+
+    const nodeWSEmitStub = sandbox.stub(nodeWS, 'emit')
+
+    const str = `{"method":"abc","params":{"abc":"123"`
+
+    nodeWS._handleSocketWrite(str)
+
+    chai.expect(nodeWSEmitStub.callCount).to.equal(1)
+    chai.expect(nodeWSEmitStub.args[0]).to.deep.equal(['padre_error', 'SyntaxError'])
+  })
+})

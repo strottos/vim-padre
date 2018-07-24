@@ -3,6 +3,8 @@
 const chai = require('chai')
 const sinon = require('sinon')
 
+const fs = require('fs')
+
 const nodeinspect = require.main.require('src/debugger/nodeinspect/nodeinspect')
 const nodeProcess = require.main.require('src/debugger/nodeinspect/node_process')
 const nodeWS = require.main.require('src/debugger/nodeinspect/node_ws')
@@ -120,7 +122,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
         'sourceMapURL': '',
         'hasSourceURL': false,
         'isModule': false,
-        'length':10214
+        'length': 10214
       }
     })
     nodeDebugger._handleDataWrite({
@@ -195,6 +197,8 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
         'length': 10214
       }
     })
+
+    sandbox.stub(fs, 'realpathSync').returns(`${process.cwd()}/index.js`)
 
     const breakpointPromise = nodeDebugger.breakpointFileAndLine('index.js', 20)
 
@@ -391,41 +395,57 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
   })
 })
 
-//describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
-//  let sandbox = null
-//  let axiosGetStub = null
-//  let nodeWSStub = null
-//
-//  beforeEach(() => {
-//    sandbox = sinon.createSandbox()
-//
-//    const nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
-//    const nodeProcessStubOn = sandbox.stub()
-//    nodeProcessStub.withArgs().returns({
-//      setup: sandbox.stub(),
-//      on: nodeProcessStubOn,
-//    })
-//    nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)
-//  })
-//
-//  afterEach(() => {
-//    sandbox.restore()
-//  })
-//
-//  it('should throw an error when it can\'t request to node inspect', async () => {
-//    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-//
-//    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
-//    nodeDebuggerEmitStub.callThrough()
-//
-//    axiosGetStub.withArgs('http://localhost:9229/json')
-//        .returns({then: x => undefined, catch: x => x(new Error('Test Error'))})
-//
-//    console.log(nodeDebuggerEmitStub.callCount)
-//    await nodeDebugger.setup()
-//
-//    console.log(nodeDebuggerEmitStub.callCount)
-//    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-//    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'Test Error'])
-//  })
-//})
+describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
+  let sandbox = null
+  let nodeWSObj = null
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox()
+
+    const nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
+    const nodeProcessStubOn = sandbox.stub()
+    nodeProcessStub.withArgs().returns({
+      setup: sandbox.stub(),
+      on: nodeProcessStubOn,
+    })
+    nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)
+
+    const nodeWSStub = sandbox.stub(nodeWS, 'NodeWS')
+    nodeWSObj = {
+      setup: sandbox.stub(),
+      on: sandbox.stub(),
+      sendToDebugger: sandbox.stub()
+    }
+    nodeWSStub.withArgs(sinon.match.any).returns(nodeWSObj)
+  })
+
+  afterEach(() => {
+    sandbox.restore()
+  })
+
+  it('should report errors reported by NodeWS or NodeProcess', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
+    nodeWSObj.on.withArgs('padre_error', sinon.match.any).callsArgWith(1, 'test error')
+
+    await nodeDebugger.setup()
+
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'test error'])
+  })
+
+  it('should throw an error when it can\'t request to node inspect', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
+    await nodeDebugger.setup()
+
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'Test Error'])
+  })
+})

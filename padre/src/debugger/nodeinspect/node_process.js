@@ -18,18 +18,23 @@ class NodeProcess extends stream.Transform {
   }
 
   async setup () {
-    const exe = this.exe = nodePty.spawn('node', ['--inspect-brk', this.progName, ...this.args])
+    try {
+      const exe = this.exe = nodePty.spawn('node', ['--inspect-brk', this.progName, ...this.args])
 
-    exe.pipe(this).pipe(exe)
+      exe.pipe(this).pipe(exe)
+    } catch (error) {
+      this.emit('padre_error', error.name)
+    }
   }
 
   _transform (chunk, encoding, callback) {
     console.log('Node Write')
-    console.log(chunk.toString('utf-8'))
 
-    let text = chunk.toString('utf-8').trim()
+    let text = chunk.toString('utf-8')
 
-    for (let line of text.split('\r\n')) {
+    console.log(text)
+
+    for (let line of text.trim().split('\r\n')) {
       const match = line.match(/^Debugger listening on .*$/)
       if (match) {
         console.log('Node Started')

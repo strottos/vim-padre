@@ -45,11 +45,8 @@ describe('Test Spawning Node with Inspect', () => {
     }
   })
 
-  it('should successfully spawn and communicate with node using inspect', async () => {
+  it('should successfully spawn node using inspect', async () => {
     const nodeTestProcess = new nodeProcess.NodeProcess('./test', ['--arg1'])
-
-    const nodeDebuggerEmitStub = sandbox.stub(nodeTestProcess, 'emit')
-    nodeDebuggerEmitStub.callThrough()
 
     await nodeTestProcess.setup()
 
@@ -61,10 +58,31 @@ describe('Test Spawning Node with Inspect', () => {
 
     chai.expect(nodePipeStub.callCount).to.equal(1)
     chai.expect(nodePipeStub.args[0]).to.deep.equal([exeStub])
+  })
+
+  it('should successfully communicate with node using inspect', async () => {
+    const nodeTestProcess = new nodeProcess.NodeProcess('./test', ['--arg1'])
+
+    const nodeDebuggerEmitStub = sandbox.stub(nodeTestProcess, 'emit')
+    nodeDebuggerEmitStub.callThrough()
 
     await nodeTestProcess.write('Debugger listening on ws://127.0.0.1:9229/abcd1234-abcd-1234-abcd-1234567890ab\r\nFor help, see: https://nodejs.org/en/docs/inspector')
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
     chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['nodestarted'])
+  })
+
+  it('should report any errors spawning node with inspect', async () => {
+    const nodeTestProcess = new nodeProcess.NodeProcess('./test', ['--arg1'])
+
+    spawnStub.onCall(0).throws('Test Error')
+
+    const nodeDebuggerEmitStub = sandbox.stub(nodeTestProcess, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
+    await nodeTestProcess.setup()
+
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'Test Error'])
   })
 })

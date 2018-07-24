@@ -38,6 +38,10 @@ class NodeInspect extends eventEmitter {
       })
 
       that.nodeWS.on('data', this._handleDataWrite)
+
+      that.nodeWS.on('padre_error', (error) => {
+        that.emit('padre_error', error)
+      })
     })
   }
 
@@ -72,8 +76,6 @@ class NodeInspect extends eventEmitter {
       }
       return xFullPath === fileFullPath
     }), '0.id')
-
-    console.log(scriptId)
 
     this.nodeWS.sendToDebugger({
       'method': 'Debugger.setBreakpoint',
