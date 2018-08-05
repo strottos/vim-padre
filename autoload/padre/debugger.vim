@@ -290,6 +290,23 @@ function! padre#debugger#ProcessExited(exit_code, pid)
   call padre#buffer#AppendBuffer('PADRE_Main', ['Process ' . a:pid . ' finished with exit code=' . a:exit_code])
 endfunction
 
-function! padre#debugger#Error(error_string)
-  call padre#buffer#AppendBuffer('PADRE_Main', ['Error: ' . a:error_string])
+function! padre#debugger#Log(level, error_string)
+  let l:log_level_set = get(g:, 'PadreLogLevel', 3)
+  let l:level = ''
+
+  if a:level > l:log_level_set
+    return
+  endif
+
+  if a:level == 1
+    let l:level = 'Critical: '
+  elseif a:level == 2
+    let l:level = 'Error: '
+  elseif a:level == 3
+    let l:level = 'Info: '
+  elseif a:level == 4
+    let l:level = 'Debug: '
+  endif
+
+  call padre#buffer#AppendBuffer('PADRE_Main', [l:level . a:error_string])
 endfunction

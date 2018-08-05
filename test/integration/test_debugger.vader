@@ -171,6 +171,40 @@ Execute (Check when we run twice only one PADRE debugger is running):
 Then:
   AssertEqual 1, padre#job#RunningJobs()
 
+Execute (Check when we log errors and they log at the correct levels):
+  PadreDebug test/progs/test_prog
+  sleep 1
+  if has_key(g:, 'PadreLogLevel')
+    unlet g:PadreLogLevel
+  endif
+
+Then:
+  call padre#debugger#Log(1, 'Test Critical Log')
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[1], '^Critical: Test Critical Log$'))
+  call padre#debugger#Log(2, 'Test Error Log')
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[2], '^Error: Test Error Log$'))
+  call padre#debugger#Log(3, 'Test Info Log')
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[3], '^Info: Test Info Log$'))
+  call padre#debugger#Log(4, 'Test Debug Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+
+  let g:PadreLogLevel = 1
+  call padre#debugger#Log(2, 'Test Error Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+
+  let g:PadreLogLevel = 2
+  call padre#debugger#Log(3, 'Test Info Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+
+  let g:PadreLogLevel = 3
+  call padre#debugger#Log(4, 'Test Debug Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+
+  let g:PadreLogLevel = 4
+  call padre#debugger#Log(4, 'Test Debug Log')
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[4], '^Debug: Test Debug Log$'))
+  quit
+
 Execute (Check we can debug a simple C program):
   tabnew
   let g:mainFileToDebug = expand('%:p:h') . '/test/progs/test_prog.c'
@@ -194,21 +228,21 @@ Execute (Check we can debug a simple C program):
   sleep 1
 
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[2], '^Process \d\+ Running$'))
-  AssertEqual 'Stopped line=6 file=test_prog.c', padre#buffer#ReadBuffer('PADRE_Main')[3]
+  AssertEqual 'Stopped line=6 file=' . g:mainFileToDebug, padre#buffer#ReadBuffer('PADRE_Main')[3]
 
   AssertEqual [bufnr(g:mainFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')], padre#layout#GetBuffersInTab()
+
+  normal S
+  sleep 1
+
+  AssertEqual [bufnr(g:funcFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')], padre#layout#GetBuffersInTab()
+  AssertEqual 'Stopped line=2 file=' . g:funcFileToDebug, padre#buffer#ReadBuffer('PADRE_Main')[4]
 
   normal s
   sleep 1
 
   AssertEqual [bufnr(g:funcFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')], padre#layout#GetBuffersInTab()
-  AssertEqual 'Stopped line=2 file=test_func.c', padre#buffer#ReadBuffer('PADRE_Main')[4]
-
-  normal n
-  sleep 1
-
-  AssertEqual [bufnr(g:funcFileToDebug), padre#buffer#GetBufNumForBufName('PADRE_Main'), padre#buffer#GetBufNumForBufName('PADRE_Stdio')], padre#layout#GetBuffersInTab()
-  AssertEqual 'Stopped line=3 file=test_func.c', padre#buffer#ReadBuffer('PADRE_Main')[5]
+  AssertEqual 'Stopped line=3 file=' . g:funcFileToDebug, padre#buffer#ReadBuffer('PADRE_Main')[5]
 
   call cursor(3,12)
   normal vp
