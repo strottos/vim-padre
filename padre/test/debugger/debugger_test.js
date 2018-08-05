@@ -224,13 +224,13 @@ describe('Test the debugger', () => {
   it('should report an error when an error is emitted by the debug server', async () => {
     testDebugServerStub.on
         .withArgs('started', sinon.match.any).callsArg(1)
-        .withArgs('padre_error', sinon.match.any).callsArgWith(1, 'Test Error')
+        .withArgs('padre_log', sinon.match.any).callsArgWith(1, 2, 'Test Error')
 
     const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
 
     await testDebugger.handle()
 
     chai.expect(connectionStub.write.callCount).to.equal(2)
-    chai.expect(connectionStub.write.args[1]).to.deep.equal(['["call","padre#debugger#Error",["Test Error"]]'])
+    chai.expect(connectionStub.write.args[1]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test Error"]]'])
   })
 })

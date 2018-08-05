@@ -42,6 +42,10 @@ class NodeInspect extends eventEmitter {
       that.nodeWS.on('padre_error', (error) => {
         that.emit('padre_error', error)
       })
+
+      that.nodeProcess.on('padre_error', (error) => {
+        that.emit('padre_error', error)
+      })
     })
   }
 

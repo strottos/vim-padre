@@ -26,8 +26,8 @@ class Debugger {
         that.connection.write(`["call","padre#debugger#JumpToPosition",[${lineNum},"${fileName}"]]`)
       })
 
-      that.debugServer.on('padre_error', function (string) {
-        that.connection.write(`["call","padre#debugger#Error",["${string}"]]`)
+      that.debugServer.on('padre_log', function (level, string) {
+        that.connection.write(`["call","padre#debugger#Log",[${level},"${string}"]]`)
       })
 
       // TODO: Socket termination

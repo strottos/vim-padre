@@ -398,12 +398,13 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
 describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
   let sandbox = null
   let nodeWSObj = null
+  let nodeProcessStubOn
 
   beforeEach(() => {
     sandbox = sinon.createSandbox()
 
     const nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
-    const nodeProcessStubOn = sandbox.stub()
+    nodeProcessStubOn = sandbox.stub()
     nodeProcessStub.withArgs().returns({
       setup: sandbox.stub(),
       on: nodeProcessStubOn,
@@ -434,7 +435,21 @@ describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
     await nodeDebugger.setup()
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'test error'])
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_log', 2, 'test error'])
+  })
+
+  it('should report errors reported by NodeWS or NodeProcess', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
+    nodeProcessStubOn.withArgs('padre_error', sinon.match.any).callsArgWith(1, 'test error')
+
+    await nodeDebugger.setup()
+
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 2, 'test error'])
   })
 
   it('should throw an error when it can\'t request to node inspect', async () => {
@@ -446,6 +461,6 @@ describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
     await nodeDebugger.setup()
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'Test Error'])
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 2, 'Test Error'])
   })
 })
