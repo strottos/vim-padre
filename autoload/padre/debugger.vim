@@ -191,7 +191,8 @@ endfunction
 
 function! padre#debugger#SignalPADREStarted()
   let s:Running = 1
-  call padre#buffer#ReplaceBuffer('PADRE_Main', ['PADRE debugger open'])
+  call padre#buffer#ClearBuffer('PADRE_Main')
+  call padre#debugger#Log(3, 'PADRE debugger open')
 
   for l:breakpoint in padre#signs#GetAllBreakpointSigns()
     call s:SetBreakpointInDebugger(l:breakpoint['line'], l:breakpoint['file'])
@@ -202,7 +203,7 @@ function! padre#debugger#RunCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
   if !empty(l:match)
     let l:msg = 'Process ' . l:match[1] . ' Running'
-    call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
+    call padre#debugger#Log(3, l:msg)
   endif
 endfunction
 
@@ -220,7 +221,7 @@ function! padre#debugger#BreakpointCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK line=\(\d\+\) file=\(\S\+\)$')
   if !empty(l:match)
     let l:msg = 'Breakpoint set line=' . l:match[1] . ', file=' . l:match[2]
-    call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
+    call padre#debugger#Log(3, l:msg)
   endif
 endfunction
 
@@ -238,7 +239,7 @@ function! padre#debugger#PrintVariableCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK variable=\(\S\+\) value=\(\d\+\) type=\S\+$')
   if !empty(l:match)
     let l:msg = 'Variable ' . l:match[1] . '=' . l:match[2]
-    call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
+    call padre#debugger#Log(3, l:msg)
   endif
 endfunction
 
@@ -248,7 +249,7 @@ endfunction
 
 function! padre#debugger#JumpToPosition(line, file)
   let l:msg = 'Stopped line=' . a:line . ' file=' . a:file
-  call padre#buffer#AppendBuffer('PADRE_Main', [l:msg])
+  call padre#debugger#Log(3, l:msg)
 
   if a:file[0] == '/'
     let l:fileToLoad = a:file
@@ -287,7 +288,7 @@ endfunction
 
 function! padre#debugger#ProcessExited(exit_code, pid)
   call padre#debugger#Stop()
-  call padre#buffer#AppendBuffer('PADRE_Main', ['Process ' . a:pid . ' finished with exit code=' . a:exit_code])
+  call padre#debugger#Log(3, 'Process ' . a:pid . ' finished with exit code=' . a:exit_code)
 endfunction
 
 function! padre#debugger#Log(level, error_string)
@@ -299,13 +300,13 @@ function! padre#debugger#Log(level, error_string)
   endif
 
   if a:level == 1
-    let l:level = 'Critical: '
+    let l:level = 'CRITICAL: '
   elseif a:level == 2
-    let l:level = 'Error: '
+    let l:level = 'ERROR: '
   elseif a:level == 3
-    let l:level = 'Info: '
+    let l:level = 'INFO: '
   elseif a:level == 4
-    let l:level = 'Debug: '
+    let l:level = 'DEBUG: '
   endif
 
   call padre#buffer#AppendBuffer('PADRE_Main', [l:level . a:error_string])
