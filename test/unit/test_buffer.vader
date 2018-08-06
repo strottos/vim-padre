@@ -195,3 +195,24 @@ Execute (Check we can create a terminal style buffer and only write to the last 
   AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'dbyz'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
 
   quit
+
+Execute (Check a buffer scrolls when appended to if we're currently at the bottom):
+  for t:line_num in range(1, winheight(winnr()) + 2)
+    call padre#buffer#AppendBuffer('Test_Buffer', ['Test ' . t:line_num])
+    let t:line_num += 1
+  endfor
+  normal G
+  let t:current_buffer_line = getpos('.')[1]
+
+  call padre#buffer#AppendBuffer('Test_Buffer', ['Test new line 1', 'Test new line 2'])
+  AssertEqual t:current_buffer_line + 2, getpos('.')[1]
+
+Execute (Check a buffer doesn't scrolls when appended to if we're not currently at the bottom):
+  for t:line_num in range(1, winheight(winnr()) + 2)
+    call padre#buffer#AppendBuffer('Test_Buffer', ['Test ' . t:line_num])
+    let t:line_num += 1
+  endfor
+  normal 1G
+
+  call padre#buffer#AppendBuffer('Test_Buffer', ['Test new line 1', 'Test new line 2'])
+  AssertEqual 1, getpos('.')[1]

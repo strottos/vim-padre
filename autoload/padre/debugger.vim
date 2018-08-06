@@ -18,14 +18,12 @@ function! padre#debugger#Setup()
   " Create buffers for PADRE
   call padre#buffer#Create('PADRE_Main', 'PADRE_Main', 0)
   call padre#buffer#Create('PADRE_Stdio', 'PADRE_Data', 1)
-  call padre#buffer#Create('PADRE_Stdout', 'PADRE_Data', 0)
-  call padre#buffer#Create('PADRE_Stderr', 'PADRE_Data', 0)
   " call padre#buffer#Create('PADRE_Preprocessing', 'PADRE_Preprocessing', 1)
 
   call padre#buffer#SetMainPadreKeyBindings('PADRE_Main')
   call padre#buffer#SetOnlyWriteableAtBottom('PADRE_Stdio')
 
-  let s:DataItems = ['PADRE_Stdio', 'PADRE_Stdout', 'PADRE_Stderr']
+  let s:DataItems = ['PADRE_Stdio']
 
   let s:PresentDirectory = expand('%:p:h')
 endfunction
@@ -85,8 +83,6 @@ function! padre#debugger#Debug(...)
   endif
 
   call padre#buffer#ClearBuffer('PADRE_Stdio')
-  call padre#buffer#ClearBuffer('PADRE_Stdout')
-  call padre#buffer#ClearBuffer('PADRE_Stderr')
 
   if s:JobId != 0
     call padre#job#Stop(s:JobId)
@@ -186,8 +182,8 @@ function! padre#debugger#DataBufferFlick()
   call padre#buffer#LoadBufferName(get(s:DataItems, l:item))
 endfunction
 
-""""""""""""
-" Callbacks
+""""""""""""""""
+" API functions
 
 function! padre#debugger#SignalPADREStarted()
   let s:Running = 1
@@ -209,12 +205,10 @@ endfunction
 
 function! padre#debugger#StdoutCallback(jobId, data, args)
   call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
-  call padre#buffer#AppendBuffer('PADRE_Stdout', [a:data])
 endfunction
 
 function! padre#debugger#StderrCallback(jobId, data, args)
   call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
-  call padre#buffer#AppendBuffer('PADRE_Stderr', [a:data])
 endfunction
 
 function! padre#debugger#BreakpointCallback(channel_id, data)

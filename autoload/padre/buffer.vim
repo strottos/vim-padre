@@ -150,6 +150,14 @@ function! padre#buffer#AppendBuffer(name, text)
 
   let l:text = a:text + ['']
 
+  let l:tab_has_buffer = padre#layout#CurrentTabContainsBuffer(a:name)
+
+  if l:tab_has_buffer
+    let l:current_window = winnr()
+    call padre#layout#FindBufferWindowWithinTab(a:name)
+    let l:should_scroll = getpos('.')[1] == line('$')
+  endif
+
   if l:was_modifiable == 0
     call setbufvar(l:bufnr, '&modifiable', 1)
   endif
@@ -158,6 +166,13 @@ function! padre#buffer#AppendBuffer(name, text)
 
   if l:was_modifiable == 0
     call setbufvar(l:bufnr, '&modifiable', 0)
+  endif
+
+  if l:tab_has_buffer
+    if l:should_scroll
+      normal G
+    endif
+    execute l:current_window . ' wincmd w'
   endif
 endfunction
 
