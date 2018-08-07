@@ -48,13 +48,16 @@ Then:
   quit
 
 Execute (Check when we run PADRE followed by the stop command we have no tab or padre process running):
+  let g:NumTabs = tabpagenr('$')
   PadreDebug test/progs/test_prog
   sleep 1
-  call padre#debugger#Stop()
+  AssertEqual g:NumTabs + 1, tabpagenr('$')
+  PadreStop
   sleep 100ms
 
 Then:
   AssertEqual 0, padre#job#RunningJobs()
+  AssertEqual g:NumTabs, tabpagenr('$')
 
 "Execute (The preprocessing buffer displays any preprocessor commands from the config):
 "  AssertEqual g:PadrePreprocessingCommands, padre#buffer#ReadBuffer('PADRE_Preprocessing')
@@ -141,12 +144,12 @@ Execute (Check we stop PADRE when we close PADRE_Main):
   sleep 3
 
   call padre#layout#FindBufferWindowWithinTab('PADRE_Main')
-  quit
+  normal ZZ
 
   sleep 1
 
 Then:
-  AssertEqual 0, padre#job#RunningJobs()
+  AssertEqual 0, padre#debugger#IsRunning()
 
 Execute (Check we can debug a simple C program):
   tabnew
@@ -196,7 +199,12 @@ Execute (Check we can debug a simple C program):
   normal C
   sleep 3
 
+  echom len(padre#buffer#ReadBuffer('PADRE_Main'))
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[7], '^INFO: Process \d\+ finished with exit code=0$'))
+
+  normal ZZ
+  sleep 1
+
   AssertEqual 0, padre#debugger#IsRunning()
 
   quit

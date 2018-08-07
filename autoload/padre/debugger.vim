@@ -121,6 +121,8 @@ function! padre#debugger#Stop()
 
   call padre#socket#Close()
 
+  call padre#layout#CloseTabsWithBuffer('PADRE_Main')
+
   let s:Running = 0
 endfunction
 
@@ -281,7 +283,6 @@ function! padre#debugger#JumpToPosition(line, file)
 endfunction
 
 function! padre#debugger#ProcessExited(exit_code, pid)
-  call padre#debugger#Stop()
   call padre#debugger#Log(3, 'Process ' . a:pid . ' finished with exit code=' . a:exit_code)
 endfunction
 

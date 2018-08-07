@@ -77,6 +77,7 @@ function! padre#buffer#SetMainPadreKeyBindings(name)
   nnoremap <silent> <buffer> s :PadreStepOver<cr>
   vnoremap <silent> <buffer> p y:PadrePrintVariable <C-R>"<cr>
   nnoremap <silent> <buffer> C :PadreContinue<cr>
+  nnoremap <silent> <buffer> ZZ :PadreStop<cr>
 
   quit
 endfunction
@@ -91,6 +92,7 @@ function! padre#buffer#UnsetPadreKeyBindings(name)
   nnoremap <silent> <buffer> s s
   vnoremap <silent> <buffer> p p
   nnoremap <silent> <buffer> C C
+  nnoremap <silent> <buffer> ZZ ZZ
 
   quit
 endfunction
