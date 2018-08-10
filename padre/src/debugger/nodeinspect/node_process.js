@@ -2,7 +2,7 @@
 
 const stream = require('stream')
 
-const nodePty = require('node-pty')
+const cp = require('child_process')
 
 class NodeProcess extends stream.Transform {
   constructor (progName, args) {
@@ -17,9 +17,9 @@ class NodeProcess extends stream.Transform {
     this._id = 1
   }
 
-  async setup () {
+  async run () {
     try {
-      const exe = this.exe = nodePty.spawn('node', ['--inspect-brk', this.progName, ...this.args])
+      const exe = this.exe = cp.spawn('node', ['--inspect-brk', this.progName, ...this.args])
 
       exe.pipe(this).pipe(exe)
     } catch (error) {

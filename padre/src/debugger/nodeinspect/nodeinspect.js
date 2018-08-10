@@ -22,37 +22,41 @@ class NodeInspect extends eventEmitter {
   }
 
   async setup () {
-    await this.nodeProcess.setup()
+    this.nodeWS = new nodeWS.NodeWS(require('ws'))
 
     const that = this
 
-    this.nodeProcess.on('nodestarted', async () => {
-      that.nodeWS = new nodeWS.NodeWS(require('ws'))
-
-      await that.nodeWS.setup()
-
-      that.nodeWS.on('open', async () => {
-        that.nodeWS.sendToDebugger({'method': 'Runtime.enable'})
-        that.nodeWS.sendToDebugger({'method': 'Debugger.enable'})
-        that.nodeWS.sendToDebugger({'method': 'Runtime.runIfWaitingForDebugger'})
-      })
-
-      that.nodeWS.on('data', this._handleDataWrite)
-
-      that.nodeWS.on('padre_error', (error) => {
-        that.emit('padre_error', error)
-      })
-
-      that.nodeProcess.on('padre_error', (error) => {
-        that.emit('padre_error', error)
-      })
+    this.nodeWS.on('open', async () => {
+      that.nodeWS.sendToDebugger({'method': 'Runtime.enable'})
+      that.nodeWS.sendToDebugger({'method': 'Debugger.enable'})
+      that.nodeWS.sendToDebugger({'method': 'Runtime.runIfWaitingForDebugger'})
     })
+
+    this.nodeWS.on('data', this._handleDataWrite)
+
+    this.nodeWS.on('padre_error', (error) => {
+      that.emit('padre_error', error)
+    })
+
+    this.nodeProcess.on('padre_error', (error) => {
+      that.emit('padre_error', error)
+    })
+
+    this.emit('started')
   }
 
   async run () {
+    this.nodeProcess.run()
+
+    const that = this
+
     return new Promise((resolve, reject) => {
-      resolve({
-        'pid': 0
+      this.nodeProcess.on('nodestarted', async () => {
+        await that.nodeWS.setup()
+
+        resolve({
+          'pid': 0
+        })
       })
     })
   }
@@ -237,7 +241,6 @@ class NodeInspect extends eventEmitter {
         this._properties['Runtime.enable'] &&
         this._properties['Runtime.runIfWaitingForDebugger'] &&
         this._properties.started !== true) {
-      this.emit('started')
       this._properties.started = true
     }
   }

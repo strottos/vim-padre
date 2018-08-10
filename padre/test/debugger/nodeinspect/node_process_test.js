@@ -5,7 +5,7 @@ const sinon = require('sinon')
 
 const stream = require('stream')
 
-const nodePty = require('node-pty')
+const cp = require('child_process')
 
 const nodeProcess = require.main.require('src/debugger/nodeinspect/node_process')
 
@@ -19,7 +19,7 @@ describe('Test Spawning Node with Inspect', () => {
   beforeEach(() => {
     sandbox = sinon.createSandbox()
 
-    spawnStub = sandbox.stub(nodePty, 'spawn')
+    spawnStub = sandbox.stub(cp, 'spawn')
     exeStub = sandbox.stub()
     exePipeStub = sandbox.stub()
 
@@ -48,7 +48,7 @@ describe('Test Spawning Node with Inspect', () => {
   it('should successfully spawn node using inspect', async () => {
     const nodeTestProcess = new nodeProcess.NodeProcess('./test', ['--arg1'])
 
-    await nodeTestProcess.setup()
+    await nodeTestProcess.run()
 
     chai.expect(spawnStub.callCount).to.equal(1)
     chai.expect(spawnStub.args[0]).to.deep.equal(['node', ['--inspect-brk', './test', '--arg1']])
@@ -80,7 +80,7 @@ describe('Test Spawning Node with Inspect', () => {
     const nodeDebuggerEmitStub = sandbox.stub(nodeTestProcess, 'emit')
     nodeDebuggerEmitStub.callThrough()
 
-    await nodeTestProcess.setup()
+    await nodeTestProcess.run()
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
     chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 'Test Error'])

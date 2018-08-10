@@ -12,14 +12,16 @@ const nodeWS = require.main.require('src/debugger/nodeinspect/node_ws')
 describe('Test Spawning and Debugging Node with Inspect', () => {
   let sandbox = null
   let nodeWSObj = null
+  let nodeProcessStubRun = null
 
   beforeEach(() => {
     sandbox = sinon.createSandbox()
 
     const nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
     const nodeProcessStubOn = sandbox.stub()
+    nodeProcessStubRun = sandbox.stub()
     nodeProcessStub.withArgs().returns({
-      setup: sandbox.stub(),
+      run: nodeProcessStubRun,
       on: nodeProcessStubOn,
     })
     nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)
@@ -43,62 +45,10 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
     nodeDebuggerEmitStub.callThrough()
 
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-
     await nodeDebugger.setup()
-
-    chai.expect(nodeWSObj.setup.callCount).to.equal(1)
-    chai.expect(nodeWSObj.setup.args[0]).to.deep.equal([])
-
-    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(3)
-    chai.expect(nodeWSObj.sendToDebugger.args[0]).to.deep.equal([{'method': 'Runtime.enable'}])
-    chai.expect(nodeWSObj.sendToDebugger.args[1]).to.deep.equal([{'method': 'Debugger.enable'}])
-    chai.expect(nodeWSObj.sendToDebugger.args[2]).to.deep.equal([{'method': 'Runtime.runIfWaitingForDebugger'}])
-
-    nodeDebugger._handleDataWrite({
-      'method': 'Runtime.executionContextCreated',
-      'params': {
-        'context': {
-          'id': 1,
-          'origin': '',
-          'name': 'node[12345]',
-          'auxData': {
-            'isDefault': true
-          }
-        }
-      }
-    })
-    nodeDebugger._handleDataWrite({
-      'method': 'Runtime.enable',
-      'result': {}
-    })
-    nodeDebugger._handleDataWrite({
-      'method': 'Debugger.enable',
-      'result': {
-        'debuggerId': '(ABCD1234ABCD1234ABCD1234ABCD1234)'
-      }
-    })
-    nodeDebugger._handleDataWrite({
-      'method': 'Runtime.runIfWaitingForDebugger',
-      'result': {}
-    })
-
-    chai.expect(nodeDebugger._properties['Runtime.enable']).to.be.true
-    chai.expect(nodeDebugger._properties['Debugger.enable']).to.be.true
-    chai.expect(nodeDebugger._properties['Debugger.id']).to.equal('(ABCD1234ABCD1234ABCD1234ABCD1234)')
-    chai.expect(nodeDebugger._properties['Runtime.runIfWaitingForDebugger']).to.be.true
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
     chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['started'])
-
-    // Check that we're not emmitting `started` every time
-    await nodeWSObj.sendToDebugger({'method': 'Profiler.enable'})
-    nodeDebugger._handleDataWrite({
-      'method': 'Profiler.enable',
-      'result': {}
-    })
-
-    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
   })
 
   it('should record the scripts reported by nodeinspect', async () => {
@@ -162,11 +112,60 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
   it('should be able to launch a process and report it', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
 
+    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
+    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
+
+    await nodeDebugger.setup()
     const runPromise = nodeDebugger.run()
+
+    chai.expect(nodeProcessStubRun.callCount).to.equal(1)
 
     const ret = await runPromise
 
     chai.expect(ret).to.deep.equal({'pid': 0})
+
+    chai.expect(nodeWSObj.setup.callCount).to.equal(1)
+    chai.expect(nodeWSObj.setup.args[0]).to.deep.equal([])
+
+    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(3)
+    chai.expect(nodeWSObj.sendToDebugger.args[0]).to.deep.equal([{'method': 'Runtime.enable'}])
+    chai.expect(nodeWSObj.sendToDebugger.args[1]).to.deep.equal([{'method': 'Debugger.enable'}])
+    chai.expect(nodeWSObj.sendToDebugger.args[2]).to.deep.equal([{'method': 'Runtime.runIfWaitingForDebugger'}])
+
+    nodeDebugger._handleDataWrite({
+      'method': 'Runtime.executionContextCreated',
+      'params': {
+        'context': {
+          'id': 1,
+          'origin': '',
+          'name': 'node[12345]',
+          'auxData': {
+            'isDefault': true
+          }
+        }
+      }
+    })
+    nodeDebugger._handleDataWrite({
+      'method': 'Runtime.enable',
+      'result': {}
+    })
+    nodeDebugger._handleDataWrite({
+      'method': 'Debugger.enable',
+      'result': {
+        'debuggerId': '(ABCD1234ABCD1234ABCD1234ABCD1234)'
+      }
+    })
+    nodeDebugger._handleDataWrite({
+      'method': 'Runtime.runIfWaitingForDebugger',
+      'result': {}
+    })
+
+    chai.expect(nodeDebugger._properties['Runtime.enable']).to.be.true
+    chai.expect(nodeDebugger._properties['Debugger.enable']).to.be.true
+    chai.expect(nodeDebugger._properties['Debugger.id']).to.equal('(ABCD1234ABCD1234ABCD1234ABCD1234)')
+    chai.expect(nodeDebugger._properties['Runtime.runIfWaitingForDebugger']).to.be.true
   })
 
   it('should allow the debugger to set a breakpoint in nodeinspect for an existing script', async () => {
@@ -406,7 +405,7 @@ describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
     const nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
     nodeProcessStubOn = sandbox.stub()
     nodeProcessStub.withArgs().returns({
-      setup: sandbox.stub(),
+      run: sandbox.stub(),
       on: nodeProcessStubOn,
     })
     nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)

@@ -7,8 +7,6 @@ class Debugger {
   }
 
   async handle () {
-    await this.debugServer.setup()
-
     const that = this
 
     this.debugServer.on('started', () => {
@@ -35,6 +33,8 @@ class Debugger {
       //  console.log('server disconnected');
       // })
     })
+
+    await this.debugServer.setup()
   }
 
   async _handleReadData (data) {

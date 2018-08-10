@@ -117,26 +117,33 @@ Then:
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[1], '^CRITICAL: Test Critical Log$'))
   call padre#debugger#Log(2, 'Test Error Log')
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[2], '^ERROR: Test Error Log$'))
-  call padre#debugger#Log(3, 'Test Info Log')
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[3], '^INFO: Test Info Log$'))
-  call padre#debugger#Log(4, 'Test Debug Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+  call padre#debugger#Log(3, 'Test Warn Log')
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[3], '^WARN: Test Warn Log$'))
+  call padre#debugger#Log(4, 'Test Info Log')
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[4], '^INFO: Test Info Log$'))
+  call padre#debugger#Log(5, 'Test Debug Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
 
   let g:PadreLogLevel = 1
   call padre#debugger#Log(2, 'Test Error Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
 
   let g:PadreLogLevel = 2
-  call padre#debugger#Log(3, 'Test Info Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+  call padre#debugger#Log(3, 'Test Warn Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
 
   let g:PadreLogLevel = 3
-  call padre#debugger#Log(4, 'Test Debug Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 5
+  call padre#debugger#Log(4, 'Test Info Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
 
   let g:PadreLogLevel = 4
-  call padre#debugger#Log(4, 'Test Debug Log')
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[4], '^DEBUG: Test Debug Log$'))
+  call padre#debugger#Log(5, 'Test Debug Log')
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
+
+  let g:PadreLogLevel = 5
+  call padre#debugger#Log(5, 'Test Debug Log')
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[5], '^DEBUG: Test Debug Log$'))
+  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 7
   quit
 
 Execute (Check we stop PADRE when we close PADRE_Main):

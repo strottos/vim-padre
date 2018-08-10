@@ -190,7 +190,7 @@ endfunction
 function! padre#debugger#SignalPADREStarted()
   let s:Running = 1
   call padre#buffer#ClearBuffer('PADRE_Main')
-  call padre#debugger#Log(3, 'PADRE debugger open')
+  call padre#debugger#Log(4, 'PADRE debugger open')
 
   for l:breakpoint in padre#signs#GetAllBreakpointSigns()
     call s:SetBreakpointInDebugger(l:breakpoint['line'], l:breakpoint['file'])
@@ -201,7 +201,7 @@ function! padre#debugger#RunCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
   if !empty(l:match)
     let l:msg = 'Process ' . l:match[1] . ' Running'
-    call padre#debugger#Log(3, l:msg)
+    call padre#debugger#Log(4, l:msg)
   endif
 endfunction
 
@@ -217,7 +217,7 @@ function! padre#debugger#BreakpointCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK line=\(\d\+\) file=\(\S\+\)$')
   if !empty(l:match)
     let l:msg = 'Breakpoint set line=' . l:match[1] . ', file=' . l:match[2]
-    call padre#debugger#Log(3, l:msg)
+    call padre#debugger#Log(4, l:msg)
   endif
 endfunction
 
@@ -235,7 +235,7 @@ function! padre#debugger#PrintVariableCallback(channel_id, data)
   let l:match = matchlist(a:data, '^OK variable=\(\S\+\) value=\(\d\+\) type=\S\+$')
   if !empty(l:match)
     let l:msg = 'Variable ' . l:match[1] . '=' . l:match[2]
-    call padre#debugger#Log(3, l:msg)
+    call padre#debugger#Log(4, l:msg)
   endif
 endfunction
 
@@ -245,7 +245,7 @@ endfunction
 
 function! padre#debugger#JumpToPosition(line, file)
   let l:msg = 'Stopped line=' . a:line . ' file=' . a:file
-  call padre#debugger#Log(3, l:msg)
+  call padre#debugger#Log(4, l:msg)
 
   if a:file[0] == '/'
     let l:fileToLoad = a:file
@@ -283,11 +283,11 @@ function! padre#debugger#JumpToPosition(line, file)
 endfunction
 
 function! padre#debugger#ProcessExited(exit_code, pid)
-  call padre#debugger#Log(3, 'Process ' . a:pid . ' finished with exit code=' . a:exit_code)
+  call padre#debugger#Log(4, 'Process ' . a:pid . ' finished with exit code=' . a:exit_code)
 endfunction
 
 function! padre#debugger#Log(level, error_string)
-  let l:log_level_set = get(g:, 'PadreLogLevel', 3)
+  let l:log_level_set = get(g:, 'PadreLogLevel', 4)
   let l:level = ''
 
   if a:level > l:log_level_set
@@ -299,8 +299,10 @@ function! padre#debugger#Log(level, error_string)
   elseif a:level == 2
     let l:level = 'ERROR: '
   elseif a:level == 3
-    let l:level = 'INFO: '
+    let l:level = 'WARN: '
   elseif a:level == 4
+    let l:level = 'INFO: '
+  elseif a:level == 5
     let l:level = 'DEBUG: '
   endif
 
