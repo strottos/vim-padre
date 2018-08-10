@@ -66,7 +66,7 @@ class Debugger {
         }
       }
     } catch (error) {
-      this.connection.write(`["call","padre#debugger#Error",["${error}"]]`)
+      this.connection.write(`["call","padre#debugger#Log",[2,"${error}"]]`)
     }
   }
 

@@ -218,7 +218,7 @@ describe('Test the debugger', () => {
     chai.expect(testDebugServerStub.run.args[0]).to.deep.equal([])
 
     chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Error",["Test Error"]]'])
+    chai.expect(connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test Error"]]'])
   })
 
   it('should report an error when an error is emitted by the debug server', async () => {
