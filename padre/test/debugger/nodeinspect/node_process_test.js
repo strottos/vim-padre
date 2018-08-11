@@ -5,7 +5,7 @@ const sinon = require('sinon')
 
 const stream = require('stream')
 
-const cp = require('child_process')
+const nodePty = require('node-pty')
 
 const nodeProcess = require.main.require('src/debugger/nodeinspect/node_process')
 
@@ -19,7 +19,7 @@ describe('Test Spawning Node with Inspect', () => {
   beforeEach(() => {
     sandbox = sinon.createSandbox()
 
-    spawnStub = sandbox.stub(cp, 'spawn')
+    spawnStub = sandbox.stub(nodePty, 'spawn')
     exeStub = sandbox.stub()
     exePipeStub = sandbox.stub()
 

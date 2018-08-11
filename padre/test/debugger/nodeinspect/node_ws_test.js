@@ -8,7 +8,7 @@ const WebSocket = require('ws')
 
 const NodeWS = require.main.require('src/debugger/nodeinspect/node_ws').NodeWS
 
-describe('Test Spawning and Debugging Node with Inspect', () => {
+describe('Test Node Inspect Network Communication', () => {
   let sandbox = null
   let axiosGetStub = null
   let wsStub = null
