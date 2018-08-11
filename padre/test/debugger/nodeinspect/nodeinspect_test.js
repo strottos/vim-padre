@@ -429,11 +429,11 @@ describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
     const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
     nodeDebuggerEmitStub.callThrough()
 
-    nodeWSObj.on.withArgs('padre_error', sinon.match.any).callsArgWith(1, 'test error')
+    nodeWSObj.on.withArgs('padre_log', sinon.match.any).callsArgWith(1, 2, 'test error')
 
     await nodeDebugger.setup()
 
-    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(2)
     chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_log', 2, 'test error'])
   })
 
@@ -443,15 +443,15 @@ describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
     const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
     nodeDebuggerEmitStub.callThrough()
 
-    nodeProcessStubOn.withArgs('padre_error', sinon.match.any).callsArgWith(1, 'test error')
+    nodeProcessStubOn.withArgs('padre_log', sinon.match.any).callsArgWith(1, 2, 'test error')
 
     await nodeDebugger.setup()
 
-    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 2, 'test error'])
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(2)
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_log', 2, 'test error'])
   })
 
-  it('should throw an error when it can\'t request to node inspect', async () => {
+  it('should report errors when it can\'t request to node inspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
 
     const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
@@ -460,6 +460,6 @@ describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
     await nodeDebugger.setup()
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_error', 2, 'Test Error'])
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_log', 2, 'Test Error'])
   })
 })

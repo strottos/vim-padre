@@ -12,6 +12,7 @@ class NodeInspect extends eventEmitter {
     super()
 
     this.nodeProcess = new nodeProcess.NodeProcess(progName, args)
+    this.nodeWS = new nodeWS.NodeWS(require('ws'))
 
     this._requests = {}
     this._properties = {}
@@ -21,9 +22,7 @@ class NodeInspect extends eventEmitter {
     this._checkStarted = this._checkStarted.bind(this)
   }
 
-  async setup () {
-    this.nodeWS = new nodeWS.NodeWS(require('ws'))
-
+  setup () {
     const that = this
 
     this.nodeWS.on('open', async () => {
@@ -34,12 +33,12 @@ class NodeInspect extends eventEmitter {
 
     this.nodeWS.on('data', this._handleDataWrite)
 
-    this.nodeWS.on('padre_error', (error) => {
-      that.emit('padre_error', error)
+    this.nodeWS.on('padre_log', (level, error) => {
+      that.emit('padre_log', level, error)
     })
 
-    this.nodeProcess.on('padre_error', (error) => {
-      that.emit('padre_error', error)
+    this.nodeProcess.on('padre_log', (level, error) => {
+      that.emit('padre_log', level, error)
     })
 
     this.emit('started')

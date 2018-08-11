@@ -9,6 +9,10 @@ class Debugger {
   async handle () {
     const that = this
 
+    that.debugServer.on('padre_log', function (level, str) {
+      that.connection.write(`["call","padre#debugger#Log",[${level},"${str}"]]`)
+    })
+
     this.debugServer.on('started', () => {
       that.connection.write(`["call","padre#debugger#SignalPADREStarted",[]]`)
 
@@ -22,10 +26,6 @@ class Debugger {
 
       that.debugServer.on('process_position', function (lineNum, fileName) {
         that.connection.write(`["call","padre#debugger#JumpToPosition",[${lineNum},"${fileName}"]]`)
-      })
-
-      that.debugServer.on('padre_log', function (level, string) {
-        that.connection.write(`["call","padre#debugger#Log",[${level},"${string}"]]`)
       })
 
       // TODO: Socket termination
