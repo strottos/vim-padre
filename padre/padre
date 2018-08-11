@@ -9,6 +9,7 @@ const yargs = require('yargs')
 const Debugger = require('./src/debugger/debugger').Debugger
 const LLDB = require('./src/debugger/lldb/lldb').LLDB
 const NodeInspect = require('./src/debugger/nodeinspect/nodeinspect').NodeInspect
+const JavaDebugger = require('./src/debugger/java/java').JavaDebugger
 
 const argv = yargs.options({
   'p': {
@@ -26,7 +27,7 @@ const argv = yargs.options({
     'alias': 'debugger',
     'describe': 'specify debugger to use',
     'default': 'lldb',
-    'choices': ['lldb', 'node'],
+    'choices': ['lldb', 'node', 'java'],
     'type': 'string'
   }
 }).usage(`Usage: $0 [options] -- progname [args]
@@ -52,6 +53,9 @@ const getDebugServer = (type) => {
     break
   case 'node':
     DebugServerClass = NodeInspect
+    break
+  case 'java':
+    DebugServerClass = JavaDebugger
     break
   }
 
