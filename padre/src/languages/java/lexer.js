@@ -1,5 +1,7 @@
 'use strict'
 
+const _ = require('lodash')
+
 const JAVA_KEYWORDS = [
   'abstract', 'continue', 'for', 'new', 'switch',
   'assert', 'default', 'if', 'package', 'synchronized',
@@ -57,7 +59,7 @@ const JAVA_OPERATORS = [
 //   let currentPos = 0
 //
 //   while (currentPos < data.length) {
-//     const lineTerminator = _lineTerminator(data.slice(currentPos))
+//     const lineTerminator = _isLineTerminator(data.slice(currentPos))
 //     if (lineTerminator) {
 //       ret.push(data.slice(pos, currentPos))
 //       currentPos += lineTerminator
@@ -70,10 +72,16 @@ const JAVA_OPERATORS = [
 //   return ret
 // }
 
-const tokenize = (data) => {
+const getTokens = (data) => {
+  const tokensWithLines = getTokensWithLines(data)
+  return tokensWithLines.map(x => x.token)
+}
+
+const getTokensWithLines = (data) => {
   let tokens = []
 
   let pos = _getSizeOfSkip(data)
+  let lineNum = _getNumberOfLineTerminators(data.slice(0, pos)) + 1
 
   while (pos < data.length) {
     let ret = _getNextToken(data.slice(pos))
@@ -85,11 +93,16 @@ const tokenize = (data) => {
       throw new Error(`Can't understand Java at position ${pos}`)
     }
 
-    tokens.push(token.toString('utf-8'))
+    tokens.push({
+      'token': token.toString('utf-8'),
+      'lineNum': lineNum
+    })
     pos += size
 
     // Skip any whitespace or comments to get to next token
-    pos += _getSizeOfSkip(data.slice(pos))
+    const skipSize = _getSizeOfSkip(data.slice(pos))
+    lineNum += _getNumberOfLineTerminators(data.slice(pos, pos + skipSize))
+    pos += skipSize
   }
 
   return tokens
@@ -171,7 +184,7 @@ const _readByte = (data, pos) => {
 }
 
 const _isWhitespace = (data) => {
-  return [0x09, 0x0c, 0x20].indexOf(_readByte(data)) !== -1 || _lineTerminator(data) > 0
+  return [0x09, 0x0c, 0x20].indexOf(_readByte(data)) !== -1 || _isLineTerminator(data) > 0
 }
 
 const _getWhitespaceSize = (data) => {
@@ -182,7 +195,28 @@ const _getWhitespaceSize = (data) => {
   return pos
 }
 
-const _lineTerminator = (data) => {
+// Get the number of CR, LF or CR/LF sequences
+const _getNumberOfLineTerminators = (data) => {
+  let ret = 0
+  let pos = 0
+
+  while (pos < data.length) {
+    if (_isLineTerminator(data.slice(pos))) {
+      if (_readByte(data, pos) === 0x0d && _readByte(data, pos + 1) === 0x0a) {
+        pos += 2
+      } else {
+        pos += 1
+      }
+      ret += 1
+      continue
+    }
+    pos += 1
+  }
+
+  return ret
+}
+
+const _isLineTerminator = (data) => {
   return [10, 13].indexOf(_readByte(data)) !== -1
 }
 
@@ -192,7 +226,7 @@ const _isEndOfLineComment = (data) => {
 
 const _getEndOfLineCommentSize = (data) => {
   let pos = 0
-  while (!_lineTerminator(data.slice(pos))) {
+  while (!_isLineTerminator(data.slice(pos))) {
     pos += 1
   }
   return pos
@@ -321,7 +355,8 @@ const _isJavaLetter = (data) => {
 }
 
 module.exports = {
-  tokenize,
+  getTokens,
+  getTokensWithLines,
   isIdentifier,
   isKeyword,
   isIntegerLiteral,

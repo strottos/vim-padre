@@ -16,23 +16,29 @@ describe('Test Java Packages', () => {
     sandbox.restore()
   })
 
-  it('should find the correct class name given a Java file with a packge', async () => {
-    const ret = await javaSyntax.getClassAtLine(
-        'test/data/src/com/padre/test/SimpleJavaClass.java', 7)
-    chai.expect(ret).to.equal('com.padre.test.SimpleJavaClass')
+  it('should find the correct class and method name given a Java file with a package', async () => {
+    const ret = await javaSyntax.getPositionDataAtLine(
+        `test/data/java/src/com/padre/test/SimpleJavaClass.java`, 12)
+    chai.expect(ret).to.deep.equal([`com.padre.test.SimpleJavaClass`, `main`])
   })
 
-  it('should find the correct class name given a Java file without a packge', async () => {
-    const ret = await javaSyntax.getClassAtLine(
-        'test/data/src/com/padre/test/SimpleJavaClassNoPkg.java', 7)
-    chai.expect(ret).to.equal('SimpleJavaClassNoPkg')
+  it('should find the correct class and method name given a Java file without a package', async () => {
+    const ret = await javaSyntax.getPositionDataAtLine(
+        `test/data/java/src/com/padre/test/SimpleJavaClassNoPkg.java`, 3)
+    chai.expect(ret).to.deep.equal([`SimpleJavaClassNoPkg`, `main`])
+  })
+
+  it('should find the correct class and method name given a Java file with several classes', async () => {
+    const ret = await javaSyntax.getPositionDataAtLine(
+        `test/data/java/src/com/padre/test/JavaMultipleClasses.java`, 12)
+    chai.expect(ret).to.deep.equal([`com.padre.test.JavaTestClass1`, `method1`])
   })
 
   it('should throw an error if a Java file doesn\'t exist', async () => {
     let err = null
 
     try {
-      await javaSyntax.getClassAtLine('file does not exist', 7)
+      await javaSyntax.getPositionDataAtLine('file does not exist', 7)
     } catch (error) {
       err = error
     }

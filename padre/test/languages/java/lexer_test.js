@@ -21,7 +21,7 @@ const JAVA_KEYWORDS = [
 describe('Test Java Lexer Grammar', () => {
   //  TODO:
 //  it('should transform any unicode characters appropriately', () => {
-//    const data = fs.readFileSync('test/data/src/com/padre/test/UTF16Test.java')
+//    const data = fs.readFileSync('test/data/java/src/com/padre/test/UTF16Test.java')
 //    const ret = javaLexer.transformUnicodeCharacters(data)
 //    console.log(ret.toString('utf-8'))
 //    chai.expect(ret.slice(140, 154)).to.equal(Buffer.from([
@@ -35,7 +35,7 @@ describe('Test Java Lexer Grammar', () => {
     const data = Buffer.from([0x01])
 
     try {
-      javaLexer.tokenize(data)
+      javaLexer.getTokens(data)
     } catch (error) {
       err = error
     }
@@ -45,7 +45,7 @@ describe('Test Java Lexer Grammar', () => {
 
   it('should transform lines into id with correct whitespace and different lines separating', () => {
     const data = Buffer.from(`test1 test2\ntest3\ttest4\ntest5\ftest6`)
-    const ret = javaLexer.tokenize(data)
+    const ret = javaLexer.getTokens(data)
     chai.expect(ret.length).to.equal(6)
     chai.expect(ret).to.deep.equal([
       `test1`, `test2`, `test3`, `test4`, `test5`, `test6`,
@@ -55,7 +55,7 @@ describe('Test Java Lexer Grammar', () => {
   it('should tokenize a string with comments in correctly', () => {
     const data = Buffer.from(`test1 // test comment /* testing\ntest2` +
         `/* testing //\rcomment */test3\r\n\r\ntest4\r\r\n`)
-    const ret = javaLexer.tokenize(data)
+    const ret = javaLexer.getTokens(data)
     chai.expect(ret).to.deep.equal([
       `test1`, `test2`, `test3`, `test4`,
     ])
@@ -66,7 +66,7 @@ describe('Test Java Lexer Grammar', () => {
         `0l 0777L 0x100000000L 2_147_483_648L 0xC0B0L 1e1f 2.f .3f 0f 3.14f\n` +
         `6.022137e+23f 1e1 2. .3 0.0 3.14 1e-9d 1e137`)
 
-    const ret = javaLexer.tokenize(data)
+    const ret = javaLexer.getTokens(data)
     chai.expect(ret).to.deep.equal([
       `test`, `0`, `2`, `0372`, `0xDada_Cafe`, `1996`, `0x00_FF__00_FF`, `0l`,
       `0777L`, `0x100000000L`, `2_147_483_648L`, `0xC0B0L`, `1e1f`, `2.f`, `.3f`, `0f`,
@@ -77,7 +77,7 @@ describe('Test Java Lexer Grammar', () => {
   it('should tokenize a string correctly with character literals', () => {
     const data = Buffer.from(`test 'c' '\\t' '\\n'`)
 
-    const ret = javaLexer.tokenize(data)
+    const ret = javaLexer.getTokens(data)
     chai.expect(ret).to.deep.equal([
       `test`, `'c'`, `'\\t'`, `'\\n'`,
     ])
@@ -88,7 +88,7 @@ describe('Test Java Lexer Grammar', () => {
     const data = Buffer.from(`'test'`)
 
     try {
-      javaLexer.tokenize(data)
+      javaLexer.getTokens(data)
     } catch (error) {
       err = error
     }
@@ -99,7 +99,7 @@ describe('Test Java Lexer Grammar', () => {
   it('should tokenize a string correctly with string literals', () => {
     const data = Buffer.from(`test "testing\\n" "testing \\" test"`)
 
-    const ret = javaLexer.tokenize(data)
+    const ret = javaLexer.getTokens(data)
     chai.expect(ret).to.deep.equal([
       `test`, `"testing\\n"`, `"testing \\" test"`,
     ])
@@ -110,7 +110,7 @@ describe('Test Java Lexer Grammar', () => {
     const data = Buffer.from(`"test\ntest"`)
 
     try {
-      javaLexer.tokenize(data)
+      javaLexer.getTokens(data)
     } catch (error) {
       err = error
     }
@@ -121,7 +121,7 @@ describe('Test Java Lexer Grammar', () => {
   it('should tokenize a string correctly with separators', () => {
     const data = Buffer.from(`.,;::...`)
 
-    const ret = javaLexer.tokenize(data)
+    const ret = javaLexer.getTokens(data)
     chai.expect(ret).to.deep.equal([
       `.`, `,`, `;`, `::`, `...`,
     ])
@@ -131,9 +131,20 @@ describe('Test Java Lexer Grammar', () => {
   it('should tokenize a string correctly with operators', () => {
     const data = Buffer.from(`== != << >> > ~ ?&=`)
 
-    const ret = javaLexer.tokenize(data)
+    const ret = javaLexer.getTokens(data)
     chai.expect(ret).to.deep.equal([
       `==`, `!=`, `<<`, `>>`, `>`, `~`, `?`, `&=`,
+    ])
+  })
+
+  it('should be possible to get tokens and lines', () => {
+    const data = Buffer.from(`\ntest1\ntest2\rtest3\r\n\r\ntest4\r\r\n`)
+    const ret = javaLexer.getTokensWithLines(data)
+    chai.expect(ret).to.deep.equal([
+      {'token': `test1`, 'lineNum': 2},
+      {'token': `test2`, 'lineNum': 3},
+      {'token': `test3`, 'lineNum': 4},
+      {'token': `test4`, 'lineNum': 6}
     ])
   })
 
