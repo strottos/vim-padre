@@ -92,7 +92,7 @@ describe('Test Spawning Java', () => {
     const javaProcessTestOnStub = sandbox.stub(javaProcessTest, 'on')
     javaProcessTestOnStub.withArgs('started').callsArg(1)
 
-    const sendToDebuggerStub = sandbox.stub(javaProcessTest, 'sendToDebugger')
+    const sendToDebuggerStub = sandbox.stub(javaProcessTest, 'request')
     sendToDebuggerStub.withArgs(1, 7).returns({
       'errorCode': 0,
       'data': Buffer.from([
@@ -330,21 +330,6 @@ describe('Test Java Network Communication', () => {
     ])
   })
 
-  it('should report having an id without reply as a critical error', async () => {
-    const javaDebuggerEmitStub = sandbox.stub(javaProcessTest, 'emit')
-    javaDebuggerEmitStub.callThrough()
-
-    javaProcessTest._handleSocketWrite(Buffer.from([
-      0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x01,
-      0x00, 0x40, 0x64, 0x02, 0x00, 0x00, 0x00, 0x01,
-    ]))
-
-    chai.expect(javaDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(javaDebuggerEmitStub.args[0]).to.deep.equal([
-      'padre_log', 1, `Can't understand data: id 1 but reply false`
-    ])
-  })
-
   it('should report being a reply without an id as a critical error', async () => {
     const javaDebuggerEmitStub = sandbox.stub(javaProcessTest, 'emit')
     javaDebuggerEmitStub.callThrough()
@@ -366,7 +351,7 @@ describe('Test Java Network Communication', () => {
 
     javaProcessTest.write(`Listening for transport dt_socket at address: 8457\n`)
 
-    const sendToDebuggerPromise = javaProcessTest.sendToDebugger(
+    const sendToDebuggerPromise = javaProcessTest.request(
         1, 2, Buffer.from([0x02, 0x03, 0x04, 0x05, 0x06]))
 
     javaProcessTest._handleSocketWrite(Buffer.from([

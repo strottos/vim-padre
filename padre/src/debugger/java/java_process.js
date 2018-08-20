@@ -45,7 +45,7 @@ class JavaProcess extends stream.Transform {
     const that = this
 
     this.on('started', async () => {
-      const ret = await that.sendToDebugger(1, 7)
+      const ret = await that.request(1, 7)
 
       this._idSizes = {
         'fieldIDSize': ret.data.readInt32BE(0),
@@ -55,6 +55,26 @@ class JavaProcess extends stream.Transform {
         'frameIDSize': ret.data.readInt32BE(16),
       }
     })
+  }
+
+  getFieldIDSize () {
+    return this._idSizes.fieldIDSize
+  }
+
+  getMethodIDSize () {
+    return this._idSizes.methodIDSize
+  }
+
+  getObjectIDSize () {
+    return this._idSizes.objectIDSize
+  }
+
+  getReferenceTypeIDSize () {
+    return this._idSizes.referenceTypeIDSize
+  }
+
+  getFrameIDSize () {
+    return this._idSizes.frameIDSize
   }
 
   _transform (chunk, encoding, callback) {
@@ -85,7 +105,7 @@ class JavaProcess extends stream.Transform {
     callback()
   }
 
-  async sendToDebugger (commandSet, command, data) {
+  async request (commandSet, command, data) {
     const id = this._sendToDebugger(commandSet, command, data)
 
     return new Promise((resolve, reject) => {
@@ -99,6 +119,12 @@ class JavaProcess extends stream.Transform {
   }
 
   _sendToDebugger (commandSet, command, data) {
+    console.log('Sending')
+    console.log({
+      'commandSet': commandSet,
+      'command': command,
+      'data': data
+    })
     const id = this._id
     this._id += 1
     let length = 11 + _.get(data, 'length', 0)
@@ -118,12 +144,14 @@ class JavaProcess extends stream.Transform {
   }
 
   _handleSocketWrite (buffer) {
-    if (buffer.toString('utf-8') === 'JDWP-Handshake') {
+    let currentBufferStart = 0
+
+    const match = buffer.toString('utf-8').match(/^JDWP-Handshake/)
+    if (match) {
       this.emit('started')
-      return
+      currentBufferStart += 14
     }
 
-    let currentBufferStart = 0
     while (currentBufferStart < buffer.length) {
       let length = buffer.readInt32BE(currentBufferStart)
       this._handleBuffer(buffer.slice(currentBufferStart, currentBufferStart + length))
@@ -136,7 +164,7 @@ class JavaProcess extends stream.Transform {
     const isReply = !!buffer.readInt8(8)
     const data = buffer.slice(11)
 
-    if (id === 0 && !isReply) {
+    if (!isReply) {
       const commandSet = buffer.readInt8(9)
       const command = buffer.readInt8(10)
 
@@ -150,6 +178,12 @@ class JavaProcess extends stream.Transform {
       this.emit('request', commandSet, command, data)
     } else if (id !== 0 && isReply) {
       const errorCode = buffer.readInt16BE(9)
+
+      console.log(`Response ${id}:`)
+      console.log({
+        errorCode: errorCode,
+        data: data,
+      })
 
       this.emit(`response_${id}`, errorCode, data)
     } else {
