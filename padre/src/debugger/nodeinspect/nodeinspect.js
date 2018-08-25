@@ -4,8 +4,8 @@ const eventEmitter = require('events')
 const fs = require('fs')
 const _ = require('lodash')
 
-const nodeProcess = require('./node_process')
-const nodeWS = require('./node_ws')
+const nodeProcess = require('./process')
+const nodeWS = require('./ws')
 
 class NodeInspect extends eventEmitter {
   constructor (progName, args, options) {
@@ -17,12 +17,32 @@ class NodeInspect extends eventEmitter {
     this._requests = {}
     this._properties = {}
     this._scripts = []
+    this._pendingBreakpoints = []
 
-    this._handleDataWrite = this._handleDataWrite.bind(this)
+    this._handleWSDataWrite = this._handleWSDataWrite.bind(this)
+    this._breakpointSet = this._breakpointSet.bind(this)
+    this._scriptParsed = this._scriptParsed.bind(this)
+    this._paused = this._paused.bind(this)
     this._checkStarted = this._checkStarted.bind(this)
   }
 
   setup () {
+    const that = this
+
+    this.nodeWS.on('padre_error', (error, stack) => {
+      that.emit('padre_log', 2, error)
+      that.emit('padre_log', 5, stack)
+    })
+
+    this.nodeProcess.on('padre_error', (error, stack) => {
+      that.emit('padre_log', 2, error)
+      that.emit('padre_log', 5, stack)
+    })
+
+    this.emit('started')
+  }
+
+  async run () {
     const that = this
 
     this.nodeWS.on('open', async () => {
@@ -31,30 +51,22 @@ class NodeInspect extends eventEmitter {
       that.nodeWS.sendToDebugger({'method': 'Runtime.runIfWaitingForDebugger'})
     })
 
-    this.nodeWS.on('data', this._handleDataWrite)
+    this.nodeWS.on('data', this._handleWSDataWrite)
 
-    this.nodeWS.on('padre_log', (level, error) => {
-      that.emit('padre_log', level, error)
-    })
-
-    this.nodeProcess.on('padre_log', (level, error) => {
-      that.emit('padre_log', level, error)
-    })
-
-    this.emit('started')
-  }
-
-  async run () {
     this.nodeProcess.run()
 
-    const that = this
-
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Can\'t start node process'))
+      }, 2000)
+
       this.nodeProcess.on('nodestarted', async () => {
+        clearTimeout(timeout)
+
         await that.nodeWS.setup()
 
         resolve({
-          'pid': 0
+          'pid': 0 // TODO
         })
       })
     })
@@ -62,34 +74,35 @@ class NodeInspect extends eventEmitter {
 
   async breakpointFileAndLine (file, lineNum) {
     let fileFullPath
-    try {
-      fileFullPath = fs.realpathSync(file)
-    } catch (error) {
-      console.log(error)
-      return
-    }
-    console.log('NodeInspect Input: Breakpoint')
-
-    console.log('Scripts')
-    console.log(this._scripts)
+    fileFullPath = fs.realpathSync(file)
 
     const scriptId = _.get(this._scripts.filter((x) => {
       let xFullPath
       try {
         xFullPath = fs.realpathSync(x.location)
       } catch (error) {
-        console.log(error)
         return false
       }
       return xFullPath === fileFullPath
     }), '0.id')
+
+    if (!scriptId) {
+      this._pendingBreakpoints.push({
+        'fileName': fileFullPath,
+        'lineNum': lineNum,
+      })
+
+      return {
+        'status': 'PENDING'
+      }
+    }
 
     this.nodeWS.sendToDebugger({
       'method': 'Debugger.setBreakpoint',
       'params': {
         'location': {
           'scriptId': scriptId,
-          'lineNumber': lineNum,
+          'lineNumber': lineNum - 1,
         },
       },
     })
@@ -97,11 +110,15 @@ class NodeInspect extends eventEmitter {
     const that = this
 
     return new Promise((resolve, reject) => {
-      that.on('breakpoint', (breakpointId, fileName, lineNum) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Can\'t set breakpoint'))
+      }, 2000)
+
+      that.on('breakpoint_set', (fileName, lineNum) => {
+        clearTimeout(timeout)
+
         resolve({
-          'breakpointId': breakpointId,
-          'file': fileName,
-          'line': lineNum,
+          'status': 'OK'
         })
       })
     })
@@ -116,7 +133,13 @@ class NodeInspect extends eventEmitter {
 
     const that = this
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Can\'t set breakpoint'))
+      }, 2000)
+
       that.on('stepIn', () => {
+        clearTimeout(timeout)
+
         resolve({})
       })
     })
@@ -131,7 +154,13 @@ class NodeInspect extends eventEmitter {
 
     const that = this
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Can\'t set breakpoint'))
+      }, 2000)
+
       that.on('stepOver', () => {
+        clearTimeout(timeout)
+
         resolve({})
       })
     })
@@ -146,7 +175,13 @@ class NodeInspect extends eventEmitter {
 
     const that = this
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Can\'t set breakpoint'))
+      }, 2000)
+
       that.on('continue', () => {
+        clearTimeout(timeout)
+
         resolve({})
       })
     })
@@ -176,11 +211,9 @@ class NodeInspect extends eventEmitter {
     })
   }
 
-  _handleDataWrite (data) {
+  _handleWSDataWrite (data) {
     console.log('Socket Data')
     console.log(data)
-
-    let fileName = ''
 
     switch (data.method) {
     case 'Runtime.enable':
@@ -188,51 +221,88 @@ class NodeInspect extends eventEmitter {
       this._properties[data.method] = _.isObject(data.result) && _.isEmpty(data.result)
       this._checkStarted()
       break
+
     case 'Debugger.enable':
       this._properties['Debugger.enable'] = true
       this._properties['Debugger.id'] = data.result.debuggerId
       this._checkStarted()
       break
-    case 'Debugger.setBreakpoint':
-      fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
-        return x.id === data.result.actualLocation.scriptId
-      }), '0.location'))
 
-      this.emit('breakpoint', data.result.breakpointId,
-          fileName, data.result.actualLocation.lineNumber)
+    case 'Debugger.setBreakpoint':
+      this._breakpointSet(data)
       break
+
     case 'Debugger.stepInto':
       this.emit('stepIn')
       break
+
     case 'Debugger.stepOver':
       this.emit('stepOver')
       break
+
     case 'Debugger.resume':
       this.emit('continue')
       break
+
     case 'Debugger.evaluateOnCallFrame':
       this.emit('printVariable', data.result.result.type,
           data.request.params.expression, data.result.result.value)
       break
-    case 'Debugger.scriptParsed':
-      this._scripts.push({
-        'id': data.params.scriptId,
-        'location': data.params.url,
-      })
-      break
-    case 'Debugger.paused':
-      if (_.isEmpty(data.params.callFrames[0].url)) {
-        fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
-          return x.id === data.result.actualLocation.scriptId
-        }), '0.location'))
-      } else {
-        fileName = data.params.callFrames[0].url
-      }
 
-      this.emit('process_position',
-          data.params.callFrames[0].location.lineNumber + 1, fileName)
+    case 'Debugger.scriptParsed':
+      this._scriptParsed(data)
+      break
+
+    case 'Debugger.paused':
+      this._paused(data)
       break
     }
+  }
+
+  _scriptParsed (data) {
+    const script = {
+      'id': data.params.scriptId,
+      'location': data.params.url,
+    }
+
+    this._scripts.push(script)
+
+    const breakpoints = this._pendingBreakpoints.filter(x => x.fileName === script.location)
+
+    for (let breakpoint of breakpoints) {
+      this.nodeWS.sendToDebugger({
+        'method': 'Debugger.setBreakpoint',
+        'params': {
+          'location': {
+            'scriptId': script.id,
+            'lineNumber': breakpoint.lineNum - 1,
+          },
+        },
+      })
+    }
+  }
+
+  _breakpointSet (data) {
+    let fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
+      return x.id === data.result.actualLocation.scriptId
+    }), '0.location'))
+
+    this.emit('breakpoint_set', fileName, data.result.actualLocation.lineNumber + 1)
+  }
+
+  _paused (data) {
+    let fileName = null
+
+    if (_.isEmpty(data.params.callFrames[0].url)) {
+      fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
+        return x.id === data.result.actualLocation.scriptId
+      }), '0.location'))
+    } else {
+      fileName = data.params.callFrames[0].url
+    }
+
+    this.emit('process_position',
+        fileName, data.params.callFrames[0].location.lineNumber + 1)
   }
 
   _checkStarted () {

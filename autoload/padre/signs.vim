@@ -46,7 +46,7 @@ function! s:match_highlight(highlight, pattern) abort
 endfunction
 
 function! padre#signs#ToggleBreakpoint()
-  let l:file = expand('%:p')
+  let l:file = expand('%')
   let l:line = getpos('.')[1]
 
   let l:breakpointId = s:LineHasBreakpoint(l:file, l:line)

@@ -3,46 +3,40 @@
 const chai = require('chai')
 const sinon = require('sinon')
 
+const events = require('events')
 const fs = require('fs')
 
 const nodeinspect = require.main.require('src/debugger/nodeinspect/nodeinspect')
-const nodeProcess = require.main.require('src/debugger/nodeinspect/node_process')
-const nodeWS = require.main.require('src/debugger/nodeinspect/node_ws')
+const nodeProcess = require.main.require('src/debugger/nodeinspect/process')
+const nodeWS = require.main.require('src/debugger/nodeinspect/ws')
 
 describe('Test Spawning and Debugging Node with Inspect', () => {
-  let sandbox = null
-  let nodeWSObj = null
-  let nodeProcessStubRun = null
-
   beforeEach(() => {
-    sandbox = sinon.createSandbox()
+    this.sandbox = sinon.createSandbox()
 
-    const nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
-    const nodeProcessStubOn = sandbox.stub()
-    nodeProcessStubRun = sandbox.stub()
-    nodeProcessStub.withArgs().returns({
-      run: nodeProcessStubRun,
-      on: nodeProcessStubOn,
-    })
-    nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)
+    this.clock = sinon.useFakeTimers()
 
-    const nodeWSStub = sandbox.stub(nodeWS, 'NodeWS')
-    nodeWSObj = {
-      setup: sandbox.stub(),
-      on: sandbox.stub(),
-      sendToDebugger: sandbox.stub()
-    }
-    nodeWSStub.withArgs(sinon.match.any).returns(nodeWSObj)
+    const nodeProcessStub = this.sandbox.stub(nodeProcess, 'NodeProcess')
+    this.nodeProcessReturns = new events.EventEmitter()
+    this.nodeProcessReturns.run = this.sandbox.stub()
+    nodeProcessStub.returns(this.nodeProcessReturns)
+
+    const nodeWSStub = this.sandbox.stub(nodeWS, 'NodeWS')
+    this.nodeWSObjReturns = new events.EventEmitter()
+    this.nodeWSObjReturns.setup = this.sandbox.stub()
+    this.nodeWSObjReturns.sendToDebugger = this.sandbox.stub()
+    nodeWSStub.returns(this.nodeWSObjReturns)
   })
 
   afterEach(() => {
-    sandbox.restore()
+    this.sandbox.restore()
+    this.clock.restore()
   })
 
-  it('should successfully setup node inspect', async () => {
+  it('should successfully start node inspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
 
-    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
+    const nodeDebuggerEmitStub = this.sandbox.stub(nodeDebugger, 'emit')
     nodeDebuggerEmitStub.callThrough()
 
     await nodeDebugger.setup()
@@ -51,10 +45,129 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['started'])
   })
 
+  it('should report errors reported by NodeWS', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+    const nodeDebuggerEmitStub = this.sandbox.stub(nodeDebugger, 'emit')
+
+    await nodeDebugger.setup()
+
+    this.nodeWSObjReturns.emit('padre_error', 'error', 'stack')
+
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(3)
+    chai.expect(nodeDebuggerEmitStub.args[1]).to.deep.equal(['padre_log', 2, 'error'])
+    chai.expect(nodeDebuggerEmitStub.args[2]).to.deep.equal(['padre_log', 5, 'stack'])
+  })
+
+  it('should report errors reported or NodeProcess', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+    const nodeDebuggerEmitStub = this.sandbox.stub(nodeDebugger, 'emit')
+
+    await nodeDebugger.setup()
+
+    this.nodeProcessReturns.emit('padre_error', 'error', 'stack')
+
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(3)
+    chai.expect(nodeDebuggerEmitStub.args[1]).to.deep.equal(['padre_log', 2, 'error'])
+    chai.expect(nodeDebuggerEmitStub.args[2]).to.deep.equal(['padre_log', 5, 'stack'])
+  })
+
+  it('should be able to launch a process successfully', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const nodeDebuggerEmitStub = this.sandbox.stub(nodeDebugger, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
+    const runPromise = nodeDebugger.run()
+
+    chai.expect(this.nodeProcessReturns.run.callCount).to.equal(1)
+
+    this.nodeProcessReturns.emit('nodestarted')
+
+    const ret = await runPromise
+
+    chai.expect(ret).to.deep.equal({'pid': 0})
+
+    chai.expect(this.nodeWSObjReturns.setup.callCount).to.equal(1)
+    chai.expect(this.nodeWSObjReturns.setup.args[0]).to.deep.equal([])
+
+    this.nodeWSObjReturns.emit('open')
+
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(3)
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[0]).to.deep.equal([{'method': 'Runtime.enable'}])
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[1]).to.deep.equal([{'method': 'Debugger.enable'}])
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[2]).to.deep.equal([{'method': 'Runtime.runIfWaitingForDebugger'}])
+  })
+
+  it('should be able to report a launched process', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Runtime.executionContextCreated',
+      'params': {
+        'context': {
+          'id': 1,
+          'origin': '',
+          'name': 'node[12345]',
+          'auxData': {
+            'isDefault': true
+          }
+        }
+      }
+    })
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Runtime.enable',
+      'result': {}
+    })
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Debugger.enable',
+      'result': {
+        'debuggerId': '(ABCD1234ABCD1234ABCD1234ABCD1234)'
+      }
+    })
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Runtime.runIfWaitingForDebugger',
+      'result': {}
+    })
+
+    chai.expect(nodeDebugger._properties['Runtime.enable']).to.be.true
+    chai.expect(nodeDebugger._properties['Debugger.enable']).to.be.true
+    chai.expect(nodeDebugger._properties['Debugger.id']).to.equal('(ABCD1234ABCD1234ABCD1234ABCD1234)')
+    chai.expect(nodeDebugger._properties['Runtime.runIfWaitingForDebugger']).to.be.true
+  })
+
+  it('should report a timeout launching a process', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const runPromise = nodeDebugger.run()
+
+    this.clock.tick(2010)
+
+    let errorFound = null
+
+    try {
+      await runPromise
+    } catch (error) {
+      errorFound = error
+    }
+
+    chai.expect(errorFound).to.be.an('error')
+  })
+
+  it('should report if the process exits', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Runtime.executionContextDestroyed',
+      'params': {
+        'executionContextId': 1
+      }
+    })
+  })
+
   it('should record the scripts reported by nodeinspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
 
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '11',
@@ -75,7 +188,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
         'length': 10214
       }
     })
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '12',
@@ -109,77 +222,14 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     ])
   })
 
-  it('should be able to launch a process and report it', async () => {
-    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-
-    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
-    nodeDebuggerEmitStub.callThrough()
-
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-
-    await nodeDebugger.setup()
-    const runPromise = nodeDebugger.run()
-
-    chai.expect(nodeProcessStubRun.callCount).to.equal(1)
-
-    const ret = await runPromise
-
-    chai.expect(ret).to.deep.equal({'pid': 0})
-
-    chai.expect(nodeWSObj.setup.callCount).to.equal(1)
-    chai.expect(nodeWSObj.setup.args[0]).to.deep.equal([])
-
-    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(3)
-    chai.expect(nodeWSObj.sendToDebugger.args[0]).to.deep.equal([{'method': 'Runtime.enable'}])
-    chai.expect(nodeWSObj.sendToDebugger.args[1]).to.deep.equal([{'method': 'Debugger.enable'}])
-    chai.expect(nodeWSObj.sendToDebugger.args[2]).to.deep.equal([{'method': 'Runtime.runIfWaitingForDebugger'}])
-
-    nodeDebugger._handleDataWrite({
-      'method': 'Runtime.executionContextCreated',
-      'params': {
-        'context': {
-          'id': 1,
-          'origin': '',
-          'name': 'node[12345]',
-          'auxData': {
-            'isDefault': true
-          }
-        }
-      }
-    })
-    nodeDebugger._handleDataWrite({
-      'method': 'Runtime.enable',
-      'result': {}
-    })
-    nodeDebugger._handleDataWrite({
-      'method': 'Debugger.enable',
-      'result': {
-        'debuggerId': '(ABCD1234ABCD1234ABCD1234ABCD1234)'
-      }
-    })
-    nodeDebugger._handleDataWrite({
-      'method': 'Runtime.runIfWaitingForDebugger',
-      'result': {}
-    })
-
-    chai.expect(nodeDebugger._properties['Runtime.enable']).to.be.true
-    chai.expect(nodeDebugger._properties['Debugger.enable']).to.be.true
-    chai.expect(nodeDebugger._properties['Debugger.id']).to.equal('(ABCD1234ABCD1234ABCD1234ABCD1234)')
-    chai.expect(nodeDebugger._properties['Runtime.runIfWaitingForDebugger']).to.be.true
-  })
-
   it('should allow the debugger to set a breakpoint in nodeinspect for an existing script', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-    await nodeDebugger.setup()
 
-    nodeWSObj.sendToDebugger.resetHistory()
-
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '67',
-        'url': `${process.cwd()}/index.js`,
+        'url': `/home/me/padre/index.js`,
         'startLine': 0,
         'startColumn': 0,
         'endLine': 304,
@@ -197,22 +247,22 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       }
     })
 
-    sandbox.stub(fs, 'realpathSync').returns(`${process.cwd()}/index.js`)
+    this.sandbox.stub(fs, 'realpathSync').returns(`/home/me/padre/index.js`)
 
     const breakpointPromise = nodeDebugger.breakpointFileAndLine('index.js', 20)
 
-    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(1)
-    chai.expect(nodeWSObj.sendToDebugger.args[0][0]).to.deep.equal({
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(1)
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[0][0]).to.deep.equal({
       'method': 'Debugger.setBreakpoint',
       'params': {
         'location': {
           'scriptId': '67',
-          'lineNumber': 20,
+          'lineNumber': 19,
         },
       }
     })
 
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.setBreakpoint',
       'result': {
         'breakpointId': '4:20:0:67',
@@ -227,33 +277,154 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     const ret = await breakpointPromise
 
     chai.expect(ret).to.deep.equal({
-      'breakpointId': '4:20:0:67',
-      'line': 31,
-      'file': `${process.cwd()}/index.js`,
+      'status': 'OK'
     })
   })
 
-  // TODO: May need to add support at the debugger level
   it('should allow the debugger to set a pending breakpoint in nodeinspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    this.sandbox.stub(fs, 'realpathSync').returns(`/home/me/padre/index.js`)
+
+    const ret = await nodeDebugger.breakpointFileAndLine('index.js', 20)
+
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(0)
+    chai.expect(ret).to.deep.equal({
+      'status': 'PENDING'
+    })
+
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Debugger.scriptParsed',
+      'params': {
+        'scriptId': '67',
+        'url': `/home/me/padre/index.js`,
+        'startLine': 0,
+        'startColumn': 0,
+        'endLine': 304,
+        'endColumn': 0,
+        'executionContextId': 1,
+        'hash': '0aec6b749f65bb445e6145d4816e12e006c7b3dd',
+        'executionContextAuxData': {
+          'isDefault': true
+        },
+        'isLiveEdit': false,
+        'sourceMapURL': '',
+        'hasSourceURL': false,
+        'isModule': false,
+        'length': 10214
+      }
+    })
+
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(1)
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[0][0]).to.deep.equal({
+      'method': 'Debugger.setBreakpoint',
+      'params': {
+        'location': {
+          'scriptId': '67',
+          'lineNumber': 19,
+        },
+      }
+    })
+  })
+
+  it('should report setting a breakpoint', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const nodeDebuggerEmitStub = this.sandbox.stub(nodeDebugger, 'emit')
+    nodeDebuggerEmitStub.callThrough()
+
     nodeDebugger.setup()
+
+    this.sandbox.stub(fs, 'realpathSync').returns(`/home/me/padre/index.js`)
+
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Debugger.setBreakpoint',
+      'result': {
+        'breakpointId': '4:20:0:67',
+        'actualLocation': {
+          'scriptId': '67',
+          'lineNumber': 31,
+          'columnNumber': 3
+        }
+      }
+    })
+
+    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(2)
+    chai.expect(nodeDebuggerEmitStub.args[1]).to.deep.equal([
+      'breakpoint_set', '/home/me/padre/index.js', 32
+    ])
+  })
+
+  it('should report an error setting a breakpoint when no such file exists', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    this.sandbox.stub(fs, 'realpathSync').throws(
+        `ENOENT: no such file or directory, open 'index.js'`)
+
+    let errorFound = null
+
+    try {
+      await nodeDebugger.breakpointFileAndLine('index.js', 20)
+    } catch (error) {
+      errorFound = error
+    }
+
+    chai.expect(errorFound).to.be.an('error')
+  })
+
+  it('should report a timeout when setting a breakpoint', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    this.sandbox.stub(fs, 'realpathSync').returns(`/home/me/padre/index.js`)
+
+    nodeDebugger._handleWSDataWrite({
+      'method': 'Debugger.scriptParsed',
+      'params': {
+        'scriptId': '67',
+        'url': `/home/me/padre/index.js`,
+        'startLine': 0,
+        'startColumn': 0,
+        'endLine': 304,
+        'endColumn': 0,
+        'executionContextId': 1,
+        'hash': '0aec6b749f65bb445e6145d4816e12e006c7b3dd',
+        'executionContextAuxData': {
+          'isDefault': true
+        },
+        'isLiveEdit': false,
+        'sourceMapURL': '',
+        'hasSourceURL': false,
+        'isModule': false,
+        'length': 10214
+      }
+    })
+
+    const breakpointPromise = nodeDebugger.breakpointFileAndLine('index.js', 20)
+
+    this.clock.tick(2010)
+
+    let errorFound = null
+
+    try {
+      await breakpointPromise
+    } catch (error) {
+      errorFound = error
+    }
+
+    chai.expect(errorFound).to.be.an('error')
   })
 
   it('should allow the debugger to step in in nodeinspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-    await nodeDebugger.setup()
-
-    nodeWSObj.sendToDebugger.resetHistory()
 
     const stepInPromise = nodeDebugger.stepIn()
 
-    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(1)
-    chai.expect(nodeWSObj.sendToDebugger.args[0][0]).to.deep.equal({
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(1)
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[0][0]).to.deep.equal({
       'method': 'Debugger.stepInto',
     })
 
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.stepInto',
       'result': {}
     })
@@ -263,21 +434,35 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     chai.expect(ret).to.deep.equal({})
   })
 
+  it('should report a timeout stepping in', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const stepInPromise = nodeDebugger.stepIn()
+
+    this.clock.tick(2010)
+
+    let errorFound = null
+
+    try {
+      await stepInPromise
+    } catch (error) {
+      errorFound = error
+    }
+
+    chai.expect(errorFound).to.be.an('error')
+  })
+
   it('should allow the debugger to step over in nodeinspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-    await nodeDebugger.setup()
-
-    nodeWSObj.sendToDebugger.resetHistory()
 
     const stepOverPromise = nodeDebugger.stepOver()
 
-    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(1)
-    chai.expect(nodeWSObj.sendToDebugger.args[0][0]).to.deep.equal({
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(1)
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[0][0]).to.deep.equal({
       'method': 'Debugger.stepOver',
     })
 
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.stepOver',
       'result': {}
     })
@@ -287,21 +472,35 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     chai.expect(ret).to.deep.equal({})
   })
 
+  it('should report a timeout stepping over', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const stepOverPromise = nodeDebugger.stepOver()
+
+    this.clock.tick(2010)
+
+    let errorFound = null
+
+    try {
+      await stepOverPromise
+    } catch (error) {
+      errorFound = error
+    }
+
+    chai.expect(errorFound).to.be.an('error')
+  })
+
   it('should allow the debugger to continue in nodeinspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-    await nodeDebugger.setup()
-
-    nodeWSObj.sendToDebugger.resetHistory()
 
     const continuePromise = nodeDebugger.continue()
 
-    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(1)
-    chai.expect(nodeWSObj.sendToDebugger.args[0][0]).to.deep.equal({
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(1)
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[0][0]).to.deep.equal({
       'method': 'Debugger.resume',
     })
 
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.resume',
       'result': {}
     })
@@ -311,17 +510,31 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     chai.expect(ret).to.deep.equal({})
   })
 
+  it('should report a timeout continuing', async () => {
+    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
+
+    const continuePromise = nodeDebugger.continue()
+
+    this.clock.tick(2010)
+
+    let errorFound = null
+
+    try {
+      await continuePromise
+    } catch (error) {
+      errorFound = error
+    }
+
+    chai.expect(errorFound).to.be.an('error')
+  })
+
   it('should allow the debugger to print integers in nodeinspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-    await nodeDebugger.setup()
-
-    nodeWSObj.sendToDebugger.resetHistory()
 
     const printVariablePromise = nodeDebugger.printVariable('abc')
 
-    chai.expect(nodeWSObj.sendToDebugger.callCount).to.equal(1)
-    chai.expect(nodeWSObj.sendToDebugger.args[0][0]).to.deep.equal({
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.callCount).to.equal(1)
+    chai.expect(this.nodeWSObjReturns.sendToDebugger.args[0][0]).to.deep.equal({
       'method': 'Debugger.evaluateOnCallFrame',
       'params': {
         'callFrameId': '{"ordinal":0,"injectedScriptId":1}',
@@ -330,7 +543,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       },
     })
 
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.evaluateOnCallFrame',
       'request': {
         'params': {
@@ -359,12 +572,10 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
 
   it('should report the current position when reported by nodeinspect', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-    nodeWSObj.on.withArgs('open', sinon.match.any).callsArg(1)
-    await nodeDebugger.setup()
 
-    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
+    const nodeDebuggerEmitStub = this.sandbox.stub(nodeDebugger, 'emit')
 
-    nodeDebugger._handleDataWrite({
+    nodeDebugger._handleWSDataWrite({
       'method': 'Debugger.paused',
       'params': {
         'callFrames': [
@@ -390,76 +601,6 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     })
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['process_position', 40, '/Users/stevent/code/personal/vim-padre/padre/padre'])
-  })
-})
-
-describe('Test Errors when Spawning and Debugging Node with Inspect', () => {
-  let sandbox = null
-  let nodeWSObj = null
-  let nodeProcessStubOn
-
-  beforeEach(() => {
-    sandbox = sinon.createSandbox()
-
-    const nodeProcessStub = sandbox.stub(nodeProcess, 'NodeProcess')
-    nodeProcessStubOn = sandbox.stub()
-    nodeProcessStub.withArgs().returns({
-      run: sandbox.stub(),
-      on: nodeProcessStubOn,
-    })
-    nodeProcessStubOn.withArgs('nodestarted', sinon.match.any).callsArg(1)
-
-    const nodeWSStub = sandbox.stub(nodeWS, 'NodeWS')
-    nodeWSObj = {
-      setup: sandbox.stub(),
-      on: sandbox.stub(),
-      sendToDebugger: sandbox.stub()
-    }
-    nodeWSStub.withArgs(sinon.match.any).returns(nodeWSObj)
-  })
-
-  afterEach(() => {
-    sandbox.restore()
-  })
-
-  it('should report errors reported by NodeWS or NodeProcess', async () => {
-    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-
-    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
-    nodeDebuggerEmitStub.callThrough()
-
-    nodeWSObj.on.withArgs('padre_log', sinon.match.any).callsArgWith(1, 2, 'test error')
-
-    await nodeDebugger.setup()
-
-    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(2)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_log', 2, 'test error'])
-  })
-
-  it('should report errors reported by NodeWS or NodeProcess', async () => {
-    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-
-    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
-    nodeDebuggerEmitStub.callThrough()
-
-    nodeProcessStubOn.withArgs('padre_log', sinon.match.any).callsArgWith(1, 2, 'test error')
-
-    await nodeDebugger.setup()
-
-    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(2)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_log', 2, 'test error'])
-  })
-
-  it('should report errors when it can\'t request to node inspect', async () => {
-    const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
-
-    const nodeDebuggerEmitStub = sandbox.stub(nodeDebugger, 'emit')
-    nodeDebuggerEmitStub.callThrough()
-
-    await nodeDebugger.setup()
-
-    chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['padre_log', 2, 'Test Error'])
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['process_position', '/Users/stevent/code/personal/vim-padre/padre/padre', 40])
   })
 })

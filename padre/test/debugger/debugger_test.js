@@ -3,41 +3,37 @@
 const chai = require('chai')
 const sinon = require('sinon')
 
+const events = require('events')
+
 const debugServer = require.main.require('src/debugger/debugger')
 
 describe('Test the debugger', () => {
-  let sandbox = null
-  let testDebugServerStub = null
-  let connectionStub = null
-
   beforeEach(() => {
-    sandbox = sinon.createSandbox()
-    testDebugServerStub = {
-      'setup': sandbox.stub(),
-      'on': sandbox.stub(),
-      'run': sandbox.stub(),
-      'breakpointFileAndLine': sandbox.stub(),
-      'stepIn': sandbox.stub(),
-      'stepOut': sandbox.stub(),
-      'stepOver': sandbox.stub(),
-      'continue': sandbox.stub(),
-      'printVariable': sandbox.stub(),
-      'write': sandbox.stub(),
-    }
-    connectionStub = {
-      'on': sandbox.stub(),
-      'write': sandbox.stub(),
-    }
+    this.sandbox = sinon.createSandbox()
+
+    this.testDebugServerStub = new events.EventEmitter()
+    this.testDebugServerStub.setup = this.sandbox.stub()
+    this.testDebugServerStub.run = this.sandbox.stub()
+    this.testDebugServerStub.breakpointFileAndLine = this.sandbox.stub()
+    this.testDebugServerStub.stepIn = this.sandbox.stub()
+    this.testDebugServerStub.stepOut = this.sandbox.stub()
+    this.testDebugServerStub.stepOver = this.sandbox.stub()
+    this.testDebugServerStub.continue = this.sandbox.stub()
+    this.testDebugServerStub.printVariable = this.sandbox.stub()
+    this.testDebugServerStub.write = this.sandbox.stub()
+
+    this.connectionStub = new events.EventEmitter()
+    this.connectionStub.write = this.sandbox.stub()
   })
 
   afterEach(() => {
-    sandbox.restore()
+    this.sandbox.restore()
   })
 
   it('should be able to interpret a simple request', () => {
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    const obj = testDebugger._interpret('[1,"breakpoint line=20 file=main.c"]')
+    const obj = testDebugger._interpret('[1,"breakpoint file=main.c line=20"]')
 
     chai.expect(obj.id).to.equal(1)
     chai.expect(obj.cmd).to.equal('breakpoint')
@@ -45,191 +41,198 @@ describe('Test the debugger', () => {
   })
 
   it('should be able to run the handler', async () => {
-    testDebugServerStub.on.withArgs('started', sinon.match.any).callsArg(1)
-    connectionStub.on.withArgs('data', sinon.match.any)
-        .callsArgWith(1, Buffer.from('[2,"breakpoint line=20 file=main.c"]'))
+    const connectionStubOn = this.sandbox.stub(this.connectionStub, 'on')
+    connectionStubOn.callThrough()
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
-    testDebugger._handleReadData = sinon.stub() // Suppress unhandled promise warning
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+    testDebugger._handleRequest = sinon.stub() // Suppress unhandled promise warning
 
-    await testDebugger.handle()
+    await testDebugger.setup()
 
-    chai.expect(testDebugServerStub.setup.withArgs().callCount).to.equal(1)
+    testDebugger.debugServer.emit('started')
+    testDebugger.connection.emit('data', Buffer.from('[2,"breakpoint file=main.c line=20"]'))
 
-    chai.expect(testDebugServerStub.on.withArgs('started').callCount).to.equal(1)
-    chai.expect(testDebugServerStub.on.withArgs('started').args[0][0]).to.equal('started')
+    chai.expect(this.testDebugServerStub.setup.withArgs().callCount).to.equal(1)
 
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(JSON.parse(connectionStub.write.args[0][0]))
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(JSON.parse(this.connectionStub.write.args[0][0]))
         .to.deep.equal(['call', 'padre#debugger#SignalPADREStarted', []])
 
-    chai.expect(connectionStub.on.callCount).to.equal(1)
-    chai.expect(connectionStub.on.args[0][0]).to.equal('data')
-  })
-
-  it('should allow the user to run a process', async () => {
-    testDebugServerStub.run.resolves({
-      'pid': 12345,
-    })
-
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
-
-    await testDebugger._handleReadData(Buffer.from('[1,"run"]'))
-
-    chai.expect(testDebugServerStub.run.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.run.args[0]).to.deep.equal([])
-
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['[1,"OK pid=12345"]'])
+    chai.expect(connectionStubOn.callCount).to.equal(1)
+    chai.expect(connectionStubOn.args[0][0]).to.equal('data')
   })
 
   it('should respond with the exit code when the process exits', async () => {
-    testDebugServerStub.on
-        .withArgs('started', sinon.match.any).callsArg(1)
-        .withArgs('process_exit', sinon.match.any).callsArgWith(1, '0', '12345')
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    await testDebugger.setup()
 
-    await testDebugger.handle()
+    testDebugger.debugServer.emit('started')
+    testDebugger.debugServer.emit('process_exit', '0', '12345')
 
-    chai.expect(connectionStub.write.callCount).to.equal(2)
-    chai.expect(connectionStub.write.args[1]).to.deep.equal(['["call","padre#debugger#ProcessExited",[0,12345]]'])
+    chai.expect(this.connectionStub.write.callCount).to.equal(2)
+    chai.expect(this.connectionStub.write.args[1]).to.deep.equal(['["call","padre#debugger#ProcessExited",[0,12345]]'])
+  })
+
+  it('should catch an error thrown by the debug server and report it', async () => {
+    this.testDebugServerStub.run.rejects('Test " Error')
+
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger._handleRequest(Buffer.from('[1,"run"]'))
+
+    chai.expect(this.testDebugServerStub.run.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.run.args[0]).to.deep.equal([])
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(2)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test \\" Error"]]'])
+    chai.expect(this.connectionStub.write.args[1].length).to.equal(1)
+    chai.expect(this.connectionStub.write.args[1][0]).to.match(/^\["call","padre#debugger#Log",\[5,.*/)
+  })
+
+  it('should report an error when an error is emitted by the debug server', async () => {
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger.setup()
+
+    testDebugger.debugServer.emit('padre_log', 2, 'Test " Error')
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test \\" Error"]]'])
+  })
+
+  it('should report the position when reported by the debugger', async () => {
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger.setup()
+
+    testDebugger.debugServer.emit('started')
+    testDebugger.debugServer.emit('process_position', 'test.c', '10')
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(2)
+    chai.expect(JSON.parse(this.connectionStub.write.args[1][0])).to.deep.equal(['call', 'padre#debugger#JumpToPosition', ['test.c', 10]])
+  })
+
+  it('should allow the user to run a process', async () => {
+    this.testDebugServerStub.run.resolves({
+      'pid': 12345,
+    })
+
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger._handleRequest(Buffer.from('[1,"run"]'))
+
+    chai.expect(this.testDebugServerStub.run.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.run.args[0]).to.deep.equal([])
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[1,"OK pid=12345"]'])
   })
 
   it('should allow the user to set a breakpoint', async () => {
-    testDebugServerStub.breakpointFileAndLine.resolves({
-      'breakpointId': 1,
-      'file': 'main.c',
-      'line': 20,
+    this.testDebugServerStub.breakpointFileAndLine.resolves({
+      'status': 'OK'
     })
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleReadData(Buffer.from('[2,"breakpoint line=20 file=main.c"]'))
+    await testDebugger._handleRequest(Buffer.from('[2,"breakpoint file=main.c line=20"]'))
 
-    chai.expect(testDebugServerStub.breakpointFileAndLine.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.breakpointFileAndLine.args[0])
+    chai.expect(this.testDebugServerStub.breakpointFileAndLine.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.breakpointFileAndLine.args[0])
         .to.deep.equal(['main.c', 20])
 
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['[2,"OK line=20 file=main.c"]'])
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[2,"OK"]'])
+  })
+
+  it('should report a breakpoint when set', async () => {
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger.setup()
+
+    testDebugger.debugServer.emit('started')
+    testDebugger.debugServer.emit('breakpoint_set', 'test.c', '10')
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(2)
+    chai.expect(JSON.parse(this.connectionStub.write.args[1][0])).to.deep.equal(['call', 'padre#debugger#BreakpointSet', ['test.c', 10]])
   })
 
   it('should allow the user to step in', async () => {
-    testDebugServerStub.stepIn.resolves({})
+    this.testDebugServerStub.stepIn.resolves({})
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleReadData(Buffer.from('[3,"stepIn"]'))
+    await testDebugger._handleRequest(Buffer.from('[3,"stepIn"]'))
 
-    chai.expect(testDebugServerStub.stepIn.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.stepIn.args[0]).to.deep.equal([])
+    chai.expect(this.testDebugServerStub.stepIn.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.stepIn.args[0]).to.deep.equal([])
 
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['[3,"OK"]'])
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[3,"OK"]'])
   })
 
   it('should allow the user to step over', async () => {
-    testDebugServerStub.stepOver.resolves({})
+    this.testDebugServerStub.stepOver.resolves({})
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleReadData(Buffer.from('[4,"stepOver"]'))
+    await testDebugger._handleRequest(Buffer.from('[4,"stepOver"]'))
 
-    chai.expect(testDebugServerStub.stepOver.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.stepOver.args[0]).to.deep.equal([])
+    chai.expect(this.testDebugServerStub.stepOver.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.stepOver.args[0]).to.deep.equal([])
 
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['[4,"OK"]'])
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[4,"OK"]'])
   })
 
   it('should allow the user to continue', async () => {
-    testDebugServerStub.continue.resolves({})
+    this.testDebugServerStub.continue.resolves({})
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleReadData(Buffer.from('[5,"continue"]'))
+    await testDebugger._handleRequest(Buffer.from('[5,"continue"]'))
 
-    chai.expect(testDebugServerStub.continue.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.continue.args[0]).to.deep.equal([])
+    chai.expect(this.testDebugServerStub.continue.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.continue.args[0]).to.deep.equal([])
 
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['[5,"OK"]'])
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal([`[5,"OK"]`])
   })
 
   it('should allow the user to print an integer variable', async () => {
-    testDebugServerStub.printVariable.resolves({
+    this.testDebugServerStub.printVariable.resolves({
       'type': 'int',
       'variable': 'abc',
       'value': 123,
     })
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleReadData(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
 
-    chai.expect(testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
 
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['[6,"OK variable=abc value=123 type=int"]'])
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[6,"OK variable=abc value=123 type=int"]'])
   })
 
   it('should allow the user to print a string variable', async () => {
-    testDebugServerStub.printVariable.resolves({
+    this.testDebugServerStub.printVariable.resolves({
       'type': 'str',
       'variable': 'abc',
       'value': 'test',
     })
 
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleReadData(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
 
-    chai.expect(testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
 
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['[6,"OK variable=abc value=test type=str"]'])
-  })
-
-  it('should report the position when reported by the debugger', async () => {
-    testDebugServerStub.on
-        .withArgs('started', sinon.match.any).callsArg(1)
-        .withArgs('process_position', sinon.match.any).callsArgWith(1, '10', 'test.c')
-
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
-
-    await testDebugger.handle()
-
-    chai.expect(connectionStub.write.callCount).to.equal(2)
-    console.log(connectionStub.write.args[1][0])
-    chai.expect(JSON.parse(connectionStub.write.args[1][0])).to.deep.equal(['call', 'padre#debugger#JumpToPosition', [10, 'test.c']])
-  })
-
-  it('should catch an error thrown by the debug server and report it', async () => {
-    testDebugServerStub.run.rejects('Test Error')
-
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
-
-    await testDebugger._handleReadData(Buffer.from('[1,"run"]'))
-
-    chai.expect(testDebugServerStub.run.callCount).to.equal(1)
-    chai.expect(testDebugServerStub.run.args[0]).to.deep.equal([])
-
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test Error"]]'])
-  })
-
-  it('should report an error when an error is emitted by the debug server', async () => {
-    testDebugServerStub.on
-        .withArgs('padre_log', sinon.match.any).callsArgWith(1, 2, 'Test Error')
-
-    const testDebugger = new debugServer.Debugger(testDebugServerStub, connectionStub)
-
-    await testDebugger.handle()
-
-    chai.expect(connectionStub.write.callCount).to.equal(1)
-    chai.expect(connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test Error"]]'])
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[6,"OK variable=abc value=test type=str"]'])
   })
 })

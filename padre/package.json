@@ -6,6 +6,7 @@
   "dependencies": {
     "axios": "^0.18.0",
     "lodash": "^4.17.10",
+    "node-cint64": "^2.0.0",
     "node-pty": "^0.7.4",
     "ws": "^5.2.0",
     "yargs": "^11.0.0"
@@ -18,7 +19,7 @@
     "eslint-plugin-standard": "^3.1.0",
     "mocha": "^5.1.1",
     "nyc": "^11.7.3",
-    "sinon": "^5.0.3"
+    "sinon": "^6.1.5"
   },
   "scripts": {
     "lint": "eslint .",

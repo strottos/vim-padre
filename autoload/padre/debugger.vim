@@ -113,7 +113,7 @@ function! padre#debugger#Run()
 endfunction
 
 function! s:SetBreakpointInDebugger(line, file)
-  call padre#socket#Send('breakpoint line=' . a:line . ' file=' . a:file, function('padre#debugger#BreakpointCallback'))
+  call padre#socket#Send('breakpoint file=' . a:file . ' line=' . a:line, function('padre#debugger#BreakpointCallback'))
 endfunction
 
 function! padre#debugger#Stop()
@@ -197,14 +197,6 @@ function! padre#debugger#SignalPADREStarted()
   endfor
 endfunction
 
-function! padre#debugger#RunCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
-  if !empty(l:match)
-    let l:msg = 'Process ' . l:match[1] . ' Running'
-    call padre#debugger#Log(4, l:msg)
-  endif
-endfunction
-
 function! padre#debugger#StdoutCallback(jobId, data, args)
   call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
 endfunction
@@ -213,12 +205,26 @@ function! padre#debugger#StderrCallback(jobId, data, args)
   call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
 endfunction
 
-function! padre#debugger#BreakpointCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK line=\(\d\+\) file=\(\S\+\)$')
+function! padre#debugger#RunCallback(channel_id, data)
+  let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
   if !empty(l:match)
-    let l:msg = 'Breakpoint set line=' . l:match[1] . ', file=' . l:match[2]
+    let l:msg = 'Process ' . l:match[1] . ' Running'
     call padre#debugger#Log(4, l:msg)
+  else
+    call padre#debugger#Log(1, 'Cannot understand: ' . a:data)
   endif
+endfunction
+
+function! padre#debugger#BreakpointCallback(channel_id, data)
+  let l:match = matchlist(a:data, '^OK$')
+  if empty(l:match)
+    call padre#debugger#Log(1, 'Cannot understand breakpoint response: ' . a:data)
+  endif
+endfunction
+
+function! padre#debugger#BreakpointSet(fileName, lineNum)
+  let l:msg = 'Breakpoint set file=' a:fileName . ' line=' . a:lineNum
+  call padre#debugger#Log(4, l:msg)
 endfunction
 
 function! padre#debugger#StepInCallback(channel_id, data)
@@ -240,11 +246,16 @@ function! padre#debugger#PrintVariableCallback(channel_id, data)
 endfunction
 
 function! padre#debugger#ContinueCallback(channel_id, data)
-  " TODO: Error Handling?
+  let l:match = matchlist(a:data, '^OK$')
+  if !empty(l:match)
+    call padre#debugger#Log(4, 'Continuing')
+  else
+    call padre#debugger#Log(1, 'Cannot understand breakpoint response: ' . a:data)
+  endif
 endfunction
 
-function! padre#debugger#JumpToPosition(line, file)
-  let l:msg = 'Stopped line=' . a:line . ' file=' . a:file
+function! padre#debugger#JumpToPosition(file, line)
+  let l:msg = 'Stopped file=' . a:file . ' line=' . a:line
   call padre#debugger#Log(4, l:msg)
 
   if a:file[0] == '/'
