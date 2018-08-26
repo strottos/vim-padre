@@ -19,6 +19,8 @@ endfunction
 function! padre#buffer#Create(name, filetype, writeable)
   let l:current_winnr = winnr()
   let l:current_bufnr = bufnr('%')
+  let l:current_tabpagenr = tabpagenr()
+
   tabnew
   execute "silent edit " . a:name
 
@@ -33,6 +35,7 @@ function! padre#buffer#Create(name, filetype, writeable)
 
   quit
 
+  execute l:current_tabpagenr . " tabnext"
   execute l:current_winnr . "wincmd w"
   execute "buffer " . l:current_bufnr
 
@@ -68,6 +71,8 @@ function! padre#buffer#SetOnlyWriteableAtBottom(name)
 endfunction
 
 function! padre#buffer#SetMainPadreKeyBindings(name)
+  let l:current_tabpagenr = tabpagenr()
+
   tabnew
 
   call s:LoadBuffer(a:name)
@@ -80,9 +85,13 @@ function! padre#buffer#SetMainPadreKeyBindings(name)
   nnoremap <silent> <buffer> ZZ :PadreStop<cr>
 
   quit
+
+  execute l:current_tabpagenr . " tabnext"
 endfunction
 
 function! padre#buffer#UnsetPadreKeyBindings(name)
+  let l:current_tabpagenr = tabpagenr()
+
   tabnew
 
   call s:LoadBuffer(a:name)
@@ -95,6 +104,8 @@ function! padre#buffer#UnsetPadreKeyBindings(name)
   nnoremap <silent> <buffer> ZZ ZZ
 
   quit
+
+  execute l:current_tabpagenr . " tabnext"
 endfunction
 
 function! padre#buffer#GetBufNameForBufNum(num)

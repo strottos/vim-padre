@@ -85,7 +85,7 @@ describe('Test the debugger', () => {
     chai.expect(this.testDebugServerStub.run.args[0]).to.deep.equal([])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(2)
-    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test \\" Error"]]'])
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['["call","padre#debugger#Log",[2,"Test \\" Error: "]]'])
     chai.expect(this.connectionStub.write.args[1].length).to.equal(1)
     chai.expect(this.connectionStub.write.args[1][0]).to.match(/^\["call","padre#debugger#Log",\[5,.*/)
   })
@@ -200,9 +200,9 @@ describe('Test the debugger', () => {
     chai.expect(this.connectionStub.write.args[0]).to.deep.equal([`[5,"OK"]`])
   })
 
-  it('should allow the user to print an integer variable', async () => {
+  it('should allow the user to print a numeric variable', async () => {
     this.testDebugServerStub.printVariable.resolves({
-      'type': 'int',
+      'type': 'number',
       'variable': 'abc',
       'value': 123,
     })
@@ -215,14 +215,16 @@ describe('Test the debugger', () => {
     chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(1)
-    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[6,"OK variable=abc value=123 type=int"]'])
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
+      '[6,"OK variable=abc value=123 type=number"]'
+    ])
   })
 
   it('should allow the user to print a string variable', async () => {
     this.testDebugServerStub.printVariable.resolves({
-      'type': 'str',
+      'type': 'string',
       'variable': 'abc',
-      'value': 'test',
+      'value': 'Test " String',
     })
 
     const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
@@ -233,6 +235,93 @@ describe('Test the debugger', () => {
     chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(1)
-    chai.expect(this.connectionStub.write.args[0]).to.deep.equal(['[6,"OK variable=abc value=test type=str"]'])
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
+      '[6,"OK variable=abc value=\'Test \\" String\' type=string"]'
+    ])
+  })
+
+  it('should allow the user to print a JSON object variable', async () => {
+    this.testDebugServerStub.printVariable.resolves({
+      'type': 'JSON',
+      'variable': 'abc',
+      'value': {
+        'test': 'Test " String',
+      }
+    })
+
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+
+    chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
+      '[6,"OK variable=abc value=\'{\\"test\\":\\"Test \\\\\\" String\\"}\' type=JSON"]'
+    ])
+  })
+
+  it('should allow the user to print a variable an null type', async () => {
+    this.testDebugServerStub.printVariable.resolves({
+      'type': 'null',
+      'variable': 'abc',
+      'value': 'undefined'
+    })
+
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+
+    chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
+      '[6,"OK variable=abc value=undefined type=null"]'
+    ])
+  })
+
+  it('should allow the user to print a variable of boolean type', async () => {
+    this.testDebugServerStub.printVariable.resolves({
+      'type': 'boolean',
+      'variable': 'abc',
+      'value': 'true'
+    })
+
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+
+    chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(1)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
+      '[6,"OK variable=abc value=true type=boolean"]'
+    ])
+  })
+
+  it('should report an error if it can\'t understand the return type', async () => {
+    this.testDebugServerStub.printVariable.resolves({
+      'type': 'test',
+      'variable': 'abc',
+      'value': 'abc'
+    })
+
+    const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
+
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+
+    chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+
+    chai.expect(this.connectionStub.write.callCount).to.equal(2)
+    chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
+      '[6,"ERROR"]'
+    ])
+    chai.expect(this.connectionStub.write.args[1]).to.deep.equal([
+      `["call","padre#debugger#Log",[2,"ERROR, can't understand: variable=abc value='\\"abc\\"' type=test"]]`
+    ])
   })
 })

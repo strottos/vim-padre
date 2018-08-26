@@ -23,18 +23,18 @@ class NodeInspect extends eventEmitter {
     this._breakpointSet = this._breakpointSet.bind(this)
     this._scriptParsed = this._scriptParsed.bind(this)
     this._paused = this._paused.bind(this)
-    this._checkStarted = this._checkStarted.bind(this)
+    this._printVariable = this._printVariable.bind(this)
   }
 
   setup () {
     const that = this
 
-    this.nodeWS.on('padre_error', (error, stack) => {
+    this.nodeWS.on('inspect_error', (error, stack) => {
       that.emit('padre_log', 2, error)
       that.emit('padre_log', 5, stack)
     })
 
-    this.nodeProcess.on('padre_error', (error, stack) => {
+    this.nodeProcess.on('inspect_error', (error, stack) => {
       that.emit('padre_log', 2, error)
       that.emit('padre_log', 5, stack)
     })
@@ -55,18 +55,20 @@ class NodeInspect extends eventEmitter {
 
     this.nodeProcess.run()
 
+    this.nodeProcess.on('inspectstarted', async () => {
+      await that.nodeWS.setup()
+    })
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Can\'t start node process'))
       }, 2000)
 
-      this.nodeProcess.on('nodestarted', async () => {
+      that.on('nodestarted', async (pid) => {
         clearTimeout(timeout)
 
-        await that.nodeWS.setup()
-
         resolve({
-          'pid': 0 // TODO
+          'pid': pid
         })
       })
     })
@@ -125,8 +127,6 @@ class NodeInspect extends eventEmitter {
   }
 
   async stepIn () {
-    console.log('NodeInspect Input: Step In')
-
     this.nodeWS.sendToDebugger({
       'method': 'Debugger.stepInto',
     })
@@ -134,7 +134,7 @@ class NodeInspect extends eventEmitter {
     const that = this
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Can\'t set breakpoint'))
+        reject(new Error('Can\'t step in'))
       }, 2000)
 
       that.on('stepIn', () => {
@@ -146,8 +146,6 @@ class NodeInspect extends eventEmitter {
   }
 
   async stepOver () {
-    console.log('NodeInspect Input: Step Over')
-
     this.nodeWS.sendToDebugger({
       'method': 'Debugger.stepOver',
     })
@@ -155,7 +153,7 @@ class NodeInspect extends eventEmitter {
     const that = this
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Can\'t set breakpoint'))
+        reject(new Error('Can\'t step out'))
       }, 2000)
 
       that.on('stepOver', () => {
@@ -167,8 +165,6 @@ class NodeInspect extends eventEmitter {
   }
 
   async continue () {
-    console.log('NodeInspect Input: Continue')
-
     this.nodeWS.sendToDebugger({
       'method': 'Debugger.resume',
     })
@@ -176,7 +172,7 @@ class NodeInspect extends eventEmitter {
     const that = this
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Can\'t set breakpoint'))
+        reject(new Error('Can\'t continue'))
       }, 2000)
 
       that.on('continue', () => {
@@ -188,8 +184,6 @@ class NodeInspect extends eventEmitter {
   }
 
   async printVariable (variable) {
-    console.log('NodeInspect Input: Print Variable')
-
     this.nodeWS.sendToDebugger({
       'method': 'Debugger.evaluateOnCallFrame',
       'params': {
@@ -201,7 +195,13 @@ class NodeInspect extends eventEmitter {
 
     const that = this
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Can\'t print variable'))
+      }, 2000)
+
       that.on('printVariable', (type, variable, value) => {
+        clearTimeout(timeout)
+
         resolve({
           'type': type,
           'variable': variable,
@@ -212,20 +212,23 @@ class NodeInspect extends eventEmitter {
   }
 
   _handleWSDataWrite (data) {
-    console.log('Socket Data')
-    console.log(data)
-
     switch (data.method) {
+    case 'Runtime.executionContextCreated':
+      this._runStarted(data)
+      break
+
     case 'Runtime.enable':
     case 'Runtime.runIfWaitingForDebugger':
       this._properties[data.method] = _.isObject(data.result) && _.isEmpty(data.result)
-      this._checkStarted()
+      break
+
+    case 'Runtime.executionContextDestroyed':
+      this.emit('process_exit', 0, this._pid)
       break
 
     case 'Debugger.enable':
       this._properties['Debugger.enable'] = true
       this._properties['Debugger.id'] = data.result.debuggerId
-      this._checkStarted()
       break
 
     case 'Debugger.setBreakpoint':
@@ -245,8 +248,7 @@ class NodeInspect extends eventEmitter {
       break
 
     case 'Debugger.evaluateOnCallFrame':
-      this.emit('printVariable', data.result.result.type,
-          data.request.params.expression, data.result.result.value)
+      this._printVariable(data)
       break
 
     case 'Debugger.scriptParsed':
@@ -282,8 +284,29 @@ class NodeInspect extends eventEmitter {
     }
   }
 
+  _runStarted (data) {
+    this._pid = 0
+    const match = data.params.context.name.match(/^node\[(\d*)\]$/)
+    if (match) {
+      this._pid = parseInt(match[1])
+    }
+    this.emit('nodestarted', this._pid)
+  }
+
   _breakpointSet (data) {
-    let fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
+    if (data.error) {
+      const fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
+        return x.id === data.request.params.location.scriptId
+      }), '0.location'))
+
+      this.emit('padre_log', 2,
+          `Couldn't set breakpoint at ${fileName}, ` +
+              `line ${data.request.params.location.lineNumber + 1}: ` +
+              `Error ${data.error.code}, ${data.error.message}`)
+      return
+    }
+
+    const fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
       return x.id === data.result.actualLocation.scriptId
     }), '0.location'))
 
@@ -305,13 +328,22 @@ class NodeInspect extends eventEmitter {
         fileName, data.params.callFrames[0].location.lineNumber + 1)
   }
 
-  _checkStarted () {
-    if (this._properties['Debugger.enable'] &&
-        this._properties['Runtime.enable'] &&
-        this._properties['Runtime.runIfWaitingForDebugger'] &&
-        this._properties.started !== true) {
-      this._properties.started = true
+  _printVariable (data) {
+    const expression = data.request.params.expression
+    let type = data.result.result.type
+    let value = data.result.result.value
+    if (type === 'undefined') {
+      value = 'undefined'
+      type = 'null'
+    } else if (type === 'object') {
+      if (data.result.result.subtype === 'null') {
+        value = 'null'
+        type = 'null'
+      } else {
+        type = 'JSON'
+      }
     }
+    this.emit('printVariable', type, expression, value)
   }
 }
 

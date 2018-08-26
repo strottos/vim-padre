@@ -6,32 +6,34 @@ class Debugger {
     this.connection = connection
 
     this._breakpoints = []
+
+    this._writeToPadre = this._writeToPadre.bind(this)
   }
 
   async setup () {
     const that = this
 
     that.debugServer.on('padre_log', (level, str) => {
-      that.connection.write(`["call","padre#debugger#Log",[${level},"${str.replace('"', '\\"')}"]]`)
+      that._writeToPadre(`["call","padre#debugger#Log",[${level},"${str.replace(/"/g, '\\"')}"]]`)
     })
 
     this.debugServer.on('started', () => {
-      that.connection.write(`["call","padre#debugger#SignalPADREStarted",[]]`)
+      that._writeToPadre(`["call","padre#debugger#SignalPADREStarted",[]]`)
 
       that.connection.on('data', async (data) => {
         await that._handleRequest(data)
       })
 
       that.debugServer.on('process_exit', (exitCode, pid) => {
-        that.connection.write(`["call","padre#debugger#ProcessExited",[${exitCode},${pid}]]`)
+        that._writeToPadre(`["call","padre#debugger#ProcessExited",[${exitCode},${pid}]]`)
       })
 
       that.debugServer.on('process_position', (fileName, lineNum) => {
-        that.connection.write(`["call","padre#debugger#JumpToPosition",["${fileName}",${lineNum}]]`)
+        that._writeToPadre(`["call","padre#debugger#JumpToPosition",["${fileName}",${lineNum}]]`)
       })
 
       that.debugServer.on('breakpoint_set', (fileName, lineNum) => {
-        that.connection.write(`["call","padre#debugger#BreakpointSet",["${fileName}",${lineNum}]]`)
+        that._writeToPadre(`["call","padre#debugger#BreakpointSet",["${fileName}",${lineNum}]]`)
       })
 
       // TODO: Socket termination
@@ -44,36 +46,56 @@ class Debugger {
   }
 
   async _handleRequest (data) {
-    console.log('DebugServer Write')
-    console.log(data)
+    console.log("Handling Request")
+    console.log(data.toString('utf-8'))
     try {
       const message = this._interpret(data.toString('utf-8').trim())
       if (message.cmd === 'run') {
         const ret = await this.debugServer.run()
-        this.connection.write(`[${message.id},"OK pid=${ret.pid}"]`)
+        this._writeToPadre(`[${message.id},"OK pid=${ret.pid}"]`)
       } else if (message.cmd === 'breakpoint') {
         if ('file' in message.args && 'line' in message.args) {
           const ret = await this.debugServer.breakpointFileAndLine(message.args.file, parseInt(message.args.line))
-          this.connection.write(`[${message.id},"${ret.status}"]`)
+          this._writeToPadre(`[${message.id},"${ret.status}"]`)
         }
       } else if (message.cmd === 'stepIn') {
         await this.debugServer.stepIn()
-        this.connection.write(`[${message.id},"OK"]`)
+        this._writeToPadre(`[${message.id},"OK"]`)
       } else if (message.cmd === 'stepOver') {
         await this.debugServer.stepOver()
-        this.connection.write(`[${message.id},"OK"]`)
+        this._writeToPadre(`[${message.id},"OK"]`)
       } else if (message.cmd === 'continue') {
         await this.debugServer.continue()
-        this.connection.write(`[${message.id},"OK"]`)
+        this._writeToPadre(`[${message.id},"OK"]`)
       } else if (message.cmd === 'print') {
-        if ('variable' in message.args) {
-          const ret = await this.debugServer.printVariable(message.args.variable)
-          this.connection.write(`[${message.id},"OK variable=${ret.variable} value=${ret.value} type=${ret.type}"]`)
+        const ret = await this.debugServer.printVariable(message.args.variable)
+        if (ret.type === 'number') {
+          this._writeToPadre(`[${message.id},"OK variable=${ret.variable} ` +
+              `value=${ret.value} type=${ret.type}"]`)
+        } else if (ret.type === 'string') {
+          this._writeToPadre(`[${message.id},"OK variable=${ret.variable} ` +
+              `value='${ret.value.replace(/"/g, '\\"')}' type=${ret.type}"]`)
+        } else if (ret.type === 'JSON') {
+          this._writeToPadre(`[${message.id},"OK variable=${ret.variable} ` +
+              `value='${JSON.stringify(ret.value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}' type=${ret.type}"]`)
+        } else if (ret.type === 'null') {
+          this._writeToPadre(`[${message.id},"OK variable=${ret.variable} ` +
+              `value=${ret.value} type=${ret.type}"]`)
+        } else if (ret.type === 'boolean') {
+          this._writeToPadre(`[${message.id},"OK variable=${ret.variable} ` +
+              `value=${ret.value} type=${ret.type}"]`)
+        } else {
+          this._writeToPadre(`[${message.id},"ERROR"]`)
+          this._writeToPadre(`["call","padre#debugger#Log",[2,` +
+              `"ERROR, can\'t understand: variable=${ret.variable} ` +
+              `value='${JSON.stringify(ret.value).replace(/"/g, '\\"')}' type=${ret.type}"]]`)
         }
       }
     } catch (error) {
-      this.connection.write(`["call","padre#debugger#Log",[2,"${error.name.replace('"', '\\"')}"]]`)
-      this.connection.write(`["call","padre#debugger#Log",[5,"${error.stack.replace('"', '\\"')}"]]`)
+      this._writeToPadre(`["call","padre#debugger#Log",[2,` +
+          `"${error.name.replace(/"/g, '\\"')}: ${error.message.replace(/"/g, '\\"')}"]]`)
+      this._writeToPadre(`["call","padre#debugger#Log",[5,` +
+          `"${error.stack.replace(/"/g, '\\"')}"]]`)
     }
   }
 
@@ -90,6 +112,12 @@ class Debugger {
       cmd: text[0],
       args: args,
     }
+  }
+
+  _writeToPadre (data) {
+    console.log('Writing')
+    console.log(data)
+    this.connection.write(data)
   }
 }
 
