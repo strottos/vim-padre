@@ -67,9 +67,6 @@ function! s:ReadSignsOutput(signs, name)
     let l:match = matchlist(l:line, 'Signs for \(\S\+\):$')
     if len(l:match) != 0
       let l:filename = l:match[1]
-      if l:filename[0] != '/'
-        let l:filename = expand('%:p:h') . '/' . l:filename
-      endif
     endif
     let l:match = matchlist(l:line, '^    line=\(\d\+\) * id=\(\d\+\) * name=' . a:name . '$')
     if len(l:match) != 0
