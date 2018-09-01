@@ -13,6 +13,7 @@ let s:DataItems = []
 let s:NumDataWindows = 0
 let s:CurrentFileLoaded = ''
 let s:PresentDirectory = ''
+let s:Debug = 0
 
 function! padre#debugger#Setup()
   " Create buffers for PADRE
@@ -112,10 +113,6 @@ function! padre#debugger#Run()
   call padre#socket#Send('run', function('padre#debugger#RunCallback'))
 endfunction
 
-function! s:SetBreakpointInDebugger(line, file)
-  call padre#socket#Send('breakpoint line=' . a:line . ' file=' . a:file, function('padre#debugger#BreakpointCallback'))
-endfunction
-
 function! padre#debugger#Stop()
   call padre#job#StopAllJobs()
 
@@ -124,6 +121,10 @@ function! padre#debugger#Stop()
   call padre#layout#CloseTabsWithBuffer('PADRE_Main')
 
   let s:Running = 0
+endfunction
+
+function! s:SetBreakpointInDebugger(line, file)
+  call padre#socket#Send('breakpoint file=' . a:file . ' line=' . a:line, function('padre#debugger#BreakpointCallback'))
 endfunction
 
 function! padre#debugger#Breakpoint()
@@ -197,14 +198,6 @@ function! padre#debugger#SignalPADREStarted()
   endfor
 endfunction
 
-function! padre#debugger#RunCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
-  if !empty(l:match)
-    let l:msg = 'Process ' . l:match[1] . ' Running'
-    call padre#debugger#Log(4, l:msg)
-  endif
-endfunction
-
 function! padre#debugger#StdoutCallback(jobId, data, args)
   call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
 endfunction
@@ -213,38 +206,72 @@ function! padre#debugger#StderrCallback(jobId, data, args)
   call padre#buffer#AppendBuffer('PADRE_Stdio', [a:data])
 endfunction
 
-function! padre#debugger#BreakpointCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK line=\(\d\+\) file=\(\S\+\)$')
+function! padre#debugger#RunCallback(channel_id, data)
+  let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
   if !empty(l:match)
-    let l:msg = 'Breakpoint set line=' . l:match[1] . ', file=' . l:match[2]
+    let l:msg = 'Process ' . l:match[1] . ' Running'
     call padre#debugger#Log(4, l:msg)
+  else
+    call padre#debugger#Log(1, 'Cannot understand: ' . a:data)
   endif
 endfunction
 
+function! padre#debugger#BreakpointCallback(channel_id, data)
+  let l:match = matchlist(a:data, '^OK$')
+  if empty(l:match)
+    call padre#debugger#Log(1, 'Cannot understand breakpoint response: ' . a:data)
+  endif
+endfunction
+
+function! padre#debugger#BreakpointSet(fileName, lineNum)
+  let l:msg = 'Breakpoint set file=' . a:fileName . ' line=' . a:lineNum
+  call padre#debugger#Log(4, l:msg)
+endfunction
+
 function! padre#debugger#StepInCallback(channel_id, data)
-  echom a:data
-  " TODO: Error Handling?
+  let l:match = matchlist(a:data, '^OK$')
+  if !empty(l:match)
+    call padre#debugger#Log(4, 'Step In')
+  else
+    call padre#debugger#Log(1, 'Cannot understand step in response: ' . a:data)
+  endif
 endfunction
 
 function! padre#debugger#StepOverCallback(channel_id, data)
-  echom a:data
-  " TODO: Error Handling?
-endfunction
-
-function! padre#debugger#PrintVariableCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK variable=\(\S\+\) value=\(\d\+\) type=\S\+$')
+  let l:match = matchlist(a:data, '^OK$')
   if !empty(l:match)
-    let l:msg = 'Variable ' . l:match[1] . '=' . l:match[2]
-    call padre#debugger#Log(4, l:msg)
+    call padre#debugger#Log(4, 'Step Over')
+  else
+    call padre#debugger#Log(1, 'Cannot understand step over response: ' . a:data)
   endif
 endfunction
 
 function! padre#debugger#ContinueCallback(channel_id, data)
-  " TODO: Error Handling?
+  let l:match = matchlist(a:data, '^OK$')
+  if !empty(l:match)
+    call padre#debugger#Log(4, 'Continuing')
+  else
+    call padre#debugger#Log(1, 'Cannot understand continue response: ' . a:data)
+  endif
 endfunction
 
-function! padre#debugger#JumpToPosition(line, file)
-  let l:msg = 'Stopped line=' . a:line . ' file=' . a:file
+function! padre#debugger#PrintVariableCallback(channel_id, data)
+  let l:match = matchlist(a:data, '^OK variable=\(.*\) value=\(.*\) type=\(.*\)$')
+  if !empty(l:match)
+    if (match[3] == 'JSON')
+      execute "let l:json = system('python -m json.tool', " . l:match[2] . ")"
+      let l:msg = 'Variable ' . l:match[1] . '=' . l:json
+    else
+      let l:msg = 'Variable ' . l:match[1] . '=' . l:match[2]
+    endif
+    call padre#debugger#Log(4, l:msg)
+  else
+    call padre#debugger#Log(2, "Don't understand: " . a:data)
+  endif
+endfunction
+
+function! padre#debugger#JumpToPosition(file, line)
+  let l:msg = 'Stopped file=' . a:file . ' line=' . a:line
   call padre#debugger#Log(4, l:msg)
 
   if a:file[0] == '/'
@@ -280,6 +307,8 @@ function! padre#debugger#JumpToPosition(line, file)
   call padre#signs#ReplaceCodePointer(a:line)
 
   execute 'normal ' . a:line . 'G'
+
+  let s:Debug += 1
 endfunction
 
 function! padre#debugger#ProcessExited(exit_code, pid)
@@ -306,5 +335,7 @@ function! padre#debugger#Log(level, error_string)
     let l:level = 'DEBUG: '
   endif
 
-  call padre#buffer#AppendBuffer('PADRE_Main', [l:level . a:error_string])
+  for l:str in split(a:error_string, '\n')
+    call padre#buffer#AppendBuffer('PADRE_Main', [l:level . l:str])
+  endfor
 endfunction

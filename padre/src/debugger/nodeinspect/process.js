@@ -23,13 +23,11 @@ class NodeProcess extends stream.Transform {
 
       exe.pipe(this).pipe(exe)
     } catch (error) {
-      this.emit('padre_error', error.name)
+      this.emit('inspect_error', `${error.name}: ${error.message}`, error.stack)
     }
   }
 
   _transform (chunk, encoding, callback) {
-    console.log('Node Write')
-
     let text = chunk.toString('utf-8')
 
     console.log(text)
@@ -37,8 +35,7 @@ class NodeProcess extends stream.Transform {
     for (let line of text.trim().split('\r\n')) {
       const match = line.match(/^Debugger listening on .*$/)
       if (match) {
-        console.log('Node Started')
-        this.emit('nodestarted')
+        this.emit('inspectstarted')
       }
     }
 

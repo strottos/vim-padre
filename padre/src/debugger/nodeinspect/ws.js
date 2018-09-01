@@ -23,7 +23,7 @@ class NodeWS extends eventEmitter {
 
       this.ws = new this._wsLib(`ws://localhost:9229/${setup.data[0].id}`)
     } catch (error) {
-      this.emit('padre_error', error)
+      this.emit('inspect_error', `${error.name}: ${error.message}`, error.stack)
       return
     }
 
@@ -46,7 +46,7 @@ class NodeWS extends eventEmitter {
     try {
       ret = await this.ws.send(JSON.stringify(Object.assign({}, {'id': id}, data)))
     } catch (error) {
-      this.emit('padre_error', error)
+      this.emit('inspect_error', `${error.name}: ${error.message}`, error.stack)
     }
 
     return ret
@@ -57,7 +57,7 @@ class NodeWS extends eventEmitter {
     try {
       data = JSON.parse(dataString)
     } catch (error) {
-      this.emit('padre_error', error.name)
+      this.emit('inspect_error', `${error.name}: ${error.message}`, error.stack)
       return
     }
 

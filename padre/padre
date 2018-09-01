@@ -67,7 +67,7 @@ const getDebugServer = (type) => {
 const server = net.createServer(async (connection) => {
   const debugServer = getDebugServer(argv.debugger)
   const mainDebugger = new Debugger(debugServer, connection)
-  await mainDebugger.handle()
+  await mainDebugger.setup()
 })
 
 server.listen(argv.port, argv.host, () => {

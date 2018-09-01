@@ -10,31 +10,25 @@ const nodePty = require('node-pty')
 const lldb = require.main.require('src/debugger/lldb/lldb')
 
 describe('Test Spawning LLDB', () => {
-  let sandbox = null
-  let spawnStub = null
-  let exeStub = null
-  let exePipeStub = null
-  let lldbPipeStub = null
-
   beforeEach(() => {
-    sandbox = sinon.createSandbox()
+    this.sandbox = sinon.createSandbox()
 
-    spawnStub = sandbox.stub(nodePty, 'spawn')
-    exeStub = sandbox.stub()
-    exePipeStub = sandbox.stub()
-    exeStub.pipe = exePipeStub
-    spawnStub.onCall(0).returns(exeStub)
+    this.spawnStub = this.sandbox.stub(nodePty, 'spawn')
+    this.exeStub = this.sandbox.stub()
+    this.exePipeStub = this.sandbox.stub()
+    this.exeStub.pipe = this.exePipeStub
+    this.spawnStub.onCall(0).returns(this.exeStub)
 
-    lldbPipeStub = sandbox.stub()
-    exePipeStub.onCall(0).returns({
-      'pipe': lldbPipeStub
+    this.lldbPipeStub = this.sandbox.stub()
+    this.exePipeStub.onCall(0).returns({
+      'pipe': this.lldbPipeStub
     })
 
-    exeStub.write = sandbox.stub()
+    this.exeStub.write = this.sandbox.stub()
   })
 
   afterEach(() => {
-    sandbox.restore()
+    this.sandbox.restore()
   })
 
   it('should be a Transform stream', () => {
@@ -50,33 +44,33 @@ describe('Test Spawning LLDB', () => {
 
     lldbDebugger.setup()
 
-    chai.expect(spawnStub.callCount).to.equal(1)
-    chai.expect(spawnStub.args[0]).to.deep.equal(['lldb', ['--', './test']])
+    chai.expect(this.spawnStub.callCount).to.equal(1)
+    chai.expect(this.spawnStub.args[0]).to.deep.equal(['lldb', ['--', './test']])
 
-    chai.expect(exePipeStub.callCount).to.equal(1)
-    chai.expect(exePipeStub.args[0]).to.deep.equal([lldbDebugger])
+    chai.expect(this.exePipeStub.callCount).to.equal(1)
+    chai.expect(this.exePipeStub.args[0]).to.deep.equal([lldbDebugger])
 
-    chai.expect(lldbPipeStub.callCount).to.equal(1)
-    chai.expect(lldbPipeStub.args[0]).to.deep.equal([exeStub])
+    chai.expect(this.lldbPipeStub.callCount).to.equal(1)
+    chai.expect(this.lldbPipeStub.args[0]).to.deep.equal([this.exeStub])
 
-    chai.expect(exeStub.write.callCount).to.equal(3)
-    chai.expect(exeStub.write.args[0]).to.deep.equal([`settings set stop-line-count-after 0\n`])
-    chai.expect(exeStub.write.args[1]).to.deep.equal([`settings set stop-line-count-before 0\n`])
+    chai.expect(this.exeStub.write.callCount).to.equal(3)
+    chai.expect(this.exeStub.write.args[0]).to.deep.equal([`settings set stop-line-count-after 0\n`])
+    chai.expect(this.exeStub.write.args[1]).to.deep.equal([`settings set stop-line-count-before 0\n`])
   })
 
   it('should correctly spawn LLDB when arguments are used', () => {
     const lldbDebugger = new lldb.LLDB('./test', ['--arg1', '--arg2=test', '-a', '--', 'testing'])
     lldbDebugger.setup()
 
-    chai.expect(spawnStub.callCount).to.equal(1)
-    chai.expect(spawnStub.args[0]).to.deep.equal(['lldb', ['--', './test', '--arg1', '--arg2=test', '-a', '--', 'testing']])
+    chai.expect(this.spawnStub.callCount).to.equal(1)
+    chai.expect(this.spawnStub.args[0]).to.deep.equal(['lldb', ['--', './test', '--arg1', '--arg2=test', '-a', '--', 'testing']])
   })
 
   it('should be able to write to and start LLDB', () => {
     const lldbDebugger = new lldb.LLDB('./test')
     lldbDebugger.setup()
 
-    const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
+    const lldbEmitStub = this.sandbox.stub(lldbDebugger, 'emit')
 
     let strings = [`(lldb) target create "./test"`,
       `Current executable set to './test' (x86_64).`,
@@ -94,7 +88,7 @@ describe('Test Spawning LLDB', () => {
     const lldbDebugger = new lldb.LLDB('./test')
     lldbDebugger.setup()
 
-    const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
+    const lldbEmitStub = this.sandbox.stub(lldbDebugger, 'emit')
 
     lldbDebugger.write('Current executable set to \'./test\' (x86_64).\r\n(lldb) ' +
         Buffer.from([0x1b, 0x5b, 0x31, 0x47, 0x1b, 0x5b, 0x32, 0x6d]).toString() +
@@ -129,7 +123,7 @@ describe('Test Spawning LLDB', () => {
     const lldbDebugger = new lldb.LLDB('./test')
     lldbDebugger.setup()
 
-    const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
+    const lldbEmitStub = this.sandbox.stub(lldbDebugger, 'emit')
 
     lldbDebugger._properties.pid = '12345'
 
@@ -244,11 +238,11 @@ describe('Test Spawning LLDB', () => {
     const lldbDebugger = new lldb.LLDB('./test')
     lldbDebugger.setup()
 
-    const lldbEmitStub = sandbox.stub(lldbDebugger, 'emit')
+    const lldbEmitStub = this.sandbox.stub(lldbDebugger, 'emit')
 
     lldbDebugger.write(`    frame #0: test_prog\`main at /home/test/test_prog.c:10`)
 
     chai.expect(lldbEmitStub.callCount).to.equal(1)
-    chai.expect(lldbEmitStub.args[0]).to.deep.equal(['process_position', 10, '/home/test/test_prog.c'])
+    chai.expect(lldbEmitStub.args[0]).to.deep.equal(['process_position', '/home/test/test_prog.c', 10])
   })
 })

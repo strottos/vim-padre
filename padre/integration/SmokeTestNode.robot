@@ -40,30 +40,30 @@ Debug simple NodeJS program
     ${received} =       expect from padre       \\["call","padre#debugger#SignalPADREStarted",\\[\\]\\]
     Should Be True      ${received}[0] == True
     Should Be True      len(${received}) == 1
-    send to padre       [1,"breakpoint line=5 file=${TEMPDIR}/${simple_program}"]\n
-    ${received} =       expect from padre       \\[1,"OK line=6 file=.*${simple_program}"\\]
+    send to padre       [1,"breakpoint file=${TEMPDIR}/${simple_program} line=5"]\n
+    ${received} =       expect from padre       \\[1,"OK"\\]
     Should Be True      ${received}[0] == True
     send to padre       [2,"run"]\n
     ${received} =       expect from padre       \\[2,"OK pid=(\\d+)"\\]
     Should Be True      ${received}[0] == True
     Should Be True      len(${received}) == 2
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[1,".*${simple_program}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[".*${simple_program}",1\\]\\]
     Should Be True      ${received}[0] == True
     Should Be True      len(${received}) == 1
     send to padre       [3,"stepOver"]\n
     ${received} =       expect from padre       \\[3,"OK"\\]
     Should Be True      ${received}[0] == True
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[18,".*/${simple_program}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[".*/${simple_program}",18\\]\\]
     Should Be True      ${received}[0] == True
     send to padre       [4,"stepIn"]\n
     ${received} =       expect from padre       \\[4,"OK"\\]
     Should Be True      ${received}[0] == True
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[13,".*${simple_program}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[".*${simple_program}",13\\]\\]
     Should Be True      ${received}[0] == True
     send to padre       [5,"stepOver"]\n
     ${received} =       expect from padre       \\[5,"OK"\\]
     Should Be True      ${received}[0] == True
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[14,".*${simple_program}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[".*${simple_program}",14\\]\\]
     Should Be True      ${received}[0] == True
     send to padre       [6,"print variable=b"]\n
     ${received} =       expect from padre       \\[6,"OK variable=b value=123 type=number"\\]
@@ -71,7 +71,7 @@ Debug simple NodeJS program
     send to padre       [7,"continue"]\n
     ${received} =       expect from padre       \\[7,"OK"\\]
     Should Be True      ${received}[0] == True
-    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[7,".*${simple_program}"\\]\\]
+    ${received} =       expect from padre       \\["call","padre#debugger#JumpToPosition",\\[".*${simple_program}",7\\]\\]
     Should Be True      ${received}[0] == True
     send to padre       [8,"continue"]\n
     ${received} =       expect from padre       \\[8,"OK"\\]

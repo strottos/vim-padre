@@ -149,7 +149,7 @@ class LLDB extends stream.Transform {
       console.log('Found position')
       const lineNum = parseInt(match[2])
       const fileName = match[1]
-      this.emit('process_position', lineNum, fileName) // TODO: Full path of filename from LLDB possible?
+      this.emit('process_position', fileName, lineNum)
       return true
     }
 
