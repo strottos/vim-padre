@@ -1,7 +1,5 @@
 'use strict'
 
-const _ = require('lodash')
-
 const JAVA_KEYWORDS = [
   'abstract', 'continue', 'for', 'new', 'switch',
   'assert', 'default', 'if', 'package', 'synchronized',

@@ -22,14 +22,17 @@ class JavaProcess extends stream.Transform {
 
     this._idSizes = null
 
+    this._socketData = null
+
     this._handleSocketWrite = this._handleSocketWrite.bind(this)
   }
 
-  setup () {
+  run () {
     if (this.progName !== 'java') {
       this.emit('padre_log', 1, 'Not a java process')
       return
     }
+
     this.args = [
       '-agentlib:jdwp=transport=dt_socket,address=8457,server=y',
       ...this.args] // TODO: Generic port
@@ -44,7 +47,7 @@ class JavaProcess extends stream.Transform {
 
     const that = this
 
-    this.on('started', async () => {
+    this.on('javadebuggerstarted', async () => {
       const ret = await that.request(1, 7)
 
       this._idSizes = {
@@ -77,6 +80,19 @@ class JavaProcess extends stream.Transform {
     return this._idSizes.frameIDSize
   }
 
+  async request (commandSet, command, data) {
+    const id = this._sendToDebugger(commandSet, command, data)
+
+    return new Promise((resolve, reject) => {
+      this.on(`response_${id}`, (errorCode, data) => {
+        resolve({
+          'errorCode': errorCode,
+          'data': data
+        })
+      })
+    })
+  }
+
   _transform (chunk, encoding, callback) {
     let text = chunk.toString('utf-8')
 
@@ -105,19 +121,6 @@ class JavaProcess extends stream.Transform {
     callback()
   }
 
-  async request (commandSet, command, data) {
-    const id = this._sendToDebugger(commandSet, command, data)
-
-    return new Promise((resolve, reject) => {
-      this.on(`response_${id}`, (errorCode, data) => {
-        resolve({
-          'errorCode': errorCode,
-          'data': data
-        })
-      })
-    })
-  }
-
   _sendToDebugger (commandSet, command, data) {
     console.log('Sending')
     console.log({
@@ -144,16 +147,31 @@ class JavaProcess extends stream.Transform {
   }
 
   _handleSocketWrite (buffer) {
+    if (this._socketData) {
+      buffer = Buffer.concat([
+        this._socketData,
+        buffer
+      ])
+
+      this._socketData = null
+    }
+
     let currentBufferStart = 0
 
     const match = buffer.toString('utf-8').match(/^JDWP-Handshake/)
     if (match) {
-      this.emit('started')
+      this.emit('javadebuggerstarted')
       currentBufferStart += 14
     }
 
     while (currentBufferStart < buffer.length) {
       let length = buffer.readInt32BE(currentBufferStart)
+
+      if (buffer.length - currentBufferStart < length) {
+        this._socketData = buffer.slice(currentBufferStart)
+        return
+      }
+
       this._handleBuffer(buffer.slice(currentBufferStart, currentBufferStart + length))
       currentBufferStart += length
     }

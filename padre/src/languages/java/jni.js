@@ -33,7 +33,16 @@ const convertMethodToJNISignature = (returnType, args) => {
   return ret
 }
 
+const convertJNISignatureToClass = (sig) => {
+  if (sig[0] !== 'L') {
+    throw new Error(`Can't convert '${sig}' to a class`)
+  }
+
+  return sig.slice(1).replace(/\//g, '.').replace(/;$/, '')
+}
+
 module.exports = {
   convertClassToJNISignature,
-  convertMethodToJNISignature
+  convertMethodToJNISignature,
+  convertJNISignatureToClass,
 }
