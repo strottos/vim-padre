@@ -26,4 +26,9 @@ describe('Test Java JNI Helpers', () => {
     chai.expect(() => javaJNI.convertJNISignatureToClass(`com/padre/test/SimpleJavaClass;`))
         .to.throw(`Can't convert 'com/padre/test/SimpleJavaClass;' to a class`)
   })
+
+  it(`should convert a classes JNI signature to it's directory and filename`, async () => {
+    chai.expect(javaJNI.convertJNISignatureToDirectoryAndFilename(`Lcom/padre/test/SimpleJavaClass;`))
+        .to.equal(`com/padre/test/SimpleJavaClass`)
+  })
 })

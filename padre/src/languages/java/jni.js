@@ -34,15 +34,20 @@ const convertMethodToJNISignature = (returnType, args) => {
 }
 
 const convertJNISignatureToClass = (sig) => {
+  return convertJNISignatureToDirectoryAndFilename(sig).replace(/\//g, '.')
+}
+
+const convertJNISignatureToDirectoryAndFilename = (sig) => {
   if (sig[0] !== 'L') {
     throw new Error(`Can't convert '${sig}' to a class`)
   }
 
-  return sig.slice(1).replace(/\//g, '.').replace(/;$/, '')
+  return sig.slice(1).replace(/;$/, '')
 }
 
 module.exports = {
   convertClassToJNISignature,
   convertMethodToJNISignature,
   convertJNISignatureToClass,
+  convertJNISignatureToDirectoryAndFilename,
 }

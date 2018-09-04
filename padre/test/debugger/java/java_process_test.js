@@ -45,9 +45,10 @@ describe('Test Spawning Java', () => {
     this.javaProcessTest.run()
 
     chai.expect(this.spawnStub.callCount).to.equal(1)
-    chai.expect(this.spawnStub.args[0]).to.deep.equal(['java',
-      ['-agentlib:jdwp=transport=dt_socket,address=8457,server=y',
-        '-jar', 'Test.jar']])
+    chai.expect(this.spawnStub.args[0]).to.deep.equal(['java', [
+      '-agentlib:jdwp=transport=dt_socket,address=8457,server=y',
+      '-jar', 'Test.jar'
+    ]])
 
     chai.expect(this.exePipeStub.callCount).to.equal(1)
     chai.expect(this.exePipeStub.args[0]).to.deep.equal([this.javaProcessTest])
@@ -56,7 +57,26 @@ describe('Test Spawning Java', () => {
     chai.expect(this.javaPipeStub.args[0]).to.deep.equal([this.exeStub])
   })
 
-  it('should throw an error if it\'s not a java process', () => {
+  it('should successfully spawn maven with debug properties', () => {
+    this.javaProcessTest = new javaProcess.JavaProcess('mvn', ['clean', 'test'])
+
+    this.javaProcessTest.run()
+
+    chai.expect(this.spawnStub.callCount).to.equal(1)
+    chai.expect(this.spawnStub.args[0]).to.deep.equal(['mvn',
+      ['clean', 'test']])
+
+    chai.expect(process.env.MAVEN_DEBUG_OPTS).to.equal(
+        '-agentlib:jdwp=transport=dt_socket,address=8457,server=y')
+
+    chai.expect(this.exePipeStub.callCount).to.equal(1)
+    chai.expect(this.exePipeStub.args[0]).to.deep.equal([this.javaProcessTest])
+
+    chai.expect(this.javaPipeStub.callCount).to.equal(1)
+    chai.expect(this.javaPipeStub.args[0]).to.deep.equal([this.exeStub])
+  })
+
+  it('should throw an error if it\'s not a recognised java process', () => {
     const javaProcessTest = new javaProcess.JavaProcess('test not java', ['-jar', 'Test.jar'])
 
     const javaDebuggerEmitStub = this.sandbox.stub(javaProcessTest, 'emit')

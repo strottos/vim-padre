@@ -28,14 +28,17 @@ class JavaProcess extends stream.Transform {
   }
 
   run () {
-    if (this.progName !== 'java') {
+    if (this.progName === 'java') {
+      this.args = [
+        '-agentlib:jdwp=transport=dt_socket,address=8457,server=y',
+        ...this.args
+      ] // TODO: Generic port
+    } else if (this.progName === 'mvn') {
+      process.env.MAVEN_DEBUG_OPTS = '-agentlib:jdwp=transport=dt_socket,address=8457,server=y'
+    } else {
       this.emit('padre_log', 1, 'Not a java process')
       return
     }
-
-    this.args = [
-      '-agentlib:jdwp=transport=dt_socket,address=8457,server=y',
-      ...this.args] // TODO: Generic port
 
     try {
       const exe = this.exe = nodePty.spawn(this.progName, this.args)
@@ -114,7 +117,7 @@ class JavaProcess extends stream.Transform {
           this.emit('padre_error', 'Connection Failed')
         })
       } else {
-        process.stdout.write(text + '\n')
+        process.stdout.write(text)
       }
     }
 

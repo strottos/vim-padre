@@ -5,6 +5,7 @@
   "main": "padre",
   "dependencies": {
     "axios": "^0.18.0",
+    "fs-walk": "0.0.2",
     "lodash": "^4.17.10",
     "node-cint64": "^2.0.0",
     "node-pty": "^0.7.4",

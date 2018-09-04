@@ -4,8 +4,10 @@ const chai = require('chai')
 const sinon = require('sinon')
 
 const events = require('events')
+const path = require('path')
 
 const _ = require('lodash')
+const walk = require('fs-walk')
 
 const java = require.main.require('src/debugger/java/java')
 const javaProcess = require.main.require('src/debugger/java/java_process')
@@ -191,7 +193,7 @@ describe('Test Spawning and Debugging Java', () => {
     })
 
     it('should set a breakpoint if the class is in the call for classes with generics', async () => {
-      const filename = '/home/me/code/src/com/padre/test/data/src/com/padre/test/SimpleJavaClass.java'
+      const filename = '/home/me/code/padre/test/data/src/com/padre/test/SimpleJavaClass.java'
       const lineNum = 12
 
       this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
@@ -223,7 +225,7 @@ describe('Test Spawning and Debugging Java', () => {
     })
 
     it('should delay setting a breakpoint if the class is not in the call for classes with generics', async () => {
-      const filename = '/home/me/code/src/com/padre/test/data/src/com/padre/test/AnotherJavaClass.java'
+      const filename = '/home/me/code/padre/test/data/src/com/padre/test/AnotherJavaClass.java'
       const lineNum = 12
 
       this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
@@ -251,7 +253,7 @@ describe('Test Spawning and Debugging Java', () => {
     })
 
     it('should set a pending breakpoint when the class is prepared', async () => {
-      const filename = '/home/me/code/src/com/padre/test/data/src/com/padre/test/AnotherJavaClass.java'
+      const filename = '/home/me/code/padre/test/data/src/com/padre/test/AnotherJavaClass.java'
       const lineNum = 12
 
       this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
@@ -259,7 +261,7 @@ describe('Test Spawning and Debugging Java', () => {
 
       await this.javaDebugger.breakpointFileAndLine(filename, lineNum)
 
-      chai.expect(_.keys(this.javaDebugger._pendingBreakpointMethodForClassess).length).to.equal(1)
+      chai.expect(_.keys(this.javaDebugger._pendingBreakpointMethodForClasses).length).to.equal(1)
 
       this.javaProcessStubReturns.request.resetHistory()
 
@@ -277,7 +279,7 @@ describe('Test Spawning and Debugging Java', () => {
         Buffer.from([0x00, 0x00, 0x00, 0x03]), // status
       ]))
 
-      chai.expect(_.keys(this.javaDebugger._pendingBreakpointMethodForClassess).length).to.equal(0)
+      chai.expect(_.keys(this.javaDebugger._pendingBreakpointMethodForClasses).length).to.equal(0)
 
       chai.expect(this.javaProcessStubReturns.request.callCount).to.equal(3)
       chai.expect(this.javaProcessStubReturns.request.args[0]).to.deep.equal([
@@ -290,7 +292,7 @@ describe('Test Spawning and Debugging Java', () => {
     })
 
     it('should report a timeout setting a breakpoint', async () => {
-      const filename = '/home/me/code/src/com/padre/test/data/src/com/padre/test/SimpleJavaClass.java'
+      const filename = '/home/me/code/padre/test/data/src/com/padre/test/SimpleJavaClass.java'
       const lineNum = 12
 
       this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
@@ -313,30 +315,36 @@ describe('Test Spawning and Debugging Java', () => {
   })
 
   describe('should allow the debugger to step in in java', async () => {
-    beforeEach(() => {
-      this.stepInPromise = this.javaDebugger.stepIn()
-    })
-
     it('should step in successfully', async () => {
-      const ret = await this.stepInPromise
+      const threadID = this.javaDebugger._currentThreadID = Buffer.from([
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x21
+      ])
+
+      const ret = await this.javaDebugger.stepIn()
+
+      console.log(this.javaDebugger._currentThreadID)
 
       chai.expect(this.javaProcessStubReturns.request.callCount).to.equal(2)
       chai.expect(this.javaProcessStubReturns.request.args[0][0]).to.equal(15)
       chai.expect(this.javaProcessStubReturns.request.args[0][1]).to.equal(1)
       chai.expect(this.javaProcessStubReturns.request.args[0][2].readInt8(0)).to.equal(1)
+      chai.expect(this.javaProcessStubReturns.request.args[0][2].slice(7, 15)).to.deep.equal(threadID)
       chai.expect(this.javaProcessStubReturns.request.args[0][2].readInt32BE(15)).to.equal(1)
+      chai.expect(this.javaProcessStubReturns.request.args[0][2].readInt32BE(19)).to.equal(0)
       chai.expect(this.javaProcessStubReturns.request.args[1]).to.deep.equal([1, 9])
 
       chai.expect(ret).to.deep.equal({})
     })
 
     it('should report a timeout continuing', async () => {
+      const stepInPromise = this.javaDebugger.stepIn()
+
       this.clock.tick(2010)
 
       let errorFound = null
 
       try {
-        await this.stepInPromise
+        await stepInPromise
       } catch (error) {
         errorFound = error
       }
@@ -347,13 +355,21 @@ describe('Test Spawning and Debugging Java', () => {
 
   describe('should allow the debugger to step over in java', async () => {
     it('should step over successfully', async () => {
+      const threadID = this.javaDebugger._currentThreadID = Buffer.from([
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x21
+      ])
+
       const ret = await this.javaDebugger.stepOver()
+
+      console.log(this.javaDebugger._currentThreadID)
 
       chai.expect(this.javaProcessStubReturns.request.callCount).to.equal(2)
       chai.expect(this.javaProcessStubReturns.request.args[0][0]).to.equal(15)
       chai.expect(this.javaProcessStubReturns.request.args[0][1]).to.equal(1)
       chai.expect(this.javaProcessStubReturns.request.args[0][2].readInt8(0)).to.equal(1)
-      chai.expect(this.javaProcessStubReturns.request.args[0][2].readInt32BE(15)).to.equal(2)
+      chai.expect(this.javaProcessStubReturns.request.args[0][2].slice(7, 15)).to.deep.equal(threadID)
+      chai.expect(this.javaProcessStubReturns.request.args[0][2].readInt32BE(15)).to.equal(1)
+      chai.expect(this.javaProcessStubReturns.request.args[0][2].readInt32BE(19)).to.equal(1)
       chai.expect(this.javaProcessStubReturns.request.args[1]).to.deep.equal([1, 9])
 
       chai.expect(ret).to.deep.equal({})
@@ -409,14 +425,153 @@ describe('Test Spawning and Debugging Java', () => {
   })
 
   describe('should allow the debugger to set the current position in java', async () => {
-    it('should report the current position when reported by java', async () => {
+    beforeEach(() => {
+      this.javaProcessStubReturns.request.withArgs(1, 20).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // Number of classes
+          Buffer.from([0x01]), // refTypeTag
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]), // refTypeId
+          Buffer.from([0x00, 0x00, 0x00, 0x20]), // String length...
+          Buffer.from('Lcom/padre/test/SimpleJavaClass;'), // ...and string
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature empty
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // status
+          Buffer.from([0x01]), // refTypeTag
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24]), // refTypeId
+          Buffer.from([0x00, 0x00, 0x00, 0x1c]), // String length...
+          Buffer.from('Lcom/padre/test/ExtraClass1;'), // ...and string
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature empty
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // status
+          Buffer.from([0x01]), // refTypeTag
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24]), // refTypeId
+          Buffer.from([0x00, 0x00, 0x00, 0x1c]), // String length...
+          Buffer.from('Lcom/padre/test/ExtraClass2;'), // ...and string
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature empty
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // status
+        ])
+      })
+
+      this.javaProcessStubReturns.request.withArgs(2, 15).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x02]), // 2 methods
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42]), // first method id
+          Buffer.from([0x00, 0x00, 0x00, 0x06]), // String length 6 for `<init>`
+          Buffer.from(`<init>`),
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // String length 3 for `()V`
+          Buffer.from(`()V`),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature empty
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // modbits
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]), // second method id
+          Buffer.from([0x00, 0x00, 0x00, 0x04]), // String length 4 for `main`
+          Buffer.from(`main`),
+          Buffer.from([0x00, 0x00, 0x00, 0x16]), // String length 22
+          Buffer.from(`([Ljava/lang/String;)V`),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature empty
+          Buffer.from([0x00, 0x00, 0x00, 0x09]), // modbits
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]), // second method id
+          Buffer.from([0x00, 0x00, 0x00, 0x0b]), // String length 11
+          Buffer.from(`test_method`),
+          Buffer.from([0x00, 0x00, 0x00, 0x04]), // String length 4
+          Buffer.from(`(I)I`),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature empty
+          Buffer.from([0x00, 0x00, 0x00, 0x09]), // modbits
+        ])
+      })
+
+      this.javaProcessStubReturns.request.withArgs(2, 7).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x14]),
+          Buffer.from(`SimpleJavaClass.java`),
+        ])
+      })
+
+      this.javaProcessStubReturns.request.withArgs(6, 1).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // Start from
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x51]), // End at
+          Buffer.from([0x00, 0x00, 0x00, 0x09]), // Number of lines
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x0c]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x0e]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x0f]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x27]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x10]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2f]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x11]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x35]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x12]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3b]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x13]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x15]), // Line Number
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49]), // Line Code Index
+          Buffer.from([0x00, 0x00, 0x00, 0x16]), // Line Number
+        ])
+      })
+
+      const walkFilesStub = this.sandbox.stub(walk, 'filesSync')
+      walkFilesStub.callsArgWith(1, `test/data/src/com/padre/test/`, `SimpleJavaClass.java`)
+
+      const pathStub = this.sandbox.stub(path, 'resolve')
+      pathStub.withArgs(`test/data/src/com/padre/test//SimpleJavaClass.java`).returns(
+          `test/data/src/com/padre/test/SimpleJavaClass.java`)
+    })
+
+    it('should report the root current position when reported by java', async () => {
       const javaDebuggerEmitStub = this.sandbox.stub(this.javaDebugger, 'emit')
       javaDebuggerEmitStub.callThrough()
 
+      const threadID = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x21])
+
+      await this.javaDebugger._handleJavaEventCommand(Buffer.concat([
+        Buffer.from([0x02]), // Suspend all
+        Buffer.from([0x00, 0x00, 0x00, 0x01]), // One event
+        Buffer.from([0x01]), // SINGLE_STEP Event triggered
+        Buffer.from([0x00, 0x00, 0x00, 0x02]), // Request ID
+        threadID, // Thread ID
+        // Location ID
+        Buffer.from([0x01]), // Class refType
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]), // refTypeID
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42]), // methodID
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // location index
+      ]))
+
       chai.expect(javaDebuggerEmitStub.callCount).to.equal(1)
       chai.expect(javaDebuggerEmitStub.args[0]).to.deep.equal([
-        'process_position', '/home/me/code/src/com/padre/test/data/src/com/padre/test/SimpleJavaClass.java', 40
+        'process_position', 'test/data/src/com/padre/test/SimpleJavaClass.java', 12
       ])
+      chai.expect(this.javaDebugger._currentThreadID).to.deep.equal(threadID)
+    })
+
+    it('should report the current position when reported by java after a single step in', async () => {
+      const javaDebuggerEmitStub = this.sandbox.stub(this.javaDebugger, 'emit')
+      javaDebuggerEmitStub.callThrough()
+
+      const threadID = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x21])
+
+      await this.javaDebugger._handleJavaEventCommand(Buffer.concat([
+        Buffer.from([0x02]), // Suspend all
+        Buffer.from([0x00, 0x00, 0x00, 0x01]), // One event
+        Buffer.from([0x01]), // SINGLE_STEP Event triggered
+        Buffer.from([0x00, 0x00, 0x00, 0x03]), // Request ID
+        threadID, // Thread ID
+        // Location ID
+        Buffer.from([0x01]), // Class refType
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]), // refTypeID
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42]), // methodID
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a]), // location index
+      ]))
+
+      chai.expect(javaDebuggerEmitStub.callCount).to.equal(1)
+      chai.expect(javaDebuggerEmitStub.args[0]).to.deep.equal([
+        'process_position', 'test/data/src/com/padre/test/SimpleJavaClass.java', 14
+      ])
+      chai.expect(this.javaDebugger._currentThreadID).to.deep.equal(threadID)
     })
   })
 })
