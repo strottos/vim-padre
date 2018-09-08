@@ -6,8 +6,8 @@
   "dependencies": {
     "axios": "^0.18.0",
     "fs-walk": "0.0.2",
+    "int64-buffer": "^0.1.10",
     "lodash": "^4.17.10",
-    "node-cint64": "^2.0.0",
     "node-pty": "^0.7.4",
     "ws": "^5.2.0",
     "yargs": "^11.0.0"

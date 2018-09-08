@@ -5,6 +5,7 @@ const path = require('path')
 
 const _ = require('lodash')
 const walk = require('fs-walk')
+const {Int64BE} = require('int64-buffer')
 
 const javaProcess = require('./java_process')
 const javaSyntax = require('../../languages/java/syntax')
@@ -247,13 +248,25 @@ class JavaDebugger extends eventEmitter {
         value,
       } = await this._getValueForVariable(variable.slot, variable.signature)
 
-      if (type === 'I') {
+      switch (type) {
+      case 'B':
+      case 'C':
+      case 'D':
+      case 'F':
+      case 'I':
+      case 'S':
         type = 'number'
-      } else if (type === 'Z') {
+        break
+      case 'Z':
         type = 'boolean'
-      } else if (type === 's') {
+        break
+      case 'L':
+        type = 'string'
+        break
+      case 's':
         type = 'string'
         value = await this._getStringValue(value)
+        break
       }
 
       clearTimeout(timeout)
@@ -621,10 +634,31 @@ class JavaDebugger extends eventEmitter {
 
     const type = ret.data.slice(4, 5).toString('utf-8')
     let value = ret.data.slice(5)
-    if (type === 'I') {
+
+    switch (type) {
+    case 'B':
+      value = ret.data.readInt8(5)
+      break
+    case 'C':
+    case 'S':
+      value = ret.data.readInt16BE(5)
+      break
+    case 'D':
+      value = ret.data.readDoubleBE(5)
+      break
+    case 'F':
+      value = ret.data.readFloatBE(5)
+      break
+    case 'I':
       value = ret.data.readInt32BE(5)
-    } else if (type === 'Z') {
+      break
+    case 'L':
+      const longValue = new Int64BE(ret.data.slice(5))
+      value = longValue.toString(10)
+      break
+    case 'Z':
       value = ret.data.readInt8(5) !== 0
+      break
     }
 
     return {
