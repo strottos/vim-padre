@@ -55,7 +55,8 @@ class Debugger {
         this._writeToPadre(`[${message.id},"OK pid=${ret.pid}"]`)
       } else if (message.cmd === 'breakpoint') {
         if ('file' in message.args && 'line' in message.args) {
-          const ret = await this.debugServer.breakpointFileAndLine(message.args.file, parseInt(message.args.line))
+          const ret = await this.debugServer.breakpointFileAndLine(
+              message.args.file, parseInt(message.args.line))
           this._writeToPadre(`[${message.id},"${ret.status}"]`)
         }
       } else if (message.cmd === 'stepIn') {
@@ -68,7 +69,8 @@ class Debugger {
         await this.debugServer.continue()
         this._writeToPadre(`[${message.id},"OK"]`)
       } else if (message.cmd === 'print') {
-        const ret = await this.debugServer.printVariable(message.args.variable)
+        const ret = await this.debugServer.printVariable(
+            message.args.variable, message.args.file, parseInt(message.args.line))
         if (ret.type === 'number') {
           this._writeToPadre(`[${message.id},"OK variable=${ret.variable} ` +
               `value=${ret.value} type=${ret.type}"]`)

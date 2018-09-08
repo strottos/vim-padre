@@ -30,12 +30,20 @@ class JavaDebugger extends eventEmitter {
     this._handleClassPrepareEvent = this._handleClassPrepareEvent.bind(this)
     this._handleLocationEvent = this._handleLocationEvent.bind(this)
     this._getMethodLineNumbers = this._getMethodLineNumbers.bind(this)
+
+    this.allJavaFiles = new Set()
   }
 
   setup () {
     this.javaProcess.on('padre_log', (level, str) => {
       this.emit('padre_log', level, str)
     })
+
+    for (let dir of ['./', '/Users/stevent/code/third_party/java', '/Users/stevent/code/third_party/apache-maven-3.5.4']) {
+      walk.filesSync(dir, (basedir, filename) => {
+        this.allJavaFiles.add(path.normalize(`${basedir}/${filename}`))
+      })
+    }
 
     this.emit('started')
   }
@@ -60,10 +68,15 @@ class JavaDebugger extends eventEmitter {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout starting node process'))
-      }, 2000)
+      }, 5000)
 
       this.on('jvmstarted', async () => {
         clearTimeout(timeout)
+
+        // await this.javaProcess.request(15, 1, Buffer.concat([
+        //   Buffer.from([0x08, 0x02]), // Suspend all on CLASS_PREPARE
+        //   Buffer.from([0x00, 0x00, 0x00, 0x00]), // 0 modifiers
+        // ]))
 
         resolve({
           'pid': 0
@@ -83,7 +96,7 @@ class JavaDebugger extends eventEmitter {
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout setting breakpoint'))
-      }, 2000)
+      }, 5000)
 
       const [classes, positionData] = await Promise.all([
         this._getClassesWithGeneric(),
@@ -119,7 +132,7 @@ class JavaDebugger extends eventEmitter {
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout stepping in'))
-      }, 2000)
+      }, 5000)
 
       // TODO: Error handle
       await this.javaProcess.request(15, 1, Buffer.concat([
@@ -155,7 +168,7 @@ class JavaDebugger extends eventEmitter {
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout stepping over'))
-      }, 2000)
+      }, 5000)
 
       // TODO: Error handle
       await this.javaProcess.request(15, 1, Buffer.concat([
@@ -193,11 +206,62 @@ class JavaDebugger extends eventEmitter {
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout continuing'))
-      }, 2000)
+      }, 5000)
 
       await ret
       clearTimeout(timeout)
       resolve({})
+    })
+  }
+
+  async printVariable (variableName, file, line) {
+    console.log('Java: Print Variable')
+
+    return new Promise(async (resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Timeout printing a variable'))
+      }, 5000)
+
+      console.log(file)
+
+      const [classes, positionData] = await Promise.all([
+        this._getClassesWithGeneric(),
+        javaSyntax.getPositionDataAtLine(file, line)
+      ])
+
+      const className = positionData[0]
+      const classSignature = javaJNI.convertClassToJNISignature(className)
+      const classFound = _.get(classes.filter(x => x.signature === classSignature), '[0]')
+      const classRefTypeID = classFound.refTypeID
+
+      const methodName = positionData[1]
+      const methods = await this._getMethodsWithGeneric(classRefTypeID)
+      const methodFound = _.get(methods.filter(x => x.name === methodName), '[0]')
+      const methodID = methodFound.methodID
+
+      const variables = await this._getVariablesInMethod(classRefTypeID, methodID)
+      const variable = variables.filter(x => x.variableName === variableName)[0]
+
+      let {
+        type,
+        value,
+      } = await this._getValueForVariable(variable.slot, variable.signature)
+
+      if (type === 'I') {
+        type = 'number'
+      } else if (type === 'Z') {
+        type = 'boolean'
+      } else if (type === 's') {
+        type = 'string'
+        value = await this._getStringValue(value)
+      }
+
+      clearTimeout(timeout)
+      resolve({
+        'type': type,
+        'value': value,
+        'variable': variableName,
+      })
     })
   }
 
@@ -206,14 +270,14 @@ class JavaDebugger extends eventEmitter {
     for (let i = 0; i < data.readInt32BE(1); i++) {
       const eventKind = data.readInt8(pos)
       pos += 1
-      if (eventKind === 1 || eventKind === 2) {
+      if (eventKind === 0x01 || eventKind === 0x02) {
         pos += await this._handleLocationEvent(data.slice(pos))
-      } else if (eventKind === 8) {
+      } else if (eventKind === 0x08) {
         pos += await this._handleClassPrepareEvent(data.slice(pos))
-      } else if (eventKind === 90) {
+      } else if (eventKind === 0x5a) {
         this.emit('jvmstarted')
         pos += 12
-      } else if (eventKind === 99) {
+      } else if (eventKind === 0x63) {
         this.emit('process_exit', 0, 0) // TODO: Exit Codes
         pos += 4
       } else {
@@ -319,16 +383,16 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _breakOnClassPrepare (className) {
-    console.log(`Setting breakpoint for ${className}`)
+    console.log(`Setting break on class prepare for ${className}`)
     let length = Buffer.from([0x00, 0x00, 0x00, 0x00])
     length.writeInt32BE(Buffer.from(className).length) // TODO: Correct length for Unicode?
     await this.javaProcess.request(15, 1, Buffer.concat([
-      Buffer.from([0x08, 0x02]),
-      Buffer.from([0x00, 0x00, 0x00, 0x02]),
-      Buffer.from([0x05]),
+      Buffer.from([0x08, 0x02]), // Suspend all on CLASS_PREPARE
+      Buffer.from([0x00, 0x00, 0x00, 0x02]), // 2 modifiers
+      Buffer.from([0x05]), // Class pattern to match
       length,
       Buffer.from(className),
-      Buffer.from([0x01]),
+      Buffer.from([0x01]), // Count 1
       Buffer.from([0x00, 0x00, 0x00, 0x01])
     ]))
   }
@@ -343,12 +407,35 @@ class JavaDebugger extends eventEmitter {
     const refTypeID = data.slice(pos, pos + this.javaProcess.getReferenceTypeIDSize())
     pos += this.javaProcess.getReferenceTypeIDSize()
 
+    //const classPath = await this._getPathForClass(refTypeID)
+    //if (!classPath) {
+    //  return
+    //}
+
     const signatureSize = data.readInt32BE(pos)
     pos += 4
     const classSignature = data.slice(pos, pos + signatureSize).toString('utf-8')
     pos += signatureSize
 
     pos += 4
+
+    // const methods = await this._getMethodsWithGeneric(refTypeID)
+    //
+    // const promises = []
+    //
+    // for (let method of methods) {
+    //   promises.push(this.javaProcess.request(15, 1, Buffer.concat([
+    //     Buffer.from([0x02, 0x02]),
+    //     Buffer.from([0x00, 0x00, 0x00, 0x01]),
+    //     Buffer.from([0x07]),
+    //     Buffer.from([0x01]),
+    //     refTypeID,
+    //     method.methodID,
+    //     Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    //   ])))
+    // }
+    //
+    // await Promise.all(promises)
 
     await this._setBreakpoint(refTypeID, this._pendingBreakpointMethodForClasses[classSignature])
 
@@ -369,25 +456,14 @@ class JavaDebugger extends eventEmitter {
     const methodID = data.slice(21, 29)
     const location = data.slice(29, 37)
 
-    const [classes, sourceFile, methodLines] = await Promise.all([
-      this._getClassesWithGeneric(),
-      this.javaProcess.request(2, 7, classID),
+    const [classPath, methodLines] = await Promise.all([
+      this._getPathForClass(classID),
       this._getMethodLineNumbers(classID, methodID),
     ])
-    const classFileSize = sourceFile.data.readInt32BE()
-    const classFile = sourceFile.data.slice(4, 4 + classFileSize).toString('utf-8')
-    const classFound = _.get(classes.filter(x => x.refTypeID.equals(classID)), '[0]')
-    const fullClassPath = classFound.signature.substr(1, classFound.signature.lastIndexOf('/')) + classFile
-    const allFiles = []
-    for (let dir of ['./', '/Users/stevent/code/third_party/java']) {
-      walk.filesSync(dir, (basedir, filename) => {
-        allFiles.push(path.normalize(`${basedir}/${filename}`))
-      })
+
+    if (!classPath) {
+      return
     }
-    // TODO: What if not exactly one file found
-    const classPath = _.get(allFiles.filter(x => x.indexOf(fullClassPath) !== -1), '[0]')
-    console.log(classPath)
-    // TODO: error logging
 
     const line = _.get(_.last(methodLines[2].filter(x => {
       // Loop over every index and compare in order, to check whether the current
@@ -403,6 +479,37 @@ class JavaDebugger extends eventEmitter {
     })), 'lineNumber')
 
     this.emit('process_position', classPath, line)
+  }
+
+  async _getPathForClass (classID) {
+    const [classes, sourceFile] = await Promise.all([
+      this._getClassesWithGeneric(),
+      this.javaProcess.request(2, 7, classID)
+    ])
+
+    if (sourceFile.errorCode !== 0) {
+      return null
+    }
+
+    const classFileSize = sourceFile.data.readInt32BE()
+    const classFile = sourceFile.data.slice(4, 4 + classFileSize).toString('utf-8')
+    const classFound = _.get(classes.filter(x => x.refTypeID.equals(classID)), '[0]')
+    const fullClassPath = classFound.signature.substr(1, classFound.signature.lastIndexOf('/')) + classFile
+
+    const classPathsFound = [...this.allJavaFiles].filter(x => x.indexOf(fullClassPath) !== -1)
+    if (classPathsFound.length === 0) {
+      await this.javaProcess.request(1, 9)
+      return null
+    }
+
+    // TODO: error logging
+
+    if (classPathsFound.length > 1) {
+      console.log('TODO: Figure out what to do with:')
+      console.log(JSON.stringify(classPathsFound))
+    }
+
+    return _.get(classPathsFound, '[0]')
   }
 
   async _getMethodLineNumbers (classID, methodID) {
@@ -430,6 +537,113 @@ class JavaDebugger extends eventEmitter {
     }
 
     return [startLine, endLine, lineNumbers]
+  }
+
+  async _getVariablesInMethod (classID, methodID) {
+    const ret = await this.javaProcess.request(6, 5, Buffer.concat([classID, methodID]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('Get variables in method errorCode - ' + ret.errorCode)
+    }
+    const data = ret.data
+
+    let variables = []
+
+    let pos = 8
+    for (let i = 0; i < data.readInt32BE(4); i++) {
+      const a = {}
+      a.codeIndex = data.slice(pos, pos + 8)
+      pos += 8
+
+      const variableNameSize = data.readInt32BE(pos)
+      pos += 4
+      a.variableName = data.slice(pos, pos + variableNameSize).toString('utf-8')
+      pos += variableNameSize
+
+      const signatureSize = data.readInt32BE(pos)
+      pos += 4
+      a.signature = data.slice(pos, pos + signatureSize).toString('utf-8')
+      pos += signatureSize
+
+      const genericSignatureSize = data.readInt32BE(pos)
+      pos += 4
+      a.genericSignature = data.slice(pos, pos + genericSignatureSize).toString('utf-8')
+      pos += genericSignatureSize
+
+      a.length = data.readInt32BE(pos)
+      pos += 4
+
+      a.slot = data.readInt32BE(pos)
+      pos += 4
+
+      variables.push(a)
+    }
+
+    return variables
+  }
+
+  async _getValueForVariable (slot, signature) {
+    let ret = await this.javaProcess.request(11, 6, Buffer.concat([
+      this._currentThreadID,
+      Buffer.from([0x00, 0x00, 0x00, 0x00]),
+      Buffer.from([0x00, 0x00, 0x00, 0x01]),
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('11, 6 errorCode - ' + ret.errorCode)
+    }
+
+    let frameID = ret.data.slice(4, 12)
+
+    let slotBuffer = Buffer.alloc(4)
+    slotBuffer.writeInt32BE(slot)
+
+    if (signature === 'Ljava/lang/String;') {
+      signature = 's'
+    }
+
+    ret = await this.javaProcess.request(16, 1, Buffer.concat([
+      this._currentThreadID,
+      frameID,
+      Buffer.from([0x00, 0x00, 0x00, 0x01]),
+      slotBuffer,
+      Buffer.from(signature)
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('16, 1 errorCode - ' + ret.errorCode)
+    }
+
+    if (ret.data.readInt32BE() !== 1) {
+      console.log('TODO: We have an error')
+      console.log(ret)
+    }
+
+    const type = ret.data.slice(4, 5).toString('utf-8')
+    let value = ret.data.slice(5)
+    if (type === 'I') {
+      value = ret.data.readInt32BE(5)
+    } else if (type === 'Z') {
+      value = ret.data.readInt8(5) !== 0
+    }
+
+    return {
+      'type': type,
+      'value': value,
+    }
+  }
+
+  async _getStringValue (objectID) {
+    console.log(objectID)
+    const ret = await this.javaProcess.request(10, 1, Buffer.concat([
+      objectID,
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('10, 1 errorCode - ' + ret.errorCode)
+    }
+
+    return ret.data.slice(4).toString('utf-8')
   }
 
   // async _getClassPaths () {

@@ -209,10 +209,10 @@ describe('Test the debugger', () => {
 
     const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc file=/home/me/padre/something line=123"]'))
 
     chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc', '/home/me/padre/something', 123])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(1)
     chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
@@ -229,10 +229,10 @@ describe('Test the debugger', () => {
 
     const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc file=/home/me/padre/something line=123"]'))
 
     chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc', '/home/me/padre/something', 123])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(1)
     chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
@@ -251,10 +251,10 @@ describe('Test the debugger', () => {
 
     const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc file=/home/me/padre/something line=123"]'))
 
     chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc', '/home/me/padre/something', 123])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(1)
     chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
@@ -271,10 +271,10 @@ describe('Test the debugger', () => {
 
     const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc file=/home/me/padre/something line=123"]'))
 
     chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc', '/home/me/padre/something', 123])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(1)
     chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
@@ -291,10 +291,10 @@ describe('Test the debugger', () => {
 
     const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc file=/home/me/padre/something line=123"]'))
 
     chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc', '/home/me/padre/something', 123])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(1)
     chai.expect(this.connectionStub.write.args[0]).to.deep.equal([
@@ -311,10 +311,10 @@ describe('Test the debugger', () => {
 
     const testDebugger = new debugServer.Debugger(this.testDebugServerStub, this.connectionStub)
 
-    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc"]'))
+    await testDebugger._handleRequest(Buffer.from('[6,"print variable=abc file=/home/me/padre/something line=123"]'))
 
     chai.expect(this.testDebugServerStub.printVariable.callCount).to.equal(1)
-    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc'])
+    chai.expect(this.testDebugServerStub.printVariable.args[0]).to.deep.equal(['abc', '/home/me/padre/something', 123])
 
     chai.expect(this.connectionStub.write.callCount).to.equal(2)
     chai.expect(this.connectionStub.write.args[0]).to.deep.equal([

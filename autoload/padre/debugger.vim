@@ -144,7 +144,7 @@ function! padre#debugger#StepOver()
 endfunction
 
 function! padre#debugger#PrintVariable(variable)
-  call padre#socket#Send('print variable=' . a:variable, function('padre#debugger#PrintVariableCallback'))
+  call padre#socket#Send('print variable=' . a:variable . ' line=' . getpos('.')[1] . ' file=' . expand('%'), function('padre#debugger#PrintVariableCallback'))
 endfunction
 
 function! padre#debugger#Continue()
