@@ -240,34 +240,10 @@ class JavaDebugger extends eventEmitter {
       const methodFound = _.get(methods.filter(x => x.name === methodName), '[0]')
       const methodID = methodFound.methodID
 
-      const variables = await this._getVariablesInMethod(classRefTypeID, methodID)
-      const variable = variables.filter(x => x.variableName === variableName)[0]
-
       let {
         type,
         value,
-      } = await this._getValueForVariable(variable.slot, variable.signature)
-
-      switch (type) {
-      case 'B':
-      case 'C':
-      case 'D':
-      case 'F':
-      case 'I':
-      case 'S':
-        type = 'number'
-        break
-      case 'Z':
-        type = 'boolean'
-        break
-      case 'L':
-        type = 'string'
-        break
-      case 's':
-        type = 'string'
-        value = await this._getStringValue(value)
-        break
-      }
+      } = await this._getValueForVariable(classRefTypeID, methodID, variableName)
 
       clearTimeout(timeout)
       resolve({
@@ -554,68 +530,154 @@ class JavaDebugger extends eventEmitter {
 
   async _getVariablesInMethod (classID, methodID) {
     const ret = await this.javaProcess.request(6, 5, Buffer.concat([classID, methodID]))
-    // TODO: Error Handle
-    if (ret.errorCode !== 0) {
+
+    if (ret.errorCode === 101) {
+      // Information Absent
+      return []
+    } else if (ret.errorCode !== 0) {
+      // TODO: Error Handle these
       console.log('Get variables in method errorCode - ' + ret.errorCode)
     }
+
     const data = ret.data
 
     let variables = []
 
     let pos = 8
     for (let i = 0; i < data.readInt32BE(4); i++) {
-      const a = {}
-      a.codeIndex = data.slice(pos, pos + 8)
+      const variable = {}
+      variable.codeIndex = data.slice(pos, pos + 8)
       pos += 8
 
       const variableNameSize = data.readInt32BE(pos)
       pos += 4
-      a.variableName = data.slice(pos, pos + variableNameSize).toString('utf-8')
+      variable.variableName = data.slice(pos, pos + variableNameSize).toString('utf-8')
       pos += variableNameSize
 
       const signatureSize = data.readInt32BE(pos)
       pos += 4
-      a.signature = data.slice(pos, pos + signatureSize).toString('utf-8')
+      variable.signature = data.slice(pos, pos + signatureSize).toString('utf-8')
       pos += signatureSize
 
       const genericSignatureSize = data.readInt32BE(pos)
       pos += 4
-      a.genericSignature = data.slice(pos, pos + genericSignatureSize).toString('utf-8')
+      variable.genericSignature = data.slice(pos, pos + genericSignatureSize).toString('utf-8')
       pos += genericSignatureSize
 
-      a.length = data.readInt32BE(pos)
+      variable.length = data.readInt32BE(pos)
       pos += 4
 
-      a.slot = data.readInt32BE(pos)
+      variable.slot = data.readInt32BE(pos)
       pos += 4
 
-      variables.push(a)
+      variables.push(variable)
     }
 
     return variables
   }
 
-  async _getValueForVariable (slot, signature) {
-    let ret = await this.javaProcess.request(11, 6, Buffer.concat([
+  async _getVariablesInClass (classRefTypeID) {
+    const ret = await this.javaProcess.request(2, 14, Buffer.concat([classRefTypeID]))
+
+    if (ret.errorCode !== 0) {
+      // TODO: Error Handle these
+      console.log('Get variables in method errorCode - ' + ret.errorCode)
+    }
+
+    const data = ret.data
+
+    let variables = []
+
+    let pos = 4
+    for (let i = 0; i < data.readInt32BE(0); i++) {
+      const variable = {}
+      variable.fieldID = data.slice(pos, pos + 8)
+      pos += 8
+
+      const variableNameSize = data.readInt32BE(pos)
+      pos += 4
+      variable.variableName = data.slice(pos, pos + variableNameSize).toString('utf-8')
+      pos += variableNameSize
+
+      const signatureSize = data.readInt32BE(pos)
+      pos += 4
+      variable.signature = data.slice(pos, pos + signatureSize).toString('utf-8')
+      pos += signatureSize
+
+      const genericSignatureSize = data.readInt32BE(pos)
+      pos += 4
+      variable.genericSignature = data.slice(pos, pos + genericSignatureSize).toString('utf-8')
+      pos += genericSignatureSize
+
+      // Ignore modbits
+      pos += 4
+
+      variables.push(variable)
+    }
+
+    return variables
+  }
+
+  async _getValueForVariable (classRefTypeID, methodID, variableName) {
+    const variables = await this._getVariablesInMethod(classRefTypeID, methodID)
+    const variable = _.get(variables.filter(x => x.variableName === variableName), '[0]')
+
+    if (variable) {
+      return this._getValueForLocalVariable(variable)
+    } else {
+      return this._getValueForFieldVariable(classRefTypeID, variableName)
+    }
+  }
+
+  async _getValueForFieldVariable (classRefTypeID, variableName) {
+    const variables = await this._getVariablesInClass(classRefTypeID)
+    const variable = _.get(variables.filter(x => x.variableName === variableName), '[0]')
+
+    const frameID = await this._getFirstFrameID()
+
+    let ret = await this.javaProcess.request(16, 3, Buffer.concat([
       this._currentThreadID,
-      Buffer.from([0x00, 0x00, 0x00, 0x00]),
-      Buffer.from([0x00, 0x00, 0x00, 0x01]),
+      frameID
     ]))
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
-      console.log('11, 6 errorCode - ' + ret.errorCode)
+      console.log('16, 3 errorCode - ' + ret.errorCode)
     }
 
-    let frameID = ret.data.slice(4, 12)
+    const thisObjectId = ret.data.slice(1, 9)
+
+    ret = await this.javaProcess.request(9, 2, Buffer.concat([
+      thisObjectId,
+      Buffer.from([0x00, 0x00, 0x00, 0x01]),
+      variable.fieldID,
+    ]))
+
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('16, 1 errorCode - ' + ret.errorCode)
+    }
+
+    if (ret.data.readInt32BE() !== 1) {
+      console.log('TODO: We have an error')
+      console.log(ret)
+    }
+
+    return this._getValueResponseData(ret.data)
+  }
+
+  async _getValueForLocalVariable (variable) {
+    const frameID = await this._getFirstFrameID()
 
     let slotBuffer = Buffer.alloc(4)
-    slotBuffer.writeInt32BE(slot)
+    slotBuffer.writeInt32BE(variable.slot)
+
+    let signature = variable.signature
 
     if (signature === 'Ljava/lang/String;') {
       signature = 's'
     }
 
-    ret = await this.javaProcess.request(16, 1, Buffer.concat([
+    let ret = await this.javaProcess.request(16, 1, Buffer.concat([
       this._currentThreadID,
       frameID,
       Buffer.from([0x00, 0x00, 0x00, 0x01]),
@@ -632,34 +694,44 @@ class JavaDebugger extends eventEmitter {
       console.log(ret)
     }
 
-    const type = ret.data.slice(4, 5).toString('utf-8')
-    let value = ret.data.slice(5)
+    return this._getValueResponseData(ret.data)
+  }
+
+  async _getValueResponseData (data) {
+    let type = data.slice(4, 5).toString('utf-8')
+    let value = data.slice(5)
 
     switch (type) {
     case 'B':
-      value = ret.data.readInt8(5)
+      value = data.readInt8(5)
       break
     case 'C':
     case 'S':
-      value = ret.data.readInt16BE(5)
+      value = data.readInt16BE(5)
       break
     case 'D':
-      value = ret.data.readDoubleBE(5)
+      value = data.readDoubleBE(5)
       break
     case 'F':
-      value = ret.data.readFloatBE(5)
+      value = data.readFloatBE(5)
       break
     case 'I':
-      value = ret.data.readInt32BE(5)
+      value = data.readInt32BE(5)
       break
     case 'L':
-      const longValue = new Int64BE(ret.data.slice(5))
+      const longValue = new Int64BE(data.slice(5))
       value = longValue.toString(10)
       break
     case 'Z':
-      value = ret.data.readInt8(5) !== 0
+      value = data.readInt8(5) !== 0
       break
     }
+
+    if (type === 's') {
+      value = await this._getStringValue(value)
+    }
+
+    type = this._getPadreType(type)
 
     return {
       'type': type,
@@ -678,6 +750,37 @@ class JavaDebugger extends eventEmitter {
     }
 
     return ret.data.slice(4).toString('utf-8')
+  }
+
+  _getPadreType (type) {
+    switch (type) {
+    case 'B':
+    case 'C':
+    case 'D':
+    case 'F':
+    case 'I':
+    case 'S':
+      return 'number'
+    case 'Z':
+      return 'boolean'
+    case 'L':
+    case 's':
+      return 'string'
+    }
+  }
+
+  async _getFirstFrameID () {
+    let ret = await this.javaProcess.request(11, 6, Buffer.concat([
+      this._currentThreadID,
+      Buffer.from([0x00, 0x00, 0x00, 0x00]),
+      Buffer.from([0x00, 0x00, 0x00, 0x01]),
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('11, 6 errorCode - ' + ret.errorCode)
+    }
+
+    return ret.data.slice(4, 12)
   }
 
   // async _getClassPaths () {

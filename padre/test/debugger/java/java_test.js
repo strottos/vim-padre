@@ -483,15 +483,6 @@ describe('Test Spawning and Debugging Java', () => {
         ])
       })
 
-      this.javaProcessStubReturns.request.withArgs(11, 7, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-      ])).returns({
-        'errorCode': 0,
-        'data': Buffer.concat([
-          Buffer.from([0x00, 0x00, 0x00, 0x02]), // Frame Count
-        ])
-      })
-
       this.javaProcessStubReturns.request.withArgs(11, 6, Buffer.concat([
         Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
         Buffer.from([0x00, 0x00, 0x00, 0x00]),
@@ -511,305 +502,381 @@ describe('Test Spawning and Debugging Java', () => {
       this.javaSyntaxGetPositionDataAtLineStub = this.sandbox.stub(javaSyntax, 'getPositionDataAtLine')
     })
 
-    const setVariableReturnValues = (signature, value) => {
-      let signatureSize = Buffer.alloc(4)
-      signatureSize.writeInt32BE(signature.length)
+    describe('local primitive variables', async () => {
+      const setVariableReturnValues = (signature, value) => {
+        let signatureSize = Buffer.alloc(4)
+        signatureSize.writeInt32BE(signature.length)
 
-      this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
-      ])).returns({
-        'errorCode': 0,
-        'data': Buffer.concat([
-          Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
-          Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
-          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
-          Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
-          Buffer.from(`abc`),
-          signatureSize,
-          Buffer.from(signature),
-          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
-          Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
-          Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
-        ])
-      })
-
-      let type = signature
-      let valueBuffer
-      switch (type) {
-      case 'I':
-        valueBuffer = Buffer.alloc(4)
-        valueBuffer.writeInt32BE(value)
-        break
-      case 'C':
-      case 'S':
-        valueBuffer = Buffer.alloc(2)
-        valueBuffer.writeInt16BE(value)
-        break
-      case 'F':
-        valueBuffer = Buffer.alloc(4)
-        valueBuffer.writeFloatBE(value)
-        break
-      case 'D':
-        valueBuffer = Buffer.alloc(8)
-        valueBuffer.writeDoubleBE(value)
-        break
-      case 'L':
-        valueBuffer = Buffer.from(value)
-        break
-      case 'Z':
-      case 'B':
-        valueBuffer = Buffer.alloc(1)
-        valueBuffer.writeInt8(value)
-        break
-      case 'Ljava/lang/String;':
-        type = 's'
-        valueBuffer = value
-        break
-      }
-
-      this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-        Buffer.from(type),
-      ])).returns({
-        'errorCode': 0,
-        'data': Buffer.concat([
-          Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
-          Buffer.from(type), // Type
-          valueBuffer, // Value
-        ])
-      })
-
-      if (signature === 'Ljava/lang/String;') {
-        this.javaProcessStubReturns.request.withArgs(10, 1, Buffer.concat([
-          value
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
         ])).returns({
           'errorCode': 0,
           'data': Buffer.concat([
-            Buffer.from([0x00, 0x00, 0x00, 0x0f]),
-            Buffer.from(`testing strings`),
+            Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+            Buffer.from(`abc`),
+            signatureSize,
+            Buffer.from(signature),
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
           ])
         })
+
+        let type = signature
+        let valueBuffer
+        switch (type) {
+        case 'I':
+          valueBuffer = Buffer.alloc(4)
+          valueBuffer.writeInt32BE(value)
+          break
+        case 'C':
+        case 'S':
+          valueBuffer = Buffer.alloc(2)
+          valueBuffer.writeInt16BE(value)
+          break
+        case 'F':
+          valueBuffer = Buffer.alloc(4)
+          valueBuffer.writeFloatBE(value)
+          break
+        case 'D':
+          valueBuffer = Buffer.alloc(8)
+          valueBuffer.writeDoubleBE(value)
+          break
+        case 'L':
+          valueBuffer = Buffer.from(value)
+          break
+        case 'Z':
+        case 'B':
+          valueBuffer = Buffer.alloc(1)
+          valueBuffer.writeInt8(value)
+          break
+        case 'Ljava/lang/String;':
+          type = 's'
+          valueBuffer = value
+          break
+        }
+
+        this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from(type),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(type), // Type
+            valueBuffer, // Value
+          ])
+        })
+
+        if (signature === 'Ljava/lang/String;') {
+          this.javaProcessStubReturns.request.withArgs(10, 1, Buffer.concat([
+            value
+          ])).returns({
+            'errorCode': 0,
+            'data': Buffer.concat([
+              Buffer.from([0x00, 0x00, 0x00, 0x0f]),
+              Buffer.from(`testing strings`),
+            ])
+          })
+        }
       }
-    }
 
-    it(`should print local 'int's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
+      it(`should print 'int's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
 
-      setVariableReturnValues('I', 1234567)
+        setVariableReturnValues('I', 1234567)
 
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
 
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
 
-      chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      ])])
+        chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        ])])
 
-      chai.expect(ret).to.deep.equal({
-        'type': 'number',
-        'value': 1234567,
-        'variable': 'abc',
+        chai.expect(ret).to.deep.equal({
+          'type': 'number',
+          'value': 1234567,
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print local 'bytes's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        setVariableReturnValues('B', 123)
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        ])])
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'number',
+          'value': 123,
+          'variable': 'abc',
+        })
+      })
+
+      // TODO: Unicode values showing for chars, let's just do a number for now
+      it(`should print local 'char's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        setVariableReturnValues('C', 12345)
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        ])])
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'number',
+          'value': 12345,
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print local 'float's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        let floatBuffer = Buffer.alloc(4)
+        floatBuffer.writeFloatBE(123.45)
+        const floatValue = floatBuffer.readFloatBE()
+
+        setVariableReturnValues('F', floatValue)
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        ])])
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'number',
+          'value': floatValue,
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print local 'double's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        let doubleBuffer = Buffer.alloc(8)
+        doubleBuffer.writeDoubleBE(958139585931.5839)
+        const doubleValue = doubleBuffer.readDoubleBE()
+
+        setVariableReturnValues('D', doubleValue)
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        ])])
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'number',
+          'value': doubleValue,
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print local 'long's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        const longValue = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07])
+
+        setVariableReturnValues('L', longValue)
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        ])])
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'string',
+          'value': '283686952306183',
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print local 'short's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        setVariableReturnValues('S', 1234)
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        ])])
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'number',
+          'value': 1234,
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print local 'boolean's`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        setVariableReturnValues('Z', 1)
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'boolean',
+          'value': true,
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print local strings`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        setVariableReturnValues('Ljava/lang/String;',
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x68]))
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'string',
+          'value': 'testing strings',
+          'variable': 'abc',
+        })
       })
     })
 
-    it(`should print local 'bytes's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
+    describe('class fields', async () => {
+      beforeEach(() => {
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+        ])).returns({
+          'errorCode': 101
+        })
 
-      setVariableReturnValues('B', 123)
-
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
-
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
-
-      chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      ])])
-
-      chai.expect(ret).to.deep.equal({
-        'type': 'number',
-        'value': 123,
-        'variable': 'abc',
+        this.javaProcessStubReturns.request.withArgs(16, 3, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00])
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x01]), // Class
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72]),
+          ])
+        })
       })
-    })
 
-    // TODO: Unicode values showing for chars, let's just do a number for now
-    it(`should print local 'char's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
+      // TODO: static fields
 
-      setVariableReturnValues('C', 12345)
+      it(`should print a field in the current object`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
 
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
 
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+        this.javaProcessStubReturns.request.withArgs(2, 14, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23])
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // One field
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x84]), // Field ID
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Name length
+            Buffer.from(`abc`), // Name
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Signature length
+            Buffer.from(`I`), // Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature length
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // modbits
+          ])
+        })
 
-      chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      ])])
+        this.javaProcessStubReturns.request.withArgs(9, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x84]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // One value
+            Buffer.from(`I`), // Integer
+            Buffer.from([0x00, 0x00, 0x00, 0x18]), // Value
+          ])
+        })
 
-      chai.expect(ret).to.deep.equal({
-        'type': 'number',
-        'value': 12345,
-        'variable': 'abc',
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'number',
+          'value': 0x18,
+          'variable': 'abc',
+        })
       })
-    })
 
-    it(`should print local 'float's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
-
-      let floatBuffer = Buffer.alloc(4)
-      floatBuffer.writeFloatBE(123.45)
-      const floatValue = floatBuffer.readFloatBE()
-
-      setVariableReturnValues('F', floatValue)
-
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
-
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
-
-      chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      ])])
-
-      chai.expect(ret).to.deep.equal({
-        'type': 'number',
-        'value': floatValue,
-        'variable': 'abc',
+      it(`should print a field from the superclass of the current object`, async () => {
       })
-    })
 
-    it(`should print local 'double's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
-
-      let doubleBuffer = Buffer.alloc(8)
-      doubleBuffer.writeDoubleBE(958139585931.5839)
-      const doubleValue = doubleBuffer.readDoubleBE()
-
-      setVariableReturnValues('D', doubleValue)
-
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
-
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
-
-      chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      ])])
-
-      chai.expect(ret).to.deep.equal({
-        'type': 'number',
-        'value': doubleValue,
-        'variable': 'abc',
-      })
-    })
-
-    it(`should print local 'long's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
-
-      const longValue = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07])
-
-      setVariableReturnValues('L', longValue)
-
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
-
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
-
-      chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      ])])
-
-      chai.expect(ret).to.deep.equal({
-        'type': 'string',
-        'value': '283686952306183',
-        'variable': 'abc',
-      })
-    })
-
-    it(`should print local 'short's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
-
-      setVariableReturnValues('S', 1234)
-
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
-
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
-
-      chai.expect(this.javaProcessStubReturns.request.args[3]).to.deep.equal([11, 6, Buffer.concat([
-        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
-        Buffer.from([0x00, 0x00, 0x00, 0x00]),
-        Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      ])])
-
-      chai.expect(ret).to.deep.equal({
-        'type': 'number',
-        'value': 1234,
-        'variable': 'abc',
-      })
-    })
-
-    it(`should print local 'boolean's`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
-
-      setVariableReturnValues('Z', 1)
-
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
-
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
-
-      chai.expect(ret).to.deep.equal({
-        'type': 'boolean',
-        'value': true,
-        'variable': 'abc',
-      })
-    })
-
-    it(`should print local strings`, async () => {
-      const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
-      const lineNum = 123
-
-      setVariableReturnValues('Ljava/lang/String;',
-          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x68]))
-
-      this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
-          [`com.padre.test.SimpleJavaClass`, 'main'])
-
-      const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
-
-      chai.expect(ret).to.deep.equal({
-        'type': 'string',
-        'value': 'testing strings',
-        'variable': 'abc',
-      })
+      // TODO: Interfaces
     })
 
     it(`should report a timeout printing a variable`, async () => {
