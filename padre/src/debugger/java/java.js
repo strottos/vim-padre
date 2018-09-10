@@ -50,8 +50,6 @@ class JavaDebugger extends eventEmitter {
   }
 
   async run () {
-    console.log('Java: Run')
-
     this.javaProcess.on('request', async (commandSet, command, data) => {
       if (commandSet === 64 && command === 100) {
         return this._handleJavaEventCommand(data)
@@ -69,7 +67,7 @@ class JavaDebugger extends eventEmitter {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout starting node process'))
-      }, 5000)
+      }, 10000)
 
       this.on('jvmstarted', async () => {
         clearTimeout(timeout)
@@ -87,8 +85,6 @@ class JavaDebugger extends eventEmitter {
   }
 
   async breakpointFileAndLine (file, line) {
-    console.log(`Java: Breakpoint at ${file}:${line}`)
-
     if (!file.endsWith('.java')) {
       this.emit('padre_log', 2, `Bad Filename: ${file}`)
       return
@@ -97,7 +93,7 @@ class JavaDebugger extends eventEmitter {
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout setting breakpoint'))
-      }, 5000)
+      }, 10000)
 
       const [classes, positionData] = await Promise.all([
         this._getClassesWithGeneric(),
@@ -128,12 +124,10 @@ class JavaDebugger extends eventEmitter {
   }
 
   async stepIn () {
-    console.log('Java: StepIn')
-
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout stepping in'))
-      }, 5000)
+      }, 10000)
 
       // TODO: Error handle
       await this.javaProcess.request(15, 1, Buffer.concat([
@@ -164,12 +158,10 @@ class JavaDebugger extends eventEmitter {
   }
 
   async stepOver () {
-    console.log('Java: StepOver')
-
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout stepping over'))
-      }, 5000)
+      }, 10000)
 
       // TODO: Error handle
       await this.javaProcess.request(15, 1, Buffer.concat([
@@ -200,14 +192,12 @@ class JavaDebugger extends eventEmitter {
   }
 
   async continue () {
-    console.log('Java: Continue')
-
     const ret = this.javaProcess.request(1, 9)
 
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout continuing'))
-      }, 5000)
+      }, 10000)
 
       await ret
       clearTimeout(timeout)
@@ -216,14 +206,10 @@ class JavaDebugger extends eventEmitter {
   }
 
   async printVariable (variableName, file, line) {
-    console.log('Java: Print Variable')
-
     return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout printing a variable'))
-      }, 5000)
-
-      console.log(file)
+      }, 10000)
 
       const [classes, positionData] = await Promise.all([
         this._getClassesWithGeneric(),
@@ -372,7 +358,6 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _breakOnClassPrepare (className) {
-    console.log(`Setting break on class prepare for ${className}`)
     let length = Buffer.from([0x00, 0x00, 0x00, 0x00])
     length.writeInt32BE(Buffer.from(className).length) // TODO: Correct length for Unicode?
     await this.javaProcess.request(15, 1, Buffer.concat([
@@ -625,44 +610,51 @@ class JavaDebugger extends eventEmitter {
     if (variable) {
       return this._getValueForLocalVariable(variable)
     } else {
-      return this._getValueForFieldVariable(classRefTypeID, variableName)
+      const variablesForClass = await this._getVariablesInClass(classRefTypeID)
+      const variable = variablesForClass.filter(x => x.variableName === variableName)[0]
+
+      const frameID = await this._getFirstFrameID()
+
+      let ret = await this.javaProcess.request(16, 3, Buffer.concat([
+        this._currentThreadID,
+        frameID
+      ]))
+      // TODO: Error Handle
+      if (ret.errorCode !== 0) {
+        console.log('16, 3 errorCode - ' + ret.errorCode)
+      }
+
+      const thisObjectID = ret.data.slice(1, 9)
+
+      return (await this._getValueForFieldVariables(thisObjectID, [variable.fieldID]))[0]
     }
   }
 
-  async _getValueForFieldVariable (classRefTypeID, variableName) {
-    const variables = await this._getVariablesInClass(classRefTypeID)
-    const variable = _.get(variables.filter(x => x.variableName === variableName), '[0]')
+  async _getValueForFieldVariables (objectID, fieldIDs) {
+    let resp = []
 
-    const frameID = await this._getFirstFrameID()
+    const sizeBuffer = Buffer.alloc(4)
+    sizeBuffer.writeInt32BE(fieldIDs.length)
 
-    let ret = await this.javaProcess.request(16, 3, Buffer.concat([
-      this._currentThreadID,
-      frameID
-    ]))
-    // TODO: Error Handle
-    if (ret.errorCode !== 0) {
-      console.log('16, 3 errorCode - ' + ret.errorCode)
-    }
-
-    const thisObjectId = ret.data.slice(1, 9)
-
-    ret = await this.javaProcess.request(9, 2, Buffer.concat([
-      thisObjectId,
-      Buffer.from([0x00, 0x00, 0x00, 0x01]),
-      variable.fieldID,
+    const ret = await this.javaProcess.request(9, 2, Buffer.concat([
+      objectID,
+      sizeBuffer,
+      Buffer.concat(fieldIDs),
     ]))
 
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
-      console.log('16, 1 errorCode - ' + ret.errorCode)
+      console.log('9, 2 errorCode - ' + ret.errorCode)
     }
 
-    if (ret.data.readInt32BE() !== 1) {
-      console.log('TODO: We have an error')
-      console.log(ret)
+    let pos = 4
+    for (let i = 0; i < ret.data.readInt32BE(); i++) {
+      const valueData = await this._getValueResponseData(ret.data.slice(pos))
+      resp.push(valueData)
+      pos += valueData.size
     }
 
-    return this._getValueResponseData(ret.data)
+    return resp
   }
 
   async _getValueForLocalVariable (variable) {
@@ -671,10 +663,12 @@ class JavaDebugger extends eventEmitter {
     let slotBuffer = Buffer.alloc(4)
     slotBuffer.writeInt32BE(variable.slot)
 
-    let signature = variable.signature
+    let tag = variable.signature[0]
 
-    if (signature === 'Ljava/lang/String;') {
-      signature = 's'
+    if (tag === 'L') {
+      if (variable.signature === 'Ljava/lang/String;') {
+        tag = 's'
+      }
     }
 
     let ret = await this.javaProcess.request(16, 1, Buffer.concat([
@@ -682,7 +676,7 @@ class JavaDebugger extends eventEmitter {
       frameID,
       Buffer.from([0x00, 0x00, 0x00, 0x01]),
       slotBuffer,
-      Buffer.from(signature)
+      Buffer.from(tag)
     ]))
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
@@ -694,53 +688,66 @@ class JavaDebugger extends eventEmitter {
       console.log(ret)
     }
 
-    return this._getValueResponseData(ret.data)
+    return this._getValueResponseData(ret.data.slice(4))
   }
 
   async _getValueResponseData (data) {
-    let type = data.slice(4, 5).toString('utf-8')
-    let value = data.slice(5)
+    let type = data.slice(0, 1).toString('utf-8')
+    let value = data.slice(1)
+    let size = 1
 
     switch (type) {
     case 'B':
-      value = data.readInt8(5)
+      value = data.readInt8(1)
+      size += 1
       break
     case 'C':
     case 'S':
-      value = data.readInt16BE(5)
+      value = data.readInt16BE(1)
+      size += 2
       break
     case 'D':
-      value = data.readDoubleBE(5)
+      value = data.readDoubleBE(1)
+      size += 8
       break
     case 'F':
-      value = data.readFloatBE(5)
+      value = data.readFloatBE(1)
+      size += 4
       break
     case 'I':
-      value = data.readInt32BE(5)
+      value = data.readInt32BE(1)
+      size += 4
+      break
+    case 'J':
+      const longValue = new Int64BE(data.slice(1))
+      value = longValue.toString(10)
+      size += 8
       break
     case 'L':
-      const longValue = new Int64BE(data.slice(5))
-      value = longValue.toString(10)
+      value = data.slice(1)
+      size += 8
+      value = await this._getObjectValue(value.slice(0, 8))
       break
     case 'Z':
-      value = data.readInt8(5) !== 0
+      value = data.readInt8(1) !== 0
+      size += 1
       break
-    }
-
-    if (type === 's') {
-      value = await this._getStringValue(value)
+    case 's':
+      value = await this._getStringValue(value.slice(0, 8))
+      size += 8
+      break
     }
 
     type = this._getPadreType(type)
 
     return {
+      'size': size,
       'type': type,
       'value': value,
     }
   }
 
   async _getStringValue (objectID) {
-    console.log(objectID)
     const ret = await this.javaProcess.request(10, 1, Buffer.concat([
       objectID,
     ]))
@@ -750,6 +757,30 @@ class JavaDebugger extends eventEmitter {
     }
 
     return ret.data.slice(4).toString('utf-8')
+  }
+
+  async _getObjectValue (objectID) {
+    let ret = await this.javaProcess.request(9, 1, Buffer.concat([
+      objectID,
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('9, 1 errorCode - ' + ret.errorCode)
+    }
+
+    const classID = ret.data.slice(1)
+
+    const fields = await this._getVariablesInClass(classID)
+
+    const values = await this._getValueForFieldVariables(objectID, fields.map(x => x.fieldID))
+
+    let resp = {}
+
+    for (let i = 0; i < fields.length; i++) {
+      resp[fields[i].variableName] = values[i].value
+    }
+
+    return resp
   }
 
   _getPadreType (type) {
@@ -763,9 +794,11 @@ class JavaDebugger extends eventEmitter {
       return 'number'
     case 'Z':
       return 'boolean'
-    case 'L':
+    case 'J':
     case 's':
       return 'string'
+    case 'L':
+      return 'JSON'
     }
   }
 

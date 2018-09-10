@@ -90,7 +90,7 @@ describe('Test Spawning and Debugging Java', () => {
     it(`should report a timeout launching a process`, async () => {
       const runPromise = this.javaDebugger.run()
 
-      this.clock.tick(5010)
+      this.clock.tick(10010)
 
       let errorFound = null
 
@@ -307,7 +307,7 @@ describe('Test Spawning and Debugging Java', () => {
 
       const breakpointPromise = this.javaDebugger.breakpointFileAndLine(filename, lineNum)
 
-      this.clock.tick(5010)
+      this.clock.tick(10010)
 
       let errorFound = null
 
@@ -346,7 +346,7 @@ describe('Test Spawning and Debugging Java', () => {
     it(`should report a timeout continuing`, async () => {
       const stepInPromise = this.javaDebugger.stepIn()
 
-      this.clock.tick(5010)
+      this.clock.tick(10010)
 
       let errorFound = null
 
@@ -385,7 +385,7 @@ describe('Test Spawning and Debugging Java', () => {
     it(`should report a timeout continuing`, async () => {
       const stepOverPromise = this.javaDebugger.stepOver()
 
-      this.clock.tick(5010)
+      this.clock.tick(10010)
 
       let errorFound = null
 
@@ -414,7 +414,7 @@ describe('Test Spawning and Debugging Java', () => {
     it(`should report a timeout continuing`, async () => {
       const continuePromise = this.javaDebugger.continue()
 
-      this.clock.tick(5010)
+      this.clock.tick(10010)
 
       let errorFound = null
 
@@ -546,7 +546,7 @@ describe('Test Spawning and Debugging Java', () => {
           valueBuffer = Buffer.alloc(8)
           valueBuffer.writeDoubleBE(value)
           break
-        case 'L':
+        case 'J':
           valueBuffer = Buffer.from(value)
           break
         case 'Z':
@@ -723,7 +723,7 @@ describe('Test Spawning and Debugging Java', () => {
 
         const longValue = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07])
 
-        setVariableReturnValues('L', longValue)
+        setVariableReturnValues('J', longValue)
 
         this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
             [`com.padre.test.SimpleJavaClass`, 'main'])
@@ -873,10 +873,216 @@ describe('Test Spawning and Debugging Java', () => {
         })
       })
 
-      it(`should print a field from the superclass of the current object`, async () => {
-      })
+      // TODO: inherited fields
 
       // TODO: Interfaces
+    })
+
+    describe('objects', async () => {
+      it(`should print an object`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+            Buffer.from(`abc`),
+            Buffer.from([0x00, 0x00, 0x00, 0x20]), // Signature
+            Buffer.from(`Lcom/padre/test/SimpleJavaClass;`),
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from('L'),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86]), // Class Id
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(2, 14, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86]), // Class Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // 3 values
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]), // Field Id
+            Buffer.from([0x00, 0x00, 0x00, 0x0f]), // Field Name Length
+            Buffer.from(`testChildObject`), // Field Name
+            Buffer.from([0x00, 0x00, 0x00, 0x1a]), // Field Signature Length
+            Buffer.from(`Lcom/padre/test/TestClass;`), // Field Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Modbits
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02]), // Field Id
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Field Name Length
+            Buffer.from(`a`), // Field Name
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Field Signature Length
+            Buffer.from(`I`), // Field Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Modbits
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03]), // Field Id
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Field Name Length
+            Buffer.from(`b`), // Field Name
+            Buffer.from([0x00, 0x00, 0x00, 0x12]), // Field Signature Length
+            Buffer.from(`Ljava/lang/String;`), // Field Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Modbits
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // Number of Fields
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]), // Field Id
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02]), // Field Id
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03]), // Field Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // 3 values
+            Buffer.from(`L`), // Tag
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8a]), // Object Id
+            Buffer.from(`I`), // Tag
+            Buffer.from([0x00, 0x00, 0x00, 0x7b]), // Value: 123
+            Buffer.from(`s`), // Tag
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b]), // Object Id
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(10, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // string length
+            Buffer.from(`testing`), // value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8a]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x87]), // Class Id
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(2, 14, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x87]), // Class Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04]), // Field Id
+            Buffer.from([0x00, 0x00, 0x00, 0x10]), // Field Name Length
+            Buffer.from(`testChildObject2`), // Field Name
+            Buffer.from([0x00, 0x00, 0x00, 0x1b]), // Field Signature Length
+            Buffer.from(`Lcom/padre/test/TestClass2;`), // Field Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Modbits
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8a]), // Object Id
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // Number of Fields
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04]), // Field Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 values
+            Buffer.from(`L`), // Tag
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8c]), // Object Id
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8c]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x88]), // Class Id
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(2, 14, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x88]), // Class Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x05]), // Field Id
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Field Name Length
+            Buffer.from(`c`), // Field Name
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Field Signature Length
+            Buffer.from(`I`), // Field Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Modbits
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8c]), // Object Id
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // Number of Fields
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x05]), // Field Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 values
+            Buffer.from(`I`), // Tag
+            Buffer.from([0x00, 0x00, 0x01, 0xc8]), // Value: 456
+          ])
+        })
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'JSON',
+          'value': {
+            'testChildObject': {
+              'testChildObject2': {
+                'c': 456
+              }
+            },
+            'a': 123,
+            'b': 'testing',
+          },
+          'variable': 'abc',
+        })
+      })
     })
 
     it(`should report a timeout printing a variable`, async () => {
@@ -886,9 +1092,82 @@ describe('Test Spawning and Debugging Java', () => {
       this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
           [`com.padre.test.SimpleJavaClass`, 'main'])
 
+      this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+      ])).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+          Buffer.from(`abc`),
+          Buffer.from([0x00, 0x00, 0x00, 0x20]), // Signature
+          Buffer.from(`Lcom/padre/test/SimpleJavaClass;`),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+          Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
+        ])
+      })
+
+      this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+        Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        Buffer.from('L'),
+      ])).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+          Buffer.from(`L`), // Type
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Value
+        ])
+      })
+
+      this.javaProcessStubReturns.request.withArgs(9, 1, Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+      ])).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from(`L`), // Type
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86]), // Class Id
+        ])
+      })
+
+      this.javaProcessStubReturns.request.withArgs(2, 14, Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86])
+      ])).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // One field
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x84]), // Field ID
+          Buffer.from([0x00, 0x00, 0x00, 0x03]), // Name length
+          Buffer.from(`abc`), // Name
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // Signature length
+          Buffer.from(`I`), // Signature
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic signature length
+          Buffer.from([0x00, 0x00, 0x00, 0x00]), // modbits
+        ])
+      })
+
+      this.javaProcessStubReturns.request.withArgs(9, 2, Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]),
+        Buffer.from([0x00, 0x00, 0x00, 0x01]),
+        Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x84]),
+      ])).returns({
+        'errorCode': 0,
+        'data': Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // One value
+          Buffer.from(`I`), // Integer
+          Buffer.from([0x00, 0x00, 0x00, 0x18]), // Value
+        ])
+      })
+
       const printVariablePromise = this.javaDebugger.printVariable('abc', filename, lineNum)
 
-      this.clock.tick(5010)
+      this.clock.tick(10010)
 
       let errorFound = null
 
