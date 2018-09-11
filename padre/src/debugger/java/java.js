@@ -11,6 +11,8 @@ const javaProcess = require('./java_process')
 const javaSyntax = require('../../languages/java/syntax')
 const javaJNI = require('../../languages/java/jni')
 
+const MAX_CHILD_NUMBERS_TO_PRINT = 10
+
 class JavaDebugger extends eventEmitter {
   constructor (progName, args, options) {
     super()
@@ -597,6 +599,12 @@ class JavaDebugger extends eventEmitter {
       // Ignore modbits
       pos += 4
 
+      // TODO: This is a bit of a hack to get rid of static variables for now.
+      // Need to work out the proper way of handling this.
+      if (variable.fieldID[2] === 0x7f) {
+        continue
+      }
+
       variables.push(variable)
     }
 
@@ -605,32 +613,32 @@ class JavaDebugger extends eventEmitter {
 
   async _getValueForVariable (classRefTypeID, methodID, variableName) {
     const variables = await this._getVariablesInMethod(classRefTypeID, methodID)
-    const variable = _.get(variables.filter(x => x.variableName === variableName), '[0]')
+    let variable = _.get(variables.filter(x => x.variableName === variableName), '[0]')
 
     if (variable) {
       return this._getValueForLocalVariable(variable)
-    } else {
-      const variablesForClass = await this._getVariablesInClass(classRefTypeID)
-      const variable = variablesForClass.filter(x => x.variableName === variableName)[0]
-
-      const frameID = await this._getFirstFrameID()
-
-      let ret = await this.javaProcess.request(16, 3, Buffer.concat([
-        this._currentThreadID,
-        frameID
-      ]))
-      // TODO: Error Handle
-      if (ret.errorCode !== 0) {
-        console.log('16, 3 errorCode - ' + ret.errorCode)
-      }
-
-      const thisObjectID = ret.data.slice(1, 9)
-
-      return (await this._getValueForFieldVariables(thisObjectID, [variable.fieldID]))[0]
     }
+
+    const variablesForClass = await this._getVariablesInClass(classRefTypeID)
+    variable = variablesForClass.filter(x => x.variableName === variableName)[0]
+
+    const frameID = await this._getFirstFrameID()
+
+    let ret = await this.javaProcess.request(16, 3, Buffer.concat([
+      this._currentThreadID,
+      frameID
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('16, 3 errorCode - ' + ret.errorCode)
+    }
+
+    const thisObjectID = ret.data.slice(1, 9)
+
+    return (await this._getValueForFieldVariables(thisObjectID, [variable.fieldID]))[0]
   }
 
-  async _getValueForFieldVariables (objectID, fieldIDs) {
+  async _getValueForFieldVariables (objectID, fieldIDs, childNumber) {
     let resp = []
 
     const sizeBuffer = Buffer.alloc(4)
@@ -649,7 +657,7 @@ class JavaDebugger extends eventEmitter {
 
     let pos = 4
     for (let i = 0; i < ret.data.readInt32BE(); i++) {
-      const valueData = await this._getValueResponseData(ret.data.slice(pos))
+      const valueData = await this._getValueResponseData(ret.data.slice(pos), childNumber)
       resp.push(valueData)
       pos += valueData.size
     }
@@ -691,7 +699,7 @@ class JavaDebugger extends eventEmitter {
     return this._getValueResponseData(ret.data.slice(4))
   }
 
-  async _getValueResponseData (data) {
+  async _getValueResponseData (data, childNumber) {
     let type = data.slice(0, 1).toString('utf-8')
     let value = data.slice(1)
     let size = 1
@@ -724,9 +732,13 @@ class JavaDebugger extends eventEmitter {
       size += 8
       break
     case 'L':
-      value = data.slice(1)
+      value = data.slice(1, 9)
       size += 8
-      value = await this._getObjectValue(value.slice(0, 8))
+      if (value.equals(Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]))) {
+        value = null
+      } else {
+        value = await this._getObjectValue(value, childNumber + 1)
+      }
       break
     case 'Z':
       value = data.readInt8(1) !== 0
@@ -734,6 +746,10 @@ class JavaDebugger extends eventEmitter {
       break
     case 's':
       value = await this._getStringValue(value.slice(0, 8))
+      size += 8
+      break
+    case '[':
+      value = await this._getArrayValue(value.slice(0, 8))
       size += 8
       break
     }
@@ -759,7 +775,15 @@ class JavaDebugger extends eventEmitter {
     return ret.data.slice(4).toString('utf-8')
   }
 
-  async _getObjectValue (objectID) {
+  async _getObjectValue (objectID, childNumber) {
+    if (!childNumber) {
+      childNumber = 0
+    }
+
+    if (childNumber === MAX_CHILD_NUMBERS_TO_PRINT) {
+      return '...'
+    }
+
     let ret = await this.javaProcess.request(9, 1, Buffer.concat([
       objectID,
     ]))
@@ -772,7 +796,7 @@ class JavaDebugger extends eventEmitter {
 
     const fields = await this._getVariablesInClass(classID)
 
-    const values = await this._getValueForFieldVariables(objectID, fields.map(x => x.fieldID))
+    const values = await this._getValueForFieldVariables(objectID, fields.map(x => x.fieldID), childNumber)
 
     let resp = {}
 
@@ -781,6 +805,51 @@ class JavaDebugger extends eventEmitter {
     }
 
     return resp
+  }
+
+  async _getArrayValue (arrayID) {
+    let ret = await this.javaProcess.request(13, 1, Buffer.concat([
+      arrayID,
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('13, 1 errorCode - ' + ret.errorCode)
+    }
+
+    const arrayLength = ret.data
+
+    if (arrayLength.readInt32BE() === 0) {
+      return []
+    }
+
+    ret = await this.javaProcess.request(13, 2, Buffer.concat([
+      arrayID,
+      Buffer.from([0x00, 0x00, 0x00, 0x00]),
+      arrayLength,
+    ]))
+    // TODO: Error Handle
+    if (ret.errorCode !== 0) {
+      console.log('13, 2 errorCode - ' + ret.errorCode)
+    }
+
+    let arrayValues = []
+
+    const mainType = ret.data.readInt8()
+    let pos = 5
+
+    for (let i = 0; i < ret.data.readInt32BE(1); i++) {
+      let valuesData
+      if (mainType === 0x4c) { // Objects
+        valuesData = await this._getValueResponseData(ret.data.slice(pos))
+        pos += valuesData.size
+      } else {
+        valuesData = await this._getValueResponseData(Buffer.concat([Buffer.from([mainType]), ret.data.slice(pos)]))
+        pos += valuesData.size - 1
+      }
+      arrayValues.push(valuesData.value)
+    }
+
+    return arrayValues
   }
 
   _getPadreType (type) {
@@ -798,6 +867,7 @@ class JavaDebugger extends eventEmitter {
     case 's':
       return 'string'
     case 'L':
+    case '[':
       return 'JSON'
     }
   }

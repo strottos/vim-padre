@@ -1083,6 +1083,446 @@ describe('Test Spawning and Debugging Java', () => {
           'variable': 'abc',
         })
       })
+
+      it(`should print an object that contains null objects`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+            Buffer.from(`abc`),
+            Buffer.from([0x00, 0x00, 0x00, 0x20]), // Signature
+            Buffer.from(`Lcom/padre/test/SimpleJavaClass;`),
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from('L'),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86]), // Class Id
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(2, 14, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86]), // Class Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 3 values
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]), // Field Id
+            Buffer.from([0x00, 0x00, 0x00, 0x0f]), // Field Name Length
+            Buffer.from(`testChildObject`), // Field Name
+            Buffer.from([0x00, 0x00, 0x00, 0x1a]), // Field Signature Length
+            Buffer.from(`Lcom/padre/test/TestClass;`), // Field Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Modbits
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // Number of Fields
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]), // Field Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 3 values
+            Buffer.from(`L`), // Tag
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // Null Object
+          ])
+        })
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'JSON',
+          'value': {
+            'testChildObject': null
+          },
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print an array of integers`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+            Buffer.from(`abc`),
+            Buffer.from([0x00, 0x00, 0x00, 0x13]), // Signature
+            Buffer.from(`[Ljava/lang/String;`),
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from('['),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(`[`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(13, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x03]) // Length 3
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(13, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x03]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x49]), // Integers
+            Buffer.from([0x00, 0x00, 0x00, 0x03]),
+            Buffer.from([0x00, 0x00, 0x00, 0x01]),
+            Buffer.from([0x00, 0x00, 0x00, 0x02]),
+            Buffer.from([0x00, 0x00, 0x00, 0x03])
+          ])
+        })
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'JSON',
+          'value': [1, 2, 3],
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print an array of strings`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+            Buffer.from(`abc`),
+            Buffer.from([0x00, 0x00, 0x00, 0x13]), // Signature
+            Buffer.from(`[Ljava/lang/String;`),
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from('['),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(`[`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(13, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x03]) // Length 3
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(13, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x03]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x4c]), // Objects
+            Buffer.from([0x00, 0x00, 0x00, 0x03]),
+            Buffer.from([0x73]),
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91]),
+            Buffer.from([0x73]),
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x92]),
+            Buffer.from([0x73]),
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93]),
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(10, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x05]), // string length
+            Buffer.from(`test1`), // value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(10, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x92]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x05]), // string length
+            Buffer.from(`test2`), // value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(10, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x05]), // string length
+            Buffer.from(`test3`), // value
+          ])
+        })
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'JSON',
+          'value': ['test1', 'test2', 'test3'],
+          'variable': 'abc',
+        })
+      })
+
+      it(`should print an empty array`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+            Buffer.from(`abc`),
+            Buffer.from([0x00, 0x00, 0x00, 0x13]), // Signature
+            Buffer.from(`[Ljava/lang/String;`),
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from('['),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(`[`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(13, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x00])
+          ])
+        })
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'JSON',
+          'value': [],
+          'variable': 'abc',
+        })
+      })
+
+      it(`should limit the number of children to 10`, async () => {
+        const filename = 'test/data/src/com/padre/test/SimpleJavaClass.java'
+        const lineNum = 123
+
+        this.javaSyntaxGetPositionDataAtLineStub.withArgs(filename, lineNum).returns(
+            [`com.padre.test.SimpleJavaClass`, 'main'])
+
+        this.javaProcessStubReturns.request.withArgs(6, 5, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x23]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x02]), // argCnt???
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 slot
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), // code index
+            Buffer.from([0x00, 0x00, 0x00, 0x03]), // Variable name
+            Buffer.from(`abc`),
+            Buffer.from([0x00, 0x00, 0x00, 0x20]), // Signature
+            Buffer.from(`Lcom/padre/test/SimpleJavaClass;`),
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x07]), // Length
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // Slot
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(16, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from([0x00, 0x00, 0x00, 0x01]),
+          Buffer.from('L'),
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Value
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 1, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from(`L`), // Type
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86]), // Class Id
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(2, 14, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86]), // Class Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 3 values
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]), // Field Id
+            Buffer.from([0x00, 0x00, 0x00, 0x0f]), // Field Name Length
+            Buffer.from(`testChildObject`), // Field Name
+            Buffer.from([0x00, 0x00, 0x00, 0x1a]), // Field Signature Length
+            Buffer.from(`Lcom/padre/test/TestClass;`), // Field Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Generic Signature
+            Buffer.from([0x00, 0x00, 0x00, 0x00]), // Modbits
+          ])
+        })
+
+        this.javaProcessStubReturns.request.withArgs(9, 2, Buffer.concat([
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+          Buffer.from([0x00, 0x00, 0x00, 0x01]), // Number of Fields
+          Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]), // Field Id
+        ])).returns({
+          'errorCode': 0,
+          'data': Buffer.concat([
+            Buffer.from([0x00, 0x00, 0x00, 0x01]), // 1 value
+            Buffer.from(`L`), // Tag
+            Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89]), // Object Id
+          ])
+        })
+
+        const ret = await this.javaDebugger.printVariable('abc', filename, lineNum)
+
+        chai.expect(ret).to.deep.equal({
+          'type': 'JSON',
+          'value': {
+            'testChildObject': {
+              'testChildObject': {
+                'testChildObject': {
+                  'testChildObject': {
+                    'testChildObject': {
+                      'testChildObject': {
+                        'testChildObject': {
+                          'testChildObject': {
+                            'testChildObject': {
+                              'testChildObject': '...'
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          'variable': 'abc',
+        })
+      })
     })
 
     it(`should report a timeout printing a variable`, async () => {
