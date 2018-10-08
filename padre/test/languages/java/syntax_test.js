@@ -34,6 +34,12 @@ describe('Test Java Packages', () => {
     chai.expect(ret).to.deep.equal([`com.padre.test.JavaTestClass1`, `method1`])
   })
 
+  it('should find the correct class and method name given a complicated Java file with a package', async () => {
+    const ret = await javaSyntax.getPositionDataAtLine(
+        `test/data/java/src/com/padre/test/ComplexJavaClass.java`, 36)
+    chai.expect(ret).to.deep.equal([`com.padre.test.ComplexJavaClass`, `testing`])
+  })
+
   it('should throw an error if a Java file doesn\'t exist', async () => {
     let err = null
 

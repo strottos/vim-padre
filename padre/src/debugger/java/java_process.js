@@ -1,12 +1,13 @@
 'use strict'
 
 const stream = require('stream')
+const net = require('net')
+const process = require('process')
 
 const _ = require('lodash')
 
 const nodePty = require('node-pty')
-const process = require('process')
-const net = require('net')
+const getPort = require('get-port')
 
 class JavaProcess extends stream.Transform {
   constructor (progName, args) {
@@ -18,6 +19,8 @@ class JavaProcess extends stream.Transform {
       this.args = []
     }
 
+    this._port = null
+
     this._id = 1
 
     this._idSizes = null
@@ -25,16 +28,29 @@ class JavaProcess extends stream.Transform {
     this._socketData = null
 
     this._handleSocketWrite = this._handleSocketWrite.bind(this)
+
+    this._text = ''
   }
 
-  run () {
+  async run () {
+    this._port = await getPort()
+
     if (this.progName === 'java') {
       this.args = [
-        '-agentlib:jdwp=transport=dt_socket,address=8457,server=y',
+        `-agentlib:jdwp=transport=dt_socket,address=${this._port},server=y`,
         ...this.args
       ] // TODO: Generic port
     } else if (this.progName === 'mvn') {
-      process.env.MAVEN_DEBUG_OPTS = '-agentlib:jdwp=transport=dt_socket,address=8457,server=y'
+      if (this.args.indexOf('test') !== -1) {
+        process.env.MAVEN_DEBUG_OPTS = `-Dmaven.surefire.debug="-agentlib:jdwp=transport=dt_socket,address=${this._port},server=y"`
+        console.log('Debugging tests')
+      } else if (this.args.indexOf('verify') !== -1) {
+        process.env.MAVEN_DEBUG_OPTS = `-Dmaven.failsafe.debug="-agentlib:jdwp=transport=dt_socket,address=${this._port},server=y"`
+        console.log('Debugging tests')
+      } else {
+        process.env.MAVEN_DEBUG_OPTS = `-agentlib:jdwp=transport=dt_socket,address=${this._port},server=y`
+      }
+      this.args.push('--batch-mode')
     } else {
       this.emit('padre_log', 1, 'Not a java process')
       return
@@ -99,11 +115,30 @@ class JavaProcess extends stream.Transform {
   _transform (chunk, encoding, callback) {
     let text = chunk.toString('utf-8')
 
-    for (let line of text.trim().split('\r\n')) {
+    process.stdout.write(text)
+
+    if (this._text) {
+      text = this._text + text
+    }
+
+    while (text.length) {
+      const newLineCharacters = []
+      if (text.indexOf('\r') !== -1) {
+        newLineCharacters.push(text.indexOf('\r'))
+      } else if (text.indexOf('\n') !== -1) {
+        newLineCharacters.push(text.indexOf('\n'))
+      } else {
+        this._text += text
+        break
+      }
+      this._text = ''
+
+      const lineLength = Math.min.apply(null, newLineCharacters)
+      const line = text.slice(0, lineLength)
       const match = line.match(
-          /^Listening for transport dt_socket at address: 8457$/)
+          /Listening for transport dt_socket at address: /)
       if (match) {
-        this.connection = net.createConnection(8457)
+        this.connection = net.createConnection(this._port)
 
         const that = this
 
@@ -116,8 +151,12 @@ class JavaProcess extends stream.Transform {
         this.connection.on('error', () => {
           this.emit('padre_error', 'Connection Failed')
         })
+      }
+
+      if (text.slice(lineLength).indexOf('\r\n')) {
+        text = text.slice(lineLength + 2)
       } else {
-        process.stdout.write(text)
+        text = text.slice(lineLength + 1)
       }
     }
 
@@ -125,12 +164,12 @@ class JavaProcess extends stream.Transform {
   }
 
   _sendToDebugger (commandSet, command, data) {
-    console.log('Sending')
-    console.log({
-      'commandSet': commandSet,
-      'command': command,
-      'data': data
-    })
+    // console.log('Sending')
+    // console.log({
+    //   'commandSet': commandSet,
+    //   'command': command,
+    //   'data': data
+    // })
     const id = this._id
     this._id += 1
     let length = 11 + _.get(data, 'length', 0)
@@ -168,7 +207,13 @@ class JavaProcess extends stream.Transform {
     }
 
     while (currentBufferStart < buffer.length) {
-      let length = buffer.readInt32BE(currentBufferStart)
+      let length
+      try {
+        length = buffer.readInt32BE(currentBufferStart)
+      } catch (error) {
+        console.log(error)
+        console.log(JSON.stringify(buffer))
+      }
 
       if (buffer.length - currentBufferStart < length) {
         this._socketData = buffer.slice(currentBufferStart)
@@ -189,22 +234,22 @@ class JavaProcess extends stream.Transform {
       const commandSet = buffer.readInt8(9)
       const command = buffer.readInt8(10)
 
-      console.log('Request:')
-      console.log({
-        commandSet: commandSet,
-        command: command,
-        data: data,
-      })
+      // console.log('Request:')
+      // console.log({
+      //   commandSet: commandSet,
+      //   command: command,
+      //   data: data,
+      // })
 
       this.emit('request', commandSet, command, data)
     } else if (id !== 0 && isReply) {
       const errorCode = buffer.readInt16BE(9)
 
-      console.log(`Response ${id}:`)
-      console.log({
-        errorCode: errorCode,
-        data: data,
-      })
+      // console.log(`Response ${id}:`)
+      // console.log({
+      //   errorCode: errorCode,
+      //   data: data,
+      // })
 
       this.emit(`response_${id}`, errorCode, data)
     } else {

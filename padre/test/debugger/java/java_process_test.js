@@ -4,10 +4,11 @@ const chai = require('chai')
 const sinon = require('sinon')
 
 const events = require('events')
+const net = require('net')
 const stream = require('stream')
 
 const nodePty = require('node-pty')
-const net = require('net')
+let getPort = require('get-port')
 
 const javaProcess = require.main.require('src/debugger/java/java_process')
 
@@ -29,6 +30,8 @@ describe('Test Spawning Java', () => {
     })
 
     this.javaProcessTest = new javaProcess.JavaProcess('java', ['-jar', 'Test.jar'])
+
+    getPort = () => 8457
   })
 
   afterEach(() => {
@@ -64,10 +67,29 @@ describe('Test Spawning Java', () => {
 
     chai.expect(this.spawnStub.callCount).to.equal(1)
     chai.expect(this.spawnStub.args[0]).to.deep.equal(['mvn',
-      ['clean', 'test']])
+      ['clean', 'test', '--batch-mode']])
 
     chai.expect(process.env.MAVEN_DEBUG_OPTS).to.equal(
         '-agentlib:jdwp=transport=dt_socket,address=8457,server=y')
+
+    chai.expect(this.exePipeStub.callCount).to.equal(1)
+    chai.expect(this.exePipeStub.args[0]).to.deep.equal([this.javaProcessTest])
+
+    chai.expect(this.javaPipeStub.callCount).to.equal(1)
+    chai.expect(this.javaPipeStub.args[0]).to.deep.equal([this.exeStub])
+  })
+
+  it('should successfully spawn maven with verify with debug properties for integration testing', () => {
+    this.javaProcessTest = new javaProcess.JavaProcess('mvn', ['clean', 'verify'])
+
+    this.javaProcessTest.run()
+
+    chai.expect(this.spawnStub.callCount).to.equal(1)
+    chai.expect(this.spawnStub.args[0]).to.deep.equal(['mvn',
+      ['clean', 'verify', '--batch-mode']])
+
+    chai.expect(process.env.MAVEN_DEBUG_OPTS).to.equal(
+        '-Dmaven.failsafe.debug="-agentlib:jdwp=transport=dt_socket,address=8457,server=y"')
 
     chai.expect(this.exePipeStub.callCount).to.equal(1)
     chai.expect(this.exePipeStub.args[0]).to.deep.equal([this.javaProcessTest])
@@ -102,36 +124,6 @@ describe('Test Spawning Java', () => {
       'padre_log', 1, 'Test Error'])
   })
 
-  it('should request the ID sizes after starting and get a response', async () => {
-    const sendToDebuggerStub = this.sandbox.stub(this.javaProcessTest, 'request')
-    sendToDebuggerStub.withArgs(1, 7).returns({
-      'errorCode': 0,
-      'data': Buffer.from([
-        0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08,
-        0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08,
-        0x00, 0x00, 0x00, 0x08,
-      ])
-    })
-
-    this.javaProcessTest.run()
-
-    await this.javaProcessTest.emit('javadebuggerstarted')
-
-    chai.expect(this.javaProcessTest._idSizes).to.deep.equal({
-      'fieldIDSize': 8,
-      'methodIDSize': 8,
-      'objectIDSize': 8,
-      'referenceTypeIDSize': 8,
-      'frameIDSize': 8,
-    })
-
-    chai.expect(this.javaProcessTest.getFieldIDSize()).to.equal(8)
-    chai.expect(this.javaProcessTest.getMethodIDSize()).to.equal(8)
-    chai.expect(this.javaProcessTest.getObjectIDSize()).to.equal(8)
-    chai.expect(this.javaProcessTest.getReferenceTypeIDSize()).to.equal(8)
-    chai.expect(this.javaProcessTest.getFrameIDSize()).to.equal(8)
-  })
-
   // TODO
   // it('should report a critical error if the ID sizes get a bad response', async () => {
   // })
@@ -156,7 +148,9 @@ describe('Test Java Network Communication', () => {
     const connectionStubReturnsOn = this.sandbox.stub(this.connectionStubReturns, 'on')
     connectionStubReturnsOn.callThrough()
 
-    this.javaProcessTest.write(`Listening for transport dt_socket at address: 8457\n`)
+    this.javaProcessTest.write(`testing\r\n`)
+    this.javaProcessTest.write(`Listening for transport `)
+    this.javaProcessTest.write(`dt_socket at address: 8457\n`)
 
     this.connectionStubReturns.emit('connect')
 
@@ -372,5 +366,35 @@ describe('Test Java Network Communication', () => {
         0x01, 0x02, 0x03, 0x04, 0x05,
       ])
     })
+  })
+
+  it('should request the ID sizes after starting and get a response', async () => {
+    const sendToDebuggerStub = this.sandbox.stub(this.javaProcessTest, 'request')
+    sendToDebuggerStub.withArgs(1, 7).returns({
+      'errorCode': 0,
+      'data': Buffer.from([
+        0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08,
+        0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08,
+        0x00, 0x00, 0x00, 0x08,
+      ])
+    })
+
+    this.javaProcessTest.run()
+
+    await this.javaProcessTest.emit('javadebuggerstarted')
+
+    chai.expect(this.javaProcessTest._idSizes).to.deep.equal({
+      'fieldIDSize': 8,
+      'methodIDSize': 8,
+      'objectIDSize': 8,
+      'referenceTypeIDSize': 8,
+      'frameIDSize': 8,
+    })
+
+    chai.expect(this.javaProcessTest.getFieldIDSize()).to.equal(8)
+    chai.expect(this.javaProcessTest.getMethodIDSize()).to.equal(8)
+    chai.expect(this.javaProcessTest.getObjectIDSize()).to.equal(8)
+    chai.expect(this.javaProcessTest.getReferenceTypeIDSize()).to.equal(8)
+    chai.expect(this.javaProcessTest.getFrameIDSize()).to.equal(8)
   })
 })

@@ -34,6 +34,8 @@ class JavaDebugger extends eventEmitter {
     this._handleLocationEvent = this._handleLocationEvent.bind(this)
     this._getMethodLineNumbers = this._getMethodLineNumbers.bind(this)
 
+    this._cache = {}
+
     this.allJavaFiles = new Set()
   }
 
@@ -64,12 +66,12 @@ class JavaDebugger extends eventEmitter {
       })
     })
 
-    this.javaProcess.run()
+    await this.javaProcess.run()
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout starting node process'))
-      }, 10000)
+      }, 60000)
 
       this.on('jvmstarted', async () => {
         clearTimeout(timeout)
@@ -114,7 +116,8 @@ class JavaDebugger extends eventEmitter {
         await this._setBreakpoint(classFound.refTypeID, methodName)
       } else {
         await this._breakOnClassPrepare(className)
-        this._pendingBreakpointMethodForClasses[classSignature] = methodName
+        this._pendingBreakpointMethodForClasses[classSignature] = this._pendingBreakpointMethodForClasses[classSignature] || []
+        this._pendingBreakpointMethodForClasses[classSignature].push(methodName)
         status = 'PENDING'
       }
 
@@ -208,11 +211,15 @@ class JavaDebugger extends eventEmitter {
   }
 
   async printVariable (variableName, file, line) {
-    return new Promise(async (resolve, reject) => {
-      const timeout = setTimeout(() => {
+    let timeoutId
+
+    const delay = new Promise(async (resolve, reject) => {
+      timeoutId = setTimeout(() => {
         reject(new Error('Timeout printing a variable'))
       }, 10000)
+    })
 
+    return Promise.race([delay, new Promise(async (resolve, reject) => {
       const [classes, positionData] = await Promise.all([
         this._getClassesWithGeneric(),
         javaSyntax.getPositionDataAtLine(file, line)
@@ -233,16 +240,18 @@ class JavaDebugger extends eventEmitter {
         value,
       } = await this._getValueForVariable(classRefTypeID, methodID, variableName)
 
-      clearTimeout(timeout)
+      clearTimeout(timeoutId)
       resolve({
         'type': type,
         'value': value,
         'variable': variableName,
       })
-    })
+    })])
   }
 
   async _handleJavaEventCommand (data) {
+    let toResume = false
+
     let pos = 5
     for (let i = 0; i < data.readInt32BE(1); i++) {
       const eventKind = data.readInt8(pos)
@@ -251,6 +260,7 @@ class JavaDebugger extends eventEmitter {
         pos += await this._handleLocationEvent(data.slice(pos))
       } else if (eventKind === 0x08) {
         pos += await this._handleClassPrepareEvent(data.slice(pos))
+        toResume = true
       } else if (eventKind === 0x5a) {
         this.emit('jvmstarted')
         pos += 12
@@ -262,10 +272,15 @@ class JavaDebugger extends eventEmitter {
         console.log(data.slice(pos))
       }
     }
+
+    if (toResume) {
+      await this.javaProcess.request(1, 9)
+    }
   }
 
   async _getClassesWithGeneric () {
     const ret = await this.javaProcess.request(1, 20)
+
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('Get all classes errorCode - ' + ret.errorCode)
@@ -303,7 +318,7 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _getMethodsWithGeneric (refTypeID) {
-    const ret = await this.javaProcess.request(2, 15, refTypeID)
+    const ret = await this._doRequestWithCache([2, 15, refTypeID])
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('Get methods errorCode - ' + ret.errorCode)
@@ -413,13 +428,15 @@ class JavaDebugger extends eventEmitter {
     //
     // await Promise.all(promises)
 
-    await this._setBreakpoint(refTypeID, this._pendingBreakpointMethodForClasses[classSignature])
+    if (classSignature in this._pendingBreakpointMethodForClasses) {
+      for (let methodName of this._pendingBreakpointMethodForClasses[classSignature]) {
+        await this._setBreakpoint(refTypeID, methodName)
+      }
 
-    // TODO: Clear Class Prepare Event
+      // TODO: Clear Class Prepare Event
 
-    delete this._pendingBreakpointMethodForClasses[classSignature]
-
-    await this.javaProcess.request(1, 9)
+      delete this._pendingBreakpointMethodForClasses[classSignature]
+    }
 
     return pos
   }
@@ -438,7 +455,7 @@ class JavaDebugger extends eventEmitter {
     ])
 
     if (!classPath) {
-      return
+      return await this.stepOver()
     }
 
     const line = _.get(_.last(methodLines[2].filter(x => {
@@ -452,7 +469,7 @@ class JavaDebugger extends eventEmitter {
         }
       }
       return true
-    })), 'lineNumber')
+    })), 'lineNumber') || _.get(methodLines, '[2][0].lineNumber')
 
     this.emit('process_position', classPath, line)
   }
@@ -460,7 +477,7 @@ class JavaDebugger extends eventEmitter {
   async _getPathForClass (classID) {
     const [classes, sourceFile] = await Promise.all([
       this._getClassesWithGeneric(),
-      this.javaProcess.request(2, 7, classID)
+      this._doRequestWithCache([2, 7, classID])
     ])
 
     if (sourceFile.errorCode !== 0) {
@@ -474,7 +491,8 @@ class JavaDebugger extends eventEmitter {
 
     const classPathsFound = [...this.allJavaFiles].filter(x => x.indexOf(fullClassPath) !== -1)
     if (classPathsFound.length === 0) {
-      await this.javaProcess.request(1, 9)
+      // TODO: Why did we think the following was good?
+      // await this.javaProcess.request(1, 9)
       return null
     }
 
@@ -489,7 +507,8 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _getMethodLineNumbers (classID, methodID) {
-    const ret = await this.javaProcess.request(6, 1, Buffer.concat([classID, methodID]))
+    const ret = await this._doRequestWithCache([6, 1, Buffer.concat([classID, methodID])])
+
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('Get methods lines errorCode - ' + ret.errorCode)
@@ -516,7 +535,7 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _getVariablesInMethod (classID, methodID) {
-    const ret = await this.javaProcess.request(6, 5, Buffer.concat([classID, methodID]))
+    const ret = await this._doRequestWithCache([6, 5, Buffer.concat([classID, methodID])])
 
     if (ret.errorCode === 101) {
       // Information Absent
@@ -564,7 +583,7 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _getVariablesInClass (classRefTypeID) {
-    const ret = await this.javaProcess.request(2, 14, Buffer.concat([classRefTypeID]))
+    const ret = await this._doRequestWithCache([2, 14, Buffer.concat([classRefTypeID])])
 
     if (ret.errorCode !== 0) {
       // TODO: Error Handle these
@@ -624,10 +643,10 @@ class JavaDebugger extends eventEmitter {
 
     const frameID = await this._getFirstFrameID()
 
-    let ret = await this.javaProcess.request(16, 3, Buffer.concat([
+    let ret = await this._doRequestWithCache([16, 3, Buffer.concat([
       this._currentThreadID,
       frameID
-    ]))
+    ])])
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('16, 3 errorCode - ' + ret.errorCode)
@@ -644,11 +663,11 @@ class JavaDebugger extends eventEmitter {
     const sizeBuffer = Buffer.alloc(4)
     sizeBuffer.writeInt32BE(fieldIDs.length)
 
-    const ret = await this.javaProcess.request(9, 2, Buffer.concat([
+    const ret = await this._doRequestWithCache([9, 2, Buffer.concat([
       objectID,
       sizeBuffer,
       Buffer.concat(fieldIDs),
-    ]))
+    ])])
 
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
@@ -679,13 +698,13 @@ class JavaDebugger extends eventEmitter {
       }
     }
 
-    let ret = await this.javaProcess.request(16, 1, Buffer.concat([
+    let ret = await this._doRequestWithCache([16, 1, Buffer.concat([
       this._currentThreadID,
       frameID,
       Buffer.from([0x00, 0x00, 0x00, 0x01]),
       slotBuffer,
       Buffer.from(tag)
-    ]))
+    ])], 2000)
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('16, 1 errorCode - ' + ret.errorCode)
@@ -731,6 +750,10 @@ class JavaDebugger extends eventEmitter {
       value = longValue.toString(10)
       size += 8
       break
+    case 'l':
+      value = 'CLASSLOADER'
+      size += 8
+      break
     case 'L':
       value = data.slice(1, 9)
       size += 8
@@ -764,9 +787,9 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _getStringValue (objectID) {
-    const ret = await this.javaProcess.request(10, 1, Buffer.concat([
+    const ret = await this._doRequestWithCache([10, 1, Buffer.concat([
       objectID,
-    ]))
+    ])], 2000)
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('10, 1 errorCode - ' + ret.errorCode)
@@ -784,9 +807,8 @@ class JavaDebugger extends eventEmitter {
       return '...'
     }
 
-    let ret = await this.javaProcess.request(9, 1, Buffer.concat([
-      objectID,
-    ]))
+    let ret = await this._doRequestWithCache([9, 1, Buffer.concat([objectID])])
+
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('9, 1 errorCode - ' + ret.errorCode)
@@ -808,9 +830,9 @@ class JavaDebugger extends eventEmitter {
   }
 
   async _getArrayValue (arrayID) {
-    let ret = await this.javaProcess.request(13, 1, Buffer.concat([
+    let ret = await this._doRequestWithCache([13, 1, Buffer.concat([
       arrayID,
-    ]))
+    ])], 2000)
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('13, 1 errorCode - ' + ret.errorCode)
@@ -822,11 +844,11 @@ class JavaDebugger extends eventEmitter {
       return []
     }
 
-    ret = await this.javaProcess.request(13, 2, Buffer.concat([
+    ret = await this._doRequestWithCache([13, 2, Buffer.concat([
       arrayID,
       Buffer.from([0x00, 0x00, 0x00, 0x00]),
       arrayLength,
-    ]))
+    ])], 2000)
     // TODO: Error Handle
     if (ret.errorCode !== 0) {
       console.log('13, 2 errorCode - ' + ret.errorCode)
@@ -864,6 +886,7 @@ class JavaDebugger extends eventEmitter {
     case 'Z':
       return 'boolean'
     case 'J':
+    case 'l':
     case 's':
       return 'string'
     case 'L':
@@ -884,6 +907,31 @@ class JavaDebugger extends eventEmitter {
     }
 
     return ret.data.slice(4, 12)
+  }
+
+  async _doRequestWithCache (args, timeout) {
+    let ret = _.get(this._cache, JSON.stringify(args))
+
+    if (ret && new Date().getTime() > ret.timeout) {
+      delete this._cache[JSON.stringify(args)]
+      ret = null
+    }
+
+    if (!ret) {
+      ret = await this.javaProcess.request.apply(this.javaProcess, args)
+
+      if (ret.errorCode !== 0) {
+        // Don't cache with error, may not be an error later.
+        return ret
+      }
+
+      this._cache[JSON.stringify(args)] = ret
+      if (timeout) {
+        this._cache[JSON.stringify(args)].timeout = new Date().getTime() + timeout
+      }
+    }
+
+    return ret
   }
 
   // async _getClassPaths () {

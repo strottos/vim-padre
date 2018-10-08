@@ -46,8 +46,8 @@ class Debugger {
   }
 
   async _handleRequest (data) {
-    console.log("Handling Request")
-    console.log(data.toString('utf-8'))
+    // console.log("Handling Request")
+    // console.log(data.toString('utf-8'))
     try {
       const message = this._interpret(data.toString('utf-8').trim())
       if (message.cmd === 'run') {
@@ -89,7 +89,7 @@ class Debugger {
         } else {
           this._writeToPadre(`[${message.id},"ERROR"]`)
           this._writeToPadre(`["call","padre#debugger#Log",[2,` +
-              `"ERROR, can\'t understand: variable=${ret.variable} ` +
+              `"ERROR, can't understand: variable=${ret.variable} ` +
               `value='${JSON.stringify(ret.value).replace(/"/g, '\\"')}' type=${ret.type}"]]`)
         }
       }
@@ -117,8 +117,8 @@ class Debugger {
   }
 
   _writeToPadre (data) {
-    console.log('Writing')
-    console.log(data)
+    // console.log('Writing')
+    // console.log(data)
     this.connection.write(data)
   }
 }

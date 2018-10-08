@@ -34,7 +34,7 @@ const _evaluate = (data, lineNum) => {
       pkg += token.token
     }
 
-    if (cmd === 'class') {
+    if (cmd === 'class' && !cls) {
       if (token.lineNum > lineNum) {
         break
       }
@@ -70,9 +70,19 @@ const _evaluate = (data, lineNum) => {
 
 const _evaluateMethod = (tokens, lineNum) => {
   let methods = []
+  let analyseMethodName = false
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
+
+    if (['public', 'private', 'protected', 'package'].indexOf(token.token) !== -1) {
+      analyseMethodName = true
+    }
+
+    if (!analyseMethodName) {
+      continue
+    }
+
     if (javaLexer.isIdentifier(token.token) && tokens[i + 1].token === '(') {
       let j
       for (j = i + 2; j < tokens.length; j++) {
@@ -84,6 +94,7 @@ const _evaluateMethod = (tokens, lineNum) => {
       for (; j < tokens.length; j++) {
         if (tokens[j].token === '{') {
           methods.push(token)
+          analyseMethodName = false
           break
         } else if (tokens[j].token === ';') {
           break

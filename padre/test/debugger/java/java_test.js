@@ -90,7 +90,7 @@ describe('Test Spawning and Debugging Java', () => {
     it(`should report a timeout launching a process`, async () => {
       const runPromise = this.javaDebugger.run()
 
-      this.clock.tick(10010)
+      this.clock.tick(60010)
 
       let errorFound = null
 
