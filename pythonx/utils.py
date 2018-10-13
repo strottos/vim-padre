@@ -14,7 +14,7 @@ except ImportError:
 
 def get_unused_localhost_port():
     """
-    Find an unused port. Based on a similar function in YouCompleteMe
+    Find an unused port. Based on a similar function in YouCompleteMe.
     """
     sock = socket.socket()
     # This tells the OS to give us any free port in the range [1024 - 65535]

@@ -23,7 +23,7 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "test": "nyc mocha --recursive"
+    "test": "NODE_ENV=test nyc mocha --recursive"
   },
   "repository": {
     "type": "git",
