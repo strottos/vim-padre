@@ -71,6 +71,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     chai.expect(nodeDebuggerEmitStub.args[2]).to.deep.equal(['padre_log', 5, 'stack'])
   })
 
+  // TODO: Extra describe for sections?
   it('should be able to launch a process successfully', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
 
@@ -206,7 +207,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '12',
-        'url': '/Users/me/padre/padre',
+        'url': '/home/me/padre/padre',
         'startLine': 0,
         'startColumn': 0,
         'endLine': 73,
@@ -231,11 +232,12 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       },
       {
         'id': '12',
-        'location': '/Users/me/padre/padre'
+        'location': '/home/me/padre/padre'
       },
     ])
   })
 
+  // TODO
   it('should report exceptions', async () => {
     const nodeDebugger = new nodeinspect.NodeInspect('./test', ['--arg1'])
 
@@ -832,7 +834,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
               'objectId': '{\\"injectedScriptId\\":1,\\"id\\":3}',
               'type': 'object'
             },
-            'url': '/Users/stevent/code/personal/vim-padre/padre/padre'
+            'url': '/home/me/code/vim-padre/padre/padre'
           }
         ],
         'hitBreakpoints': [],
@@ -841,6 +843,6 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
     })
 
     chai.expect(nodeDebuggerEmitStub.callCount).to.equal(1)
-    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['process_position', '/Users/stevent/code/personal/vim-padre/padre/padre', 40])
+    chai.expect(nodeDebuggerEmitStub.args[0]).to.deep.equal(['process_position', '/home/me/code/vim-padre/padre/padre', 40])
   })
 })
