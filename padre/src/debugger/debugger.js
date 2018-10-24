@@ -1,5 +1,7 @@
 'use strict'
 
+const process = require('process')
+
 class Debugger {
   constructor (debugServer, connection) {
     this.debugServer = debugServer
@@ -36,6 +38,14 @@ class Debugger {
         that._writeToPadre(`["call","padre#debugger#BreakpointSet",["${fileName}",${lineNum}]]`)
       })
 
+      process.stdin.setEncoding('utf8')
+      process.stdin.on('readable', () => {
+        const data = process.stdin.read()
+        if (data) {
+          that.debugServer.exe.write(data)
+        }
+      })
+
       // TODO: Socket termination
       // c.on('end', () => {
       //  console.log('server disconnected');
@@ -46,8 +56,8 @@ class Debugger {
   }
 
   async _handleRequest (data) {
-    console.log("Handling Request")
-    console.log(data.toString('utf-8'))
+    // console.log("Handling Request")
+    // console.log(data.toString('utf-8'))
     try {
       const message = this._interpret(data.toString('utf-8').trim())
       if (message.cmd === 'run') {
@@ -115,8 +125,8 @@ class Debugger {
   }
 
   _writeToPadre (data) {
-    console.log('Writing')
-    console.log(data)
+    // console.log('Writing')
+    // console.log(data)
     this.connection.write(data)
   }
 }

@@ -12,6 +12,7 @@ let s:PluginRoot = expand('<sfile>:p:h:h:h')
 let s:DataItems = []
 let s:NumDataWindows = 0
 let s:CurrentFileLoaded = ''
+let s:CurrentFileBufWindow = 0
 let s:PresentDirectory = ''
 let s:Debug = 0
 
@@ -22,7 +23,9 @@ function! padre#debugger#Setup()
   " call padre#buffer#Create('PADRE_Preprocessing', 'PADRE_Preprocessing', 1)
 
   call padre#buffer#SetMainPadreKeyBindings('PADRE_Main')
-  call padre#buffer#SetOnlyWriteableAtBottom('PADRE_Stdio')
+  if !has('terminal')
+    call padre#buffer#SetOnlyWriteableAtBottom('PADRE_Stdio')
+  endif
 
   let s:DataItems = ['PADRE_Stdio']
 
@@ -83,26 +86,36 @@ function! padre#debugger#Debug(...)
     endif
   endif
 
-  call padre#buffer#ClearBuffer('PADRE_Stdio')
+  if !has('terminal')
+    call padre#buffer#ClearBuffer('PADRE_Stdio')
 
-  if s:JobId != 0
-    call padre#job#Stop(s:JobId)
+    if s:JobId != 0
+      call padre#job#Stop(s:JobId)
+    endif
   endif
+
+  call padre#layout#OpenTabWithBuffer('PADRE_Main', 0)
 
   let l:padrePort = padre#util#GetUnusedLocalhostPort()
 
+  " call padre#debugger#AddDataWindow()
+  call padre#layout#AddWindowToTab('b', 10, 'PADRE_Stdio', 0)
+  wincmd b
+
   " TODO: Check for errors and report
   let l:command = s:PluginRoot . '/padre/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' -- ' . l:program
-  let l:jobOptions = {'out_cb': function('padre#debugger#StdoutCallback'), 'err_cb': function('padre#debugger#StderrCallback')}
-  let s:JobId = padre#job#Start(l:command, l:jobOptions)
+  if has('terminal')
+    execute 'terminal ++curwin ' . l:command
+  else
+    let l:jobOptions = {'out_cb': function('padre#debugger#StdoutCallback'), 'err_cb': function('padre#debugger#StderrCallback')}
+    let s:JobId = padre#job#Start(l:command, l:jobOptions)
+  endif
 
   sleep 200ms
 
   call padre#socket#Connect('localhost', l:padrePort)
 
-  call padre#layout#OpenTabWithBuffer('PADRE_Main', 0)
-
-  call padre#debugger#AddDataWindow()
+  wincmd k
 endfunction
 
 function! padre#debugger#Run()
@@ -282,19 +295,18 @@ function! padre#debugger#JumpToPosition(file, line)
 
   if l:fileToLoad != s:CurrentFileLoaded
     call padre#layout#OpenTabWithBuffer('PADRE_Main', 0)
-    call padre#layout#FindBufferWindowWithinTab('PADRE_Main')
-    wincmd k
 
-    if bufname('%') == 'PADRE_Main'
-      if winheight(winnr()) <= 30
-        let l:height = winheight(winnr()) / 2
+    if s:CurrentFileBufWindow == 0
+      if winwidth(winnr()) <= 30
+        let l:width = winwidth(winnr()) / 2
       else
-        let l:height = winheight(winnr()) - 15
+        let l:width = winwidth(winnr()) - 15
       endif
 
-      new
-      execute 'resize ' . l:height
+      vnew
+      execute 'vertical resize ' . l:height
     else
+      execute s:CurrentFileBufWindow . 'wincmd w'
       call padre#buffer#UnsetPadreKeyBindings(bufname('%'))
     endif
     execute 'edit ' . l:fileToLoad
@@ -303,6 +315,8 @@ function! padre#debugger#JumpToPosition(file, line)
 
     let s:CurrentFileLoaded = l:fileToLoad
   endif
+
+  let s:CurrentFileBufWindow = winnr()
 
   call padre#signs#ReplaceCodePointer(a:line)
 

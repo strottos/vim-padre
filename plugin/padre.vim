@@ -26,30 +26,6 @@ elseif !(has('job') && has('timers'))
   finish
 endif
 
-if has('python')
-  try
-    pydo import six
-  catch
-    echohl WarningMsg |
-          \ echomsg 'Python 2 requires six module' |
-          \ echohl None
-    call s:restore_cpo()
-    finish
-  endtry
-endif
-
-if has('python3')
-  try
-    py3do import six
-  catch
-    echohl WarningMsg |
-          \ echomsg 'Python 3 requires six module' |
-          \ echohl None
-    call s:restore_cpo()
-    finish
-  endtry
-endif
-
 let g:loaded_padre_plugin = 1
 
 if get(g:, 'padre_plugin_autostart', 1)

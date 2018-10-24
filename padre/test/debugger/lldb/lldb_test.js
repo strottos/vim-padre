@@ -107,8 +107,9 @@ describe('Test Spawning LLDB', () => {
 
     const runPromise = lldbDebugger.run()
 
-    chai.expect(lldbDebugger.exe.write.callCount).to.equal(1)
-    chai.expect(lldbDebugger.exe.write.args[0]).to.deep.equal(['process launch\n'])
+    chai.expect(lldbDebugger.exe.write.callCount).to.equal(2)
+    chai.expect(lldbDebugger.exe.write.args[0]).to.deep.equal(['break set --name main\n'])
+    chai.expect(lldbDebugger.exe.write.args[1]).to.deep.equal(['process launch\n'])
 
     lldbDebugger.write(`Process 12345 launched: '/test' (x86_64)\n`)
 
