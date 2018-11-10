@@ -29,6 +29,7 @@ class LLDB extends stream.Transform {
 
   async run () {
     console.log('LLDB Input: Run')
+    this.exe.write('break set --name main\n')
     this.exe.write('process launch\n')
     const that = this
     return new Promise((resolve, reject) => {
@@ -144,7 +145,7 @@ class LLDB extends stream.Transform {
   }
 
   _checkPosition (line) {
-    const match = line.match(/^frame #0: \S+`\S+ at (\S+):(\d+)$/)
+    const match = line.match(/^ *frame #\d: \S+`\S.* at (\S+):(\d+)$/)
     if (match) {
       console.log('Found position')
       const lineNum = parseInt(match[2])

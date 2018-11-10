@@ -1,5 +1,7 @@
 'use strict'
 
+const process = require('process')
+
 class Debugger {
   constructor (debugServer, connection) {
     this.debugServer = debugServer
@@ -34,6 +36,14 @@ class Debugger {
 
       that.debugServer.on('breakpoint_set', (fileName, lineNum) => {
         that._writeToPadre(`["call","padre#debugger#BreakpointSet",["${fileName}",${lineNum}]]`)
+      })
+
+      process.stdin.setEncoding('utf8')
+      process.stdin.on('readable', () => {
+        const data = process.stdin.read()
+        if (data) {
+          that.debugServer.exe.write(data)
+        }
       })
 
       // TODO: Socket termination

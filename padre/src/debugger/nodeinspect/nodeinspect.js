@@ -55,6 +55,8 @@ class NodeInspect extends eventEmitter {
 
     this.nodeProcess.run()
 
+    this.exe = this.nodeProcess.exe
+
     this.nodeProcess.on('inspectstarted', async () => {
       await that.nodeWS.setup()
     })
@@ -318,7 +320,7 @@ class NodeInspect extends eventEmitter {
 
     if (_.isEmpty(data.params.callFrames[0].url)) {
       fileName = fs.realpathSync(_.get(this._scripts.filter((x) => {
-        return x.id === data.result.actualLocation.scriptId
+        return (data.result && x.id === data.result.actualLocation.scriptId) || x.id === data.params.callFrames[0].location.scriptId // Hack, not sure why I need to do this at present for a single file script
       }), '0.location'))
     } else {
       fileName = data.params.callFrames[0].url
