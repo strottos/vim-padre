@@ -103,7 +103,7 @@ function! padre#debugger#Debug(...)
   wincmd b
 
   " TODO: Check for errors and report
-  let l:command = s:PluginRoot . '/padre/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' -- ' . l:program
+  let l:command = s:PluginRoot . '/padre/padre --max-old-space-size=4096 --port=' . l:padrePort . ' --debugger=' . l:debugger . ' -- ' . l:program
   if has('terminal')
     execute 'terminal ++curwin ' . l:command
   else

@@ -68,6 +68,8 @@ class JavaDebugger extends eventEmitter {
 
     await this.javaProcess.run()
 
+    this.exe = this.javaProcess.exe
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout starting node process'))
