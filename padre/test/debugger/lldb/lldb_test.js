@@ -153,6 +153,7 @@ describe('Test Spawning LLDB', () => {
       'breakpointId': 1,
       'line': 20,
       'file': 'main.c',
+      'status': 'OK'
     })
   })
 
@@ -231,7 +232,7 @@ describe('Test Spawning LLDB', () => {
     chai.expect(ret).to.deep.equal({
       'variable': 'abc',
       'value': 123,
-      'type': 'int',
+      'type': 'number',
     })
   })
 

@@ -266,7 +266,7 @@ class NodeInspect extends eventEmitter {
   _scriptParsed (data) {
     const script = {
       'id': data.params.scriptId,
-      'location': data.params.url,
+      'location': data.params.url.replace('file://', ''),
     }
 
     this._scripts.push(script)
@@ -323,7 +323,7 @@ class NodeInspect extends eventEmitter {
         return (data.result && x.id === data.result.actualLocation.scriptId) || x.id === data.params.callFrames[0].location.scriptId // Hack, not sure why I need to do this at present for a single file script
       }), '0.location'))
     } else {
-      fileName = data.params.callFrames[0].url
+      fileName = data.params.callFrames[0].url.replace('file://', '')
     }
 
     this.emit('process_position',

@@ -7,6 +7,8 @@ const nodePty = require('node-pty')
 class NodeProcess extends stream.Transform {
   constructor (progName, args) {
     super()
+    console.log('progName')
+    console.log(progName)
 
     this.progName = progName
     this.args = args

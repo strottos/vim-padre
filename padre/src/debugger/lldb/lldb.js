@@ -51,6 +51,7 @@ class LLDB extends stream.Transform {
           'breakpointId': breakpointId,
           'file': fileName,
           'line': lineNum,
+          'status': 'OK'
         })
       })
     })
@@ -97,7 +98,7 @@ class LLDB extends stream.Transform {
       that.on('printVariable', (type, variable, value) => {
         if (type === 'int') {
           resolve({
-            'type': type,
+            'type': 'number',
             'variable': variable,
             'value': parseInt(value),
           })
