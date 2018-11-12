@@ -207,7 +207,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '12',
-        'url': '/home/me/padre/padre',
+        'url': 'file:///home/me/padre/padre',
         'startLine': 0,
         'startColumn': 0,
         'endLine': 73,
@@ -252,7 +252,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '67',
-        'url': `/home/me/padre/index.js`,
+        'url': `file:///home/me/padre/index.js`,
         'startLine': 0,
         'startColumn': 0,
         'endLine': 304,
@@ -320,7 +320,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '67',
-        'url': `/home/me/padre/index.js`,
+        'url': `file:///home/me/padre/index.js`,
         'startLine': 0,
         'startColumn': 0,
         'endLine': 304,
@@ -402,7 +402,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '67',
-        'url': `/home/me/padre/index.js`,
+        'url': `file:///home/me/padre/index.js`,
         'startLine': 0,
         'startColumn': 0,
         'endLine': 304,
@@ -447,7 +447,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
       'method': 'Debugger.scriptParsed',
       'params': {
         'scriptId': '67',
-        'url': `/home/me/padre/index.js`
+        'url': `file:///home/me/padre/index.js`
       }
     })
 
@@ -834,7 +834,7 @@ describe('Test Spawning and Debugging Node with Inspect', () => {
               'objectId': '{\\"injectedScriptId\\":1,\\"id\\":3}',
               'type': 'object'
             },
-            'url': '/home/me/code/vim-padre/padre/padre'
+            'url': 'file:///home/me/code/vim-padre/padre/padre'
           }
         ],
         'hitBreakpoints': [],
