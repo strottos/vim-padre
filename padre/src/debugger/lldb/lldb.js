@@ -22,12 +22,14 @@ class LLDB extends stream.Transform {
 
     exe.pipe(this).pipe(exe)
 
-    exe.write('settings set stop-line-count-after 0\n')
-    exe.write('settings set stop-line-count-before 0\n')
+    exe.write(`settings set stop-line-count-after 0\n`)
+    exe.write(`settings set stop-line-count-before 0\n`)
+    exe.write(`settings set frame-format frame #\${frame.index}: {\${module.file.basename}{\`\${function.name-with-args}{\${frame.no-debug}\${function.pc-offset}}}}{ at \${line.file.fullpath}:\${line.number}}\\n\n`)
   }
 
   async run () {
     console.log('LLDB Input: Run')
+    this.exe.write('break set --name main\n')
     this.exe.write('process launch\n')
     const that = this
     return new Promise((resolve, reject) => {
@@ -49,6 +51,7 @@ class LLDB extends stream.Transform {
           'breakpointId': breakpointId,
           'file': fileName,
           'line': lineNum,
+          'status': 'OK'
         })
       })
     })
@@ -95,7 +98,7 @@ class LLDB extends stream.Transform {
       that.on('printVariable', (type, variable, value) => {
         if (type === 'int') {
           resolve({
-            'type': type,
+            'type': 'number',
             'variable': variable,
             'value': parseInt(value),
           })
@@ -143,12 +146,12 @@ class LLDB extends stream.Transform {
   }
 
   _checkPosition (line) {
-    const match = line.match(/^frame #0: 0x[0-9a-f]* \S+`\S+ at (\S+):(\d+)$/)
+    const match = line.match(/^ *frame #\d: \S+`\S.* at (\S+):(\d+)$/)
     if (match) {
       console.log('Found position')
       const lineNum = parseInt(match[2])
       const fileName = match[1]
-      this.emit('process_position', lineNum, fileName) // TODO: Full path of filename from LLDB possible?
+      this.emit('process_position', fileName, lineNum)
       return true
     }
 

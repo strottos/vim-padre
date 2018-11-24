@@ -18,9 +18,9 @@ function! padre#Enable()
 
   call padre#debugger#Setup()
 
-  if has_key(g:, 'PadrePreprocessingCommands')
-    call padre#buffer#ReplaceBuffer('PADRE_Preprocessing', g:PadrePreprocessingCommands)
-  endif
+"  if has_key(g:, 'PadrePreprocessingCommands')
+"    call padre#buffer#ReplaceBuffer('PADRE_Preprocessing', g:PadrePreprocessingCommands)
+"  endif
 
   let s:Setup = 1
 endfunction
@@ -28,7 +28,7 @@ endfunction
 function! padre#Disable()
   call padre#debugger#Stop()
 
-  for l:buffer_name in ['PADRE_Main', 'PADRE_Preprocessing']
+  for l:buffer_name in ['PADRE_Main'] ", 'PADRE_Preprocessing']
     let l:buffer_number = padre#buffer#GetBufNumForBufName(l:buffer_name)
     if matchstr(l:buffer_number, '\d')
       execute 'bwipeout! ' l:buffer_number

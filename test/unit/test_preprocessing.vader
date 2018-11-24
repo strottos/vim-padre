@@ -6,14 +6,14 @@ Before:
 After:
   Restore
 
-Execute (We can create a preprocessing window):
-  call padre#preprocessing#CreatePreprocessingWindow()
-
-  AssertEqual 2, winnr('$')
-
-  wincmd b
-
-Then:
-  AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('PADRE_Preprocessing')
-
-  call padre#layout#CloseTabsWithBuffer('PADRE_Main')
+"Execute (We can create a preprocessing window):
+"  call padre#preprocessing#CreatePreprocessingWindow()
+"
+"  AssertEqual 2, winnr('$')
+"
+"  wincmd b
+"
+"Then:
+"  AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('PADRE_Preprocessing')
+"
+"  call padre#layout#CloseTabsWithBuffer('PADRE_Main')

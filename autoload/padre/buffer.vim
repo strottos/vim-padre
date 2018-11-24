@@ -19,6 +19,8 @@ endfunction
 function! padre#buffer#Create(name, filetype, writeable)
   let l:current_winnr = winnr()
   let l:current_bufnr = bufnr('%')
+  let l:current_tabpagenr = tabpagenr()
+
   tabnew
   execute "silent edit " . a:name
 
@@ -33,6 +35,7 @@ function! padre#buffer#Create(name, filetype, writeable)
 
   quit
 
+  execute l:current_tabpagenr . " tabnext"
   execute l:current_winnr . "wincmd w"
   execute "buffer " . l:current_bufnr
 
@@ -68,31 +71,41 @@ function! padre#buffer#SetOnlyWriteableAtBottom(name)
 endfunction
 
 function! padre#buffer#SetMainPadreKeyBindings(name)
+  let l:current_tabpagenr = tabpagenr()
+
   tabnew
 
   call s:LoadBuffer(a:name)
 
   nnoremap <silent> <buffer> r :PadreRun<cr>
-  nnoremap <silent> <buffer> s :PadreStepIn<cr>
-  nnoremap <silent> <buffer> n :PadreStepOver<cr>
+  nnoremap <silent> <buffer> S :PadreStepIn<cr>
+  nnoremap <silent> <buffer> s :PadreStepOver<cr>
   vnoremap <silent> <buffer> p y:PadrePrintVariable <C-R>"<cr>
   nnoremap <silent> <buffer> C :PadreContinue<cr>
+  nnoremap <silent> <buffer> ZZ :PadreStop<cr>
 
   quit
+
+  execute l:current_tabpagenr . " tabnext"
 endfunction
 
 function! padre#buffer#UnsetPadreKeyBindings(name)
+  let l:current_tabpagenr = tabpagenr()
+
   tabnew
 
   call s:LoadBuffer(a:name)
 
   nnoremap <silent> <buffer> r r
+  nnoremap <silent> <buffer> S S
   nnoremap <silent> <buffer> s s
-  nnoremap <silent> <buffer> n n
   vnoremap <silent> <buffer> p p
   nnoremap <silent> <buffer> C C
+  nnoremap <silent> <buffer> ZZ ZZ
 
   quit
+
+  execute l:current_tabpagenr . " tabnext"
 endfunction
 
 function! padre#buffer#GetBufNameForBufNum(num)
@@ -150,6 +163,14 @@ function! padre#buffer#AppendBuffer(name, text)
 
   let l:text = a:text + ['']
 
+  let l:tab_has_buffer = padre#layout#CurrentTabContainsBuffer(a:name)
+
+  if l:tab_has_buffer
+    let l:current_window = winnr()
+    call padre#layout#FindBufferWindowWithinTab(a:name)
+    let l:should_scroll = getpos('.')[1] == line('$')
+  endif
+
   if l:was_modifiable == 0
     call setbufvar(l:bufnr, '&modifiable', 1)
   endif
@@ -158,6 +179,13 @@ function! padre#buffer#AppendBuffer(name, text)
 
   if l:was_modifiable == 0
     call setbufvar(l:bufnr, '&modifiable', 0)
+  endif
+
+  if l:tab_has_buffer
+    if l:should_scroll
+      normal G
+    endif
+    execute l:current_window . ' wincmd w'
   endif
 endfunction
 
