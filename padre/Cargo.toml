@@ -1,0 +1,10 @@
+[package]
+name = "padre"
+version = "0.1.0"
+authors = ["Steven Trotter <stevetrot@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+clap = "2.32.0"
+json = "0.11.13"
+simulacrum = "0.3.0"

@@ -10,7 +10,8 @@ import subprocess
 from tempfile import TemporaryDirectory
 from shutil import copyfile
 
-from behave import given, when, then, fixture, use_fixture
+from behave import *
+from hamcrest import *
 
 TEST_FILES_DIR = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
@@ -107,8 +108,12 @@ async def do_read_from_padre(future, reader, loop):
 
     loop.call_at(loop.time() + TIMEOUT, cancel)
 
-    line = await reader.read(4096)
-    line = line.decode()
+    async def do_read(reader):
+        line = await reader.read(4096)
+        line = line.decode()
+        return line
+
+    line = await asyncio.wait_for(do_read(reader), timeout=TIMEOUT)
 
     results = []
 
@@ -117,8 +122,12 @@ async def do_read_from_padre(future, reader, loop):
 
     try:
         while idx != end:
+            print("line={}".format(line))
+            print("idx={}".format(idx))
             (_, to) = json._default_decoder.raw_decode(line, idx=idx)
+            print("to={}".format(to))
             results.append(line[idx:to])
+            print("results={}".format(results))
             idx = json.decoder.WHITESPACE.match(line, to).end()
     except ValueError as exc:
         raise ValueError('%s (%r at position %d).' % (exc, line[idx:], idx))
@@ -135,7 +144,11 @@ async def do_send_to_padre(future, writer, message, loop):
 
     loop.call_at(loop.time() + TIMEOUT, cancel)
 
-    writer.write(message.encode())
+    async def do_write(writer, message):
+        writer.write(message.encode())
+
+    await asyncio.wait_for(do_write(writer, message), timeout=TIMEOUT)
+
     future.set_result(True)
 
 
@@ -152,8 +165,10 @@ def run_padre(context, timeout=20):
 
         context.padre.process = await asyncio.create_subprocess_exec(
             os.path.join(
-                os.path.dirname(os.path.realpath(__file__)), "../../../padre"
+                os.path.dirname(os.path.realpath(__file__)),
+                "../../../target/debug/padre"
             ), "--debugger={}".format(context.padre.program_type),
+            "--host={}".format("127.0.0.1"),
             "--port={}".format(context.padre.port), context.padre.executable,
             stdout=asyncio.subprocess.PIPE,
             loop=loop
@@ -170,7 +185,9 @@ def run_padre(context, timeout=20):
     loop.run_until_complete(ensure)
     line = future.result()
 
-    assert line == "Listening on localhost:{}\n".format(context.padre.port).encode()
+    expected = "Listening on 127.0.0.1:{}\n".format(context.padre.port).encode()
+    assert_that(line, equal_to(expected), "Started server")
+    context.connections = []
     yield True  # Pause teardown till later
 
     context.padre.process.terminate()
@@ -182,16 +199,14 @@ def connect_to_padre(context):
     Open a socket to the PADRE process and attach that socket to the
     `padre` object
     """
-    use_fixture(run_padre, context)
-
     async def do_connect_to_padre(loop):
         con = asyncio.open_connection(
             "127.0.0.1",
             context.padre.port)
 
-        context.reader, context.writer = await asyncio.wait_for(con,
-                                                                int(TIMEOUT),
-                                                                loop=loop)
+        context.connections.append(await asyncio.wait_for(con,
+                                                        int(TIMEOUT),
+                                                        loop=loop))
 
     loop = asyncio.get_event_loop()
 
@@ -212,7 +227,7 @@ def copy_file(context, source):
 
 @given(
     "I have compiled the test program '{source}' with compiler "
-    "{compiler} to program '{output}'"
+    "'{compiler}' to program '{output}'"
     )
 def compile_program(context, source, compiler, output):
     """
@@ -246,9 +261,122 @@ def padre(context, executable, progtype):
 @when("I debug the program with PADRE")
 def padre_debugger(context):
     """
-    I start the PADRE debugger
+    I start and connect to the PADRE debugger
+    """
+    use_fixture(run_padre, context)
+    use_fixture(connect_to_padre, context)
+
+
+@when("I open another connection to PADRE")
+def connect_padre(context):
+    """
+    I connect to the PADRE debugger
     """
     use_fixture(connect_to_padre, context)
+
+
+@then("I expect to be called on connection {connection} with")
+def padre_called_with(context, connection):
+    """
+    I have recieved from PADRE the right call
+    """
+    num_expected_results = len(context.table.rows)
+    results = read_results(num_expected_results, context.connections[int(connection)][0])
+    assert_that(len(results),
+                equal_to(num_expected_results),
+                "Padre called with expected number of results")
+    for row in context.table:
+        check_calls_in(results, row[0], json.loads(row[1]))
+
+
+@then("I expect to be called with")
+def padre_called_with_connection_zero(context):
+    padre_called_with(context, 0)
+
+
+@when("I send a request to PADRE '{request}' on connection {connection}")
+def padre_request(context, request, connection):
+    """
+    I send to PADRE on the connection <connection> a request of the form
+
+    [<request_counter>,"<request>"]
+
+    e.g. [1,"breakpoint file=test_prog.c line=16"]
+    """
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    request = json.dumps([context.padre.request_counter, request],
+                         separators=(',', ':'))
+
+    loop.run_until_complete(do_send_to_padre(
+        future, context.connections[int(connection)][1], request, loop))
+    assert_that(future.result(), "Padre request sent")
+
+
+@when("I send a request to PADRE '{request}'")
+def padre_request_connection_zero(context, request):
+    """
+    I send to PADRE a request of the form
+
+    [<request_counter>,"<request>"]
+
+    e.g. [1,"breakpoint file=test_prog.c line=16"]
+    """
+    padre_request(context, request, 0)
+
+
+@then("I receive a response '{response}' on connection {connection}")
+def padre_response(context, response, connection):
+    """
+    I expect the correct response to a request on connection <connection>
+    """
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    def cancel():
+        future.cancel()
+        assert False
+
+    loop.call_at(loop.time() + TIMEOUT, cancel)
+
+    loop.run_until_complete(do_read_from_padre(future,
+                                               context.connections[int(connection)][0],
+                                               loop))
+    assert_that(len(future.result()), equal_to(1), "Got one response")
+    check_response_in(future.result(),
+                      context.padre.last_request_number,
+                      response
+                      )
+
+
+@then("I receive a response '{response}'")
+def padre_response_connection_zero(context, response):
+    """
+    I expect the correct response to a request
+    """
+    padre_response(context, response, 0)
+
+
+@then("I receive both a response '{response}' and I expect to be called on connection {connection} with")
+def padre_response_and_code_jump(context, response, connection):
+    """
+    I expect a response and to jump to a point in the code in two separate
+    messages
+    """
+    num_expected_results = len(context.table.rows) + 1
+    results = read_results(num_expected_results, context.connections[int(connection)][0])
+    assert_that(len(results),
+                equal_to(num_expected_results),
+                "Got {} responses".format(num_expected_results))
+    for row in context.table:
+        check_calls_in(results, row[0], json.loads(row[1]))
+    check_response_in(results, context.padre.last_request_number, response)
+
+
+@then("I receive both a response '{response}' and I expect to be called with")
+def padre_response_and_code_jump_connection_zero(context, response):
+    padre_response_and_code_jump(context, response, 0)
 
 
 def check_calls_in(results, function, args):
@@ -264,16 +392,19 @@ def check_calls_in(results, function, args):
 
     result_found = False
 
-    assert "call" in [x[0] for x in results_json]
+    assert_that([x[0] for x in results_json],
+                has_item("call"),
+                "Found call")
     results_json = [x for x in results_json if x[0] == "call"]
 
-    assert function in [x[1] for x in results_json]
+    assert_that([x[1] for x in results_json],
+                has_item(function),
+                "Found function {}".format(function))
     results_json = [x for x in results_json if x[1] == function]
 
     for result_json in results_json:
         found = True
         for (i, expected_arg) in enumerate(result_json[2]):
-            print("{} {}".format(args[i], expected_arg))
             if not re.compile(str(args[i])).match(str(expected_arg)):
                 found = False
                 break
@@ -282,7 +413,7 @@ def check_calls_in(results, function, args):
             result_found = True
             break
 
-    assert result_found
+    assert_that(result_found, "Result found")
 
 
 def check_call(result, function, args):
@@ -295,10 +426,12 @@ def check_call(result, function, args):
     e.g. ["call","padre#debugger#SignalPADREStarted",[]]
     """
     result_json = json.loads(result)
-    assert result_json[0] == "call"
-    assert result_json[1] == function
+    assert_that(result_json[0], equal_to("call"), "Found call")
+    assert_that(result_json[1], equal_to(function), "Found function")
     for (i, arg) in enumerate(args):
-        assert re.compile(arg).match(str(result_json[2][i]))
+        assert_that(str(result_json[2][i]),
+                    matches_regexp(re.compile(arg)),
+                    "Argument {} matches".format(i))
 
 
 def check_response_in(results, request_number, expected_response):
@@ -311,82 +444,39 @@ def check_response_in(results, request_number, expected_response):
     """
     json_results = [json.loads(x) for x in results]
     responses = [x for x in json_results if x[0] == request_number]
-    print(responses)
-    assert len(responses) == 1
+    assert_that(len(responses), equal_to(1), "Got 1 response")
     response = responses[0]
 
-    assert response[0] == request_number
-    assert response[1].split(' ')[0] == expected_response.split(' ')[0]
-    assert re.compile(expected_response).match(response[1])
+    assert_that(response[0],
+                equal_to(request_number),
+                "Found correct request number")
+    assert_that(response[1].split(' ')[0],
+                equal_to(expected_response.split(' ')[0]),
+                "Got expected start of response")
+    assert_that(response[1],
+                matches_regexp(expected_response),
+                "Response matches")
 
 
-@then("I expect to be called with")
-def padre_called_with(context):
+def read_results(expected_results, reader):
     """
-    I have recieved from PADRE the right call
-    """
-    loop = asyncio.get_event_loop()
-    results = []
-    while len(results) < len(context.table.rows):
-        future = loop.create_future()
-        loop.run_until_complete(do_read_from_padre(future, context.reader, loop))
-        results.extend(future.result())
-
-    assert len(results) == len(context.table.rows)
-    for row in context.table:
-        check_calls_in(results, row[0], json.loads(row[1]))
-
-
-@when("I send a request to PADRE '{request}'")
-def padre_request(context, request):
-    """
-    I send to PADRE a request of the form
-
-    [<request_counter>,"<request>"]
-
-    e.g. [1,"breakpoint file=test_prog.c line=16"]
-    """
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    request = json.dumps([context.padre.request_counter, request],
-                         separators=(',', ':'))
-
-    print("Requesting: {}".format(request))
-    loop.run_until_complete(do_send_to_padre(future, context.writer,
-                                             request, loop))
-    assert future.result() is True
-
-
-@then("I receive a response '{response}'")
-def padre_response(context, response):
-    """
-    I expect the correct response to a request
-    """
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-    loop.run_until_complete(do_read_from_padre(future, context.reader, loop))
-    assert len(future.result()) == 1
-    check_response_in(future.result(),
-                      context.padre.last_request_number,
-                      response
-                      )
-
-
-@then("I receive both a response '{response}' and I expect to be called with")
-def padre_response_and_code_jump(context, response):
-    """
-    I expect a response and to jump to a point in the code in two separate
-    messages
+    Read the results from PADRE's responses
     """
     loop = asyncio.get_event_loop()
     results = []
-    while len(results) < len(context.table.rows) + 1:
+    timeout = loop.time() + TIMEOUT
+    while len(results) < expected_results:
         future = loop.create_future()
-        loop.run_until_complete(do_read_from_padre(future, context.reader, loop))
+
+        def cancel():
+            future.cancel()
+
+        loop.call_at(loop.time() + TIMEOUT, cancel)
+
+        loop.run_until_complete(do_read_from_padre(future, reader, loop))
         results.extend(future.result())
 
-    assert len(results) == len(context.table.rows) + 1
-    for row in context.table:
-        check_calls_in(results, row[0], json.loads(row[1]))
-    check_response_in(results, context.padre.last_request_number, response)
+        if loop.time() > timeout:
+            raise Exception("Timed out waiting for response")
+
+    return results

@@ -1,0 +1,344 @@
+Improvements:
+
+- Padre command
+  - (CRITICAL) Rust implementation of PADRE
+  - (CRITICAL) Rust implementation should log properly
+  - (CRITICAL) Version control and definition of the interface the debug server needs to provide
+  - (CRITICAL) Make things more configurable
+  - (HIGH) Remove breakpoints
+  - (HIGH) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
+  - (HIGH) V2 stuff, backtraces, interrupts, record, step out, step back, go to fixed point??
+  - (HIGH) Timeouts
+  - (HIGH) Command line option for specifying debugger program
+  - (HIGH) Ensure we can terminate properly
+  - (MEDIUM) Support for multi-threading/multi-processing (V2?)
+  - (LOW) Clever working out what type of debugger to use
+  - (LOW) Add in preprocessing possibilities like compiling before running PADRE.
+  - (HIGH) Make it be able to take a list of files that it will stop in. Otherwise it will configurably either step in till it finds one, step over till it finds one, continue or no action (displaying something??).
+- LLDB
+  - (HIGH) Proper variable printing
+  - (MEDIUM) Get things working for multi-threaded programs in LLDB
+  - (MEDIUM) Get things working for process spawning in LLDB
+  - (MEDIUM) Timeouts on promises
+- Node
+  - (HIGH) Asynchronous debugging in Node
+  - (HIGH) Ports randomly chosen other than 9229
+  - (HIGH) Handle Exceptions
+- Java:
+  - (CRITICAL) Request error handling
+  - (HIGH) Support method overloading
+- VIM
+  - (HIGH) Change buffers to be created at PadreDebug command and torn down when exiting
+  - (MEDIUM) Support multiple PADRE processes
+  - (MEDIUM) Reorder windows properly
+  - (HIGH) Padre can be ran multiple times without restarting vim
+  - (LOW) Highlighting/Change backround colour of left column for PADRE_Main
+  - (LOW) Socket closing
+  - (LOW) Full stdio data window
+  - (LOW) Update the README
+  - (LOW) Padre open log line bug, doesn't display till you've changed focus
+
+Nice to have:
+- Support BabelJS and TypeScript compilers
+
+Epics:
+- Debugger in Go
+- Debugger in Rust? Comes just from lldb?
+- Debugger for LLDB Server
+- Reverse Engineering a binary?
+
+
+Rust Design
+-----------
+
+- Should have a controller and a debugger for each type, e.g. lldb, node, etc.
+- The V1 debugger should support basics, V2 multithreading/multiprocess perhaps.
+- Ideally each debugger should register it's version at compile time so there's no overhead. Surely rust can support this.
+- TODO: Maybe it makes more sense to just have different things that are supported and those that aren't throw exceptions. Probably depends on what works out easiest in Rust, this might be best though.
+- The controller should be able to handle multiple connections.
+- There should be a queue on each debugger that the controller can handle as it thinks best. The debugger can places things like logs and jump handlers on this.
+- Any exception should be caught and logged by sending a `padre#debugger#Log` command appropriately.
+- TODO: Work out how the controller will communicate back to the client for requests. For bulk messages it can poll the message queue.
+- TODO: Decide how to implement
+- Program name to run can only be specified at startup
+- Program can only run once Padre has given the started up signal, indicated to the calling API by it sending a call to padre#debugger#SignalPADREStarted. Will be called when it's started on every new connection.
+- Running a program will restart it from scratch (warn in VIM probably)
+- Padre can configurably block calls while it's busy or queue them.
+- Anything can return a status of either OK, PENDING or ERROR only with optional arguments on top of this. Anything can return an ERROR and in these cases it will always allow only one optional error message.
+- Interface [<id>,"<command>"], where <id> is an integer (used for responding) and <command> is defined below for different versions:
+- Interface V1 allows <command>s as follows:
+  - run <args...> -> OK pid=<pid>
+    - <args...>: The arguments to run the program with
+  - breakpoint <args> -> OK || PENDING
+    - <args>: file=<file> line=<line>
+      - <file>: name of file with breakpoint
+      - <line>: line number of breakpoint
+    - Returns OK if it can confirm that the breakpoint was set or PENDING if it may be waiting on setting a breakpoint
+  - rmbreakpoint <args> -> OK
+    - <args>: file=<file> line=<line> (Same as breakpoint)
+  - stepIn -> OK
+  - stepOver -> OK
+  - continue -> OK
+  - print variable=<variable> -> OK
+    - <variable>: The name of the variable to print
+    - prints a variable in one of the following forms:
+      - number: If the debugger determines a number is correct it will respond with
+                    "OK variable=<variable> value=<value> type=number"
+        where <value> is the number (integer or floating point) that the debugger found
+      - string: If the debugger determines a string is correct it will respond with
+                    "OK variable=<variable> value=<value> type=string"
+        where <value> is the UTF-8 string with `"` characters encoded by adding a backslash
+      - boolean: If the debugger determines a boolean is correct it will respond with
+                    "OK variable=<variable> value=<value> type=boolean"
+        where <value> is either True or False
+      - null: If the debugger determines the value doesn't exist it will respond with
+                    "OK variable=<variable> value=<value> type=null"
+        where <value> is specified for the differences between languages that are returned
+        (e.g. undefined in JS, null in C/C++/Java, None in Python)
+      - JSON: If the debugger determines the value is complicated enough to warrant
+        something with more structure it will respond with
+                    "OK variable=<variable> value='<value>' type=JSON"
+        where <value> is the JSON returned with backslashes and quotations escaped with backslashes.
+        - This will be different for different debuggers, for example in C we might have a pointer `a` to a struct of type `b`, e.g.
+            value='{\"type\":\"b*\",\"deref\":{...}}'
+          and if we have a struct b of the form (example taken from https://www.tutorialspoint.com/cprogramming/c_structures.htm)
+            struct Books {
+               char  title[50];
+               char  author[50];
+               char  subject[100];
+               int   book_id;
+            };
+          and for book1 a struct defined by
+            struct Books Book1;
+            strcpy( Book1.title, "C Programming");
+            strcpy( Book1.author, "Nuha Ali");
+            strcpy( Book1.subject, "C Programming Tutorial");
+            Book1.book_id = 6495407;
+          then we get for printing Book1 the following
+            value='{\"title\":\"C Programming\",\"author\":\"Nuha Ali\",\"subject\":\"C Programming Tutorial\",\"book_id\":6495407}'
+        - C++ is almost identical. TODO: May need to think about templates??
+        - Java are similar with classes but without the pointer. Rust is similar also.
+        - For nodeJS this is straightforward of course as node objects are always easy to convert to JSON.
+        - For Python we convert dictionaries, lists and objects similarly into JSON.
+  - config <key>=<value> -> OK
+    - Change Padre's config, options as follows for <key>, most configurable on startup:
+      - block: Set to True or otherwise, if set it won't allow new commands when one is pending otherwise it will
+- Interface V2 allows <command>s as follows:
+  - stepOut -> OK
+- Padre can send the following back to its caller in the form
+    ["call","<cmd>",[<args...>]]
+  and the caller should be able to handle each of these <cmd>'s:
+  - padre#debugger#SignalPADREStarted
+    - Signals that PADRE has started and will start processing commands
+    - Commands sent to PADRE will be ignored before this signal
+  - padre#debugger#ProcessExited <exit_code> <pid>
+    - <exit_code>: the exit code the process exited with, usually 0 on success
+    - <pid>: the pid of the exiting process
+  - padre#debugger#Log <level> <string>`
+    - <level>: the log level at which to log, usually 1 - CRITICAL, 2 - ERROR, 3 - WARNING, 4 - INFO, 5 - DEBUG
+    - <string>: the string to log
+  - padre#debugger#JumpToPosition <file> <line>
+    - Args same as that of breakpoint interface command
+  - padre#debugger#BreakpointSet <file> <line>
+    - Args same as that of breakpoint interface command
+  - padre#debugger#BreakpointUnset <file> <line>
+    - Args same as that of breakpoint interface command
+- Any IO that happens in the PADRE process will be forwarded directly to or from the program itself
+
+Classes
+
+DebugServer - Takes in multiple requests and handles them in turn, will respond with OK if all succeed or error if one failed. On failure will stop processing the requests. Implemented with some kind of Command design pattern maybe.
+ - Factory pattern, use an enum to create the number of possible Debuggers and get the Debugger to implement the builder pattern.
+RequestHandler - Responsible for handling any requests from a tcp connection, will roughly do the following for a request:
+ - take a mutex lock on the debugserver
+ - perform the request
+ - unlock the debugserver
+ - respond to the connection
+Debugger - Interface that each debugger must implement (at least partially, probably fully for now while we work out how to do this, default traits maybe?).
+Notifier - Has a list of all open connections and can take a request to notify all listeners of a particular event. The debugger should have the notifier in it's fields.
+
+------------------------------------------------------------
+
+
+
+
+
+const javaProcess = require('/Users/stevent/code/personal/vim-padre/padre/src/debugger/java/java_process')
+const jp = new javaProcess.JavaProcess('java', ['com.padre.test.JavaMultipleClasses'])
+jp.setup()
+let errorCode
+let ret
+
+// Get ID sizes
+jp.request(1, 7).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest - CLASS_PREPARE, don't suspend
+jp.request(15, 1, Buffer.from([0x08, 0x00, 0x00, 0x00, 0x00, 0x00])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest - CLASS_UNLOAD, don't suspend
+jp.request(15, 1, Buffer.from([0x09, 0x00, 0x00, 0x00, 0x00, 0x00])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest - CLASS_PREPARE, suspend all for class java.lang.Throwable and count 1
+jp.request(15, 1, Buffer.from([0x08, 0x02, 0x00, 0x00, 0x00, 0x02, 0x05, 0x00, 0x00, 0x00, 0x13, 0x6a, 0x61, 0x76, 0x61, 0x2e, 0x6c, 0x61, 0x6e, 0x67, 0x2e, 0x54, 0x68, 0x72, 0x6f, 0x77, 0x61, 0x62, 0x6c, 0x65, 0x01, 0x00, 0x00, 0x00, 0x01])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest - CLASS_PREPARE, suspend all for class com.padre.test.SimpleJavaClass and count 1
+let clazz = 'com.padre.test.JavaTestClass1'
+jp.request(15, 1, Buffer.concat([
+    Buffer.from([0x08, 0x02, 0x00, 0x00, 0x00, 0x02]),
+    Buffer.from([0x05]),
+    Buffer.from([0x00, 0x00, 0x00, clazz.length]),
+    Buffer.from(clazz),
+    Buffer.from([0x01, 0x00, 0x00, 0x00, 0x01])])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Get Java VM Info
+jp.request(1, 1).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Get all classes with generics
+jp.request(1, 20).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+let pos
+let classes
+pos = 4
+classes = []
+for (i = 0; i < ret.readInt32BE(0); i++) {
+    const clazz = {}
+
+    clazz.refTypeTag = ret.readInt8(pos)
+    pos += 1
+
+    clazz.typeID = ret.slice(pos, pos + 8)
+    pos += 8
+
+    const signatureSize = ret.readInt32BE(pos)
+    pos += 4
+    clazz.signature = ret.slice(pos, pos + signatureSize).toString('utf-8')
+    pos += signatureSize
+
+    const genericSignatureSize = ret.readInt32BE(pos)
+    pos += 4
+    clazz.genericSignature = ret.slice(pos, pos + genericSignatureSize).toString('utf-8')
+    pos += genericSignatureSize
+
+    clazz.status = ret.readInt32BE(pos)
+    pos += 4
+    classes.push(clazz)
+}
+
+// EventRequest - EXCEPTION, suspend all with exception 0x000000000000013c and only report uncaught exceptions
+jp.request(15, 1, Buffer.from([0x04, 0x02, 0x00, 0x00, 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x3c, 0x00, 0x01])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest clear - CLASS_PREPARE, request 4
+jp.request(15, 2, Buffer.from([0x08, 0x00, 0x00, 0x00, 0x04])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest - THREAD_START, suspend all
+jp.request(15, 1, Buffer.from([0x06, 0x02, 0x00, 0x00, 0x00, 0x00])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest - THREAD_DEATH, suspend all
+jp.request(15, 1, Buffer.from([0x07, 0x02, 0x00, 0x00, 0x00, 0x00])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Get CLASS_PATH's
+jp.request(1, 13).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Get all threads
+jp.request(1, 4).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Get frame count of this thread
+jp.request(11, 7, Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Get thread name
+jp.request(11, 1, Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// EventRequest - CLASS_PREPARE, suspend all for class Puppy and count 1
+jp.request(15, 1, Buffer.from([0x08, 0x02, 0x00, 0x00, 0x00, 0x02, 0x05, 0x00, 0x00, 0x00, 0x05, 0x50, 0x75, 0x70, 0x70, 0x79, 0x01, 0x00, 0x00, 0x00, 0x01])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Resume current thread
+jp.request(1, 9).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+// Get Methods for Class
+jp.request(2, 15, Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+jp.request(15, 1, Buffer.concat([
+    Buffer.from([0x02, 0x02, 0x00, 0x00, 0x00, 0x01]),
+    Buffer.from([0x07]),
+    Buffer.from([0x01]),
+    Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02]),
+    Buffer.from([0x00, 0x00, 0x7f, 0xd8, 0x2e, 0xc3, 0xbe, 0x08]),
+    Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])])).then((data) => {
+  errorCode = data.errorCode
+  ret = data.data
+})
+
+
+0f 01 02 02 00 00 00   ...+.... ........
+0010  01 07 01 00 00 00 00 00  00 01 ac 00 00 7f b4 b2   ........ ........
+0020  62 04 30 00 00 00 00 00  00 00 04 
+
+
+Steps for breakpoint:
+1, Check all current classes with AllClassesWithGenerics (1,20) for the existence of the class. If it's there go to step 3.
+2, Call EventRequest (15,1), suspend all for CLASS_PREPARE (8) for class name and count 1. Wait for this event.
+3, Call MethodsWithGeneric (2,15) to get methods.
+4, TODO: SourceDebugExtension (02, 12) necessary? If so need to check CapabilitiesNew (1,17).
+5, Call LineTable (06, 01) to get line number information
+6, Call EventRequest (15,1), suspend all for BREAKPOINT (2) for location gathered above.
+7, Clear the CLASS_PREPARE request if necessary
+8, Resume if we had to suspend in step 2.
+
+
+
+08 02 00 00 00 02 05 00 00 00 05 50 75 70 70 79 01 00 00 00 01
+

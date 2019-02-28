@@ -12,12 +12,16 @@ Feature: NodeJS
         When I send a request to PADRE 'run'
         Then I receive both a response 'OK pid=\d+' and I expect to be called with
             | function                      | args                  |
-            | padre#debugger#JumpToPosition | [".*test_prog.js",22] |
+            | padre#debugger#JumpToPosition | [".*test_prog.js",1] |
             | padre#debugger#BreakpointSet  | [".*test_prog.js",16] |
         When I send a request to PADRE 'breakpoint file=test_files/test_prog.js line=19'
         Then I receive both a response 'OK' and I expect to be called with
             | function                      | args                  |
             | padre#debugger#BreakpointSet  | [".*test_prog.js",19] |
+        When I send a request to PADRE 'stepOver'
+        Then I receive both a response 'OK' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.js",22] |
         When I send a request to PADRE 'stepOver'
         Then I receive both a response 'OK' and I expect to be called with
             | function                      | args                  |

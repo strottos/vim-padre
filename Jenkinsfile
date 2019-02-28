@@ -7,7 +7,7 @@ pipeline {
         sh'''
           #!/bin/bash
           cd padre
-          npm install
+          cargo build
           cd ..
           docker build -t vim-padre/test-container .
         '''
@@ -49,9 +49,9 @@ pipeline {
         sh'''
           #!/bin/bash
           set +x
-          . /var/lib/jenkins/robot/bin/activate
+          . /var/lib/jenkins/behave/bin/activate
           cd padre/integration/
-          robot *.robot
+          behave
         '''
       }
     }
@@ -75,18 +75,19 @@ pipeline {
     }
   }
 
-  post {
-    always {
-      step([
-        $class: 'hudson.plugins.robot.RobotPublisher',
-        outputPath: './',
-        passThreshold : 100,
-        unstableThreshold: 100,
-        otherFiles: '',
-        reportFileName: 'padre/integration/report*.html',
-        logFileName: 'padre/integration/log*.html',
-        outputFileName: 'padre/integration/output*.xml'
-      ])
-    }
-  }
+// TODO:
+//  post {
+//    always {
+//      step([
+//        $class: 'hudson.plugins.robot.RobotPublisher',
+//        outputPath: './',
+//        passThreshold : 100,
+//        unstableThreshold: 100,
+//        otherFiles: '',
+//        reportFileName: 'padre/integration/report*.html',
+//        logFileName: 'padre/integration/log*.html',
+//        outputFileName: 'padre/integration/output*.xml'
+//      ])
+//    }
+//  }
 }

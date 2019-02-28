@@ -3,7 +3,7 @@ Feature: LLDB
 
     Scenario Outline: Debug a basic program with LLDB
         Given that we have a file 'test_prog.c'
-        And I have compiled the test program 'test_prog.c' with compiler <compiler> to program 'test_prog'
+        And I have compiled the test program 'test_prog.c' with compiler '<compiler>' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb'
         When I debug the program with PADRE
         Then I expect to be called with
