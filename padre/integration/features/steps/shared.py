@@ -122,12 +122,8 @@ async def do_read_from_padre(future, reader, loop):
 
     try:
         while idx != end:
-            print("line={}".format(line))
-            print("idx={}".format(idx))
             (_, to) = json._default_decoder.raw_decode(line, idx=idx)
-            print("to={}".format(to))
             results.append(line[idx:to])
-            print("results={}".format(results))
             idx = json.decoder.WHITESPACE.match(line, to).end()
     except ValueError as exc:
         raise ValueError('%s (%r at position %d).' % (exc, line[idx:], idx))
@@ -294,6 +290,31 @@ def padre_called_with_connection_zero(context):
     padre_called_with(context, 0)
 
 
+@when("I send a raw request to PADRE '{request}' on connection {connection}")
+def padre_request_raw(context, request, connection):
+    """
+    I send a request {request} as raw data on connection {connection}
+
+    Largely used for error checking
+    """
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    loop.run_until_complete(do_send_to_padre(
+        future, context.connections[int(connection)][1], request, loop))
+    assert_that(future.result(), "Padre request sent")
+
+
+@when("I send a raw request to PADRE '{request}'")
+def padre_request_raw_connection_zero(context, request):
+    """
+    I send a request {request} as raw data on connection 0
+
+    Largely used for error checking
+    """
+    padre_request_raw(context, request, 0)
+
+
 @when("I send a request to PADRE '{request}' on connection {connection}")
 def padre_request(context, request, connection):
     """
@@ -303,21 +324,15 @@ def padre_request(context, request, connection):
 
     e.g. [1,"breakpoint file=test_prog.c line=16"]
     """
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
     request = json.dumps([context.padre.request_counter, request],
                          separators=(',', ':'))
-
-    loop.run_until_complete(do_send_to_padre(
-        future, context.connections[int(connection)][1], request, loop))
-    assert_that(future.result(), "Padre request sent")
+    padre_request_raw(context, request, connection)
 
 
 @when("I send a request to PADRE '{request}'")
 def padre_request_connection_zero(context, request):
     """
-    I send to PADRE a request of the form
+    I send to PADRE a request on connection 0 of the form
 
     [<request_counter>,"<request>"]
 

@@ -1,12 +1,11 @@
 //! debugger
 
 use std::env;
-use std::io::Result;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
-use crate::request::Response;
+use crate::request::{RequestError, Response};
 use crate::notifier::{LogLevel, Notifier};
 
 mod lldb;
@@ -79,11 +78,11 @@ impl PadreServer {
         }
     }
 
-    pub fn ping(&self) -> Result<Response<Option<String>>> {
+    pub fn ping(&self) -> Result<Response<Option<String>>, RequestError> {
         Ok(Response::OK(Some(String::from("pong"))))
     }
 
-    pub fn pings(&self) -> Result<Response<Option<String>>> {
+    pub fn pings(&self) -> Result<Response<Option<String>>, RequestError> {
         // TODO: Better than unwrap?
         self.notifier.lock().unwrap().log_msg(LogLevel::INFO, "pong".to_string());
         Ok(Response::OK(None))
@@ -93,7 +92,7 @@ impl PadreServer {
 pub fn get_debugger(cmd: &Vec<&str>, debugger_type: Option<&str>, notifier: Arc<Mutex<Notifier>>) -> PadreServer {
     let debugger_type = match debugger_type {
         Some(s) => s.to_string(),
-        None => get_debugger_type(cmd).expect("Can't find debugger type, panicking"),
+        None => get_debugger_type(cmd).expect("Can't find debugger type, bailing"),
     };
 
     match debugger_type.to_ascii_lowercase().as_ref() {

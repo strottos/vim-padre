@@ -40,10 +40,11 @@ fn main() -> io::Result<()> {
         // TODO: Something better than unwrap
         the_notifier.lock().unwrap().add_listener(notifier_stream);
 
+        let notifier_clone = Arc::clone(&the_notifier);
         let debugger_connection = Arc::clone(&debugger_rc);
 
         let handle = thread::spawn(move || {
-            request::handle_connection(stream, debugger_connection);
+            request::handle_connection(stream, notifier_clone, debugger_connection);
         });
         handles.push(handle);
     }
