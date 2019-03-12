@@ -19,7 +19,7 @@ fn main() -> io::Result<()> {
 
     println!("Listening on {}", connection_string);
 
-    let the_notifier = Arc::new(Mutex::new(notifier::Notifier::new()));
+    let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
 
     let debug_cmd: Vec<_> = matches.values_of("debug_cmd")
                                    .expect("Can't find program to debug, please rerun with correct parameters")
@@ -27,7 +27,7 @@ fn main() -> io::Result<()> {
 
     let debugger_rc = Arc::new(
         Mutex::new(
-            debugger::get_debugger(&debug_cmd, matches.value_of("debugger"), Arc::clone(&the_notifier))
+            debugger::get_debugger(&debug_cmd, matches.value_of("debugger"), Arc::clone(&notifier_rc))
         )
     );
 
@@ -38,13 +38,13 @@ fn main() -> io::Result<()> {
         let notifier_stream = stream.try_clone().expect("Can't clone stream");
 
         // TODO: Something better than unwrap
-        the_notifier.lock().unwrap().add_listener(notifier_stream);
+        notifier_rc.lock().unwrap().add_listener(notifier_stream);
 
-        let notifier_clone = Arc::clone(&the_notifier);
-        let debugger_connection = Arc::clone(&debugger_rc);
+        let thread_notifier = Arc::clone(&notifier_rc);
+        let thread_debugger = Arc::clone(&debugger_rc);
 
         let handle = thread::spawn(move || {
-            request::handle_connection(stream, notifier_clone, debugger_connection);
+            request::handle_connection(stream, thread_notifier, thread_debugger);
         });
         handles.push(handle);
     }

@@ -2,7 +2,6 @@
 
 use std::error::Error;
 use std::fmt;
-use std::io;
 use std::io::{Read, Write};
 use std::result::Result;
 use std::net::TcpStream;
@@ -47,7 +46,7 @@ impl RequestError {
     }
 }
 
-// TODO: Send back logs instead of expect and panic when structure in place.
+// TODO: Work out how to handle networking errors
 pub fn handle_connection(mut stream: TcpStream, notifier: Arc<Mutex<Notifier>>, padre_server: Arc<Mutex<PadreServer>>) {
     loop {
         let mut buffer = [0; 512];

@@ -51,11 +51,7 @@ Epics:
 Rust Design
 -----------
 
-- Should have a controller and a debugger for each type, e.g. lldb, node, etc.
 - The V1 debugger should support basics, V2 multithreading/multiprocess perhaps.
-- Ideally each debugger should register it's version at compile time so there's no overhead. Surely rust can support this.
-- TODO: Maybe it makes more sense to just have different things that are supported and those that aren't throw exceptions. Probably depends on what works out easiest in Rust, this might be best though.
-- The controller should be able to handle multiple connections.
 - There should be a queue on each debugger that the controller can handle as it thinks best. The debugger can places things like logs and jump handlers on this.
 - Any exception should be caught and logged by sending a `padre#debugger#Log` command appropriately.
 - TODO: Work out how the controller will communicate back to the client for requests. For bulk messages it can poll the message queue.
@@ -78,6 +74,7 @@ Rust Design
     - <args>: file=<file> line=<line> (Same as breakpoint)
   - stepIn -> OK
   - stepOver -> OK
+  - stepOut -> OK
   - continue -> OK
   - print variable=<variable> -> OK
     - <variable>: The name of the variable to print
@@ -145,7 +142,17 @@ Rust Design
     - Args same as that of breakpoint interface command
 - Any IO that happens in the PADRE process will be forwarded directly to or from the program itself
 
+Done
+
+- Should have a controller and a debugger for each type, e.g. lldb, node, etc.
+- Ideally each debugger should register it's version at compile time so there's no overhead. Surely rust can support this.
+- TODO: Maybe it makes more sense to just have different things that are supported and those that aren't throw exceptions. Probably depends on what works out easiest in Rust, this might be best though.
+- The controller should be able to handle multiple connections.
+
 Classes
+-------
+
+Largely done
 
 DebugServer - Takes in multiple requests and handles them in turn, will respond with OK if all succeed or error if one failed. On failure will stop processing the requests. Implemented with some kind of Command design pattern maybe.
  - Factory pattern, use an enum to create the number of possible Debuggers and get the Debugger to implement the builder pattern.

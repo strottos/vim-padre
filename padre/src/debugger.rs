@@ -69,13 +69,18 @@ pub trait Debugger {
 
 pub struct PadreServer {
     notifier: Arc<Mutex<Notifier>>,
+    debugger: Arc<Mutex<dyn Debugger + Send>>,
 }
 
 impl PadreServer {
-    pub fn new(notifier: Arc<Mutex<Notifier>>) -> PadreServer {
+    pub fn new(notifier: Arc<Mutex<Notifier>>, debugger: Arc<Mutex<dyn Debugger + Send>>) -> PadreServer {
         PadreServer {
             notifier: notifier,
+            debugger: debugger,
         }
+    }
+
+    pub fn setup(&self) {
     }
 
     pub fn ping(&self) -> Result<Response<Option<String>>, RequestError> {
@@ -95,14 +100,14 @@ pub fn get_debugger(cmd: &Vec<&str>, debugger_type: Option<&str>, notifier: Arc<
         None => get_debugger_type(cmd).expect("Can't find debugger type, bailing"),
     };
 
-    match debugger_type.to_ascii_lowercase().as_ref() {
+    let debug_server = match debugger_type.to_ascii_lowercase().as_ref() {
         "lldb" => {
-            PadreServer::new(
-                notifier,
-            )
+            Arc::new(Mutex::new(lldb::LLDB::new(Arc::clone(&notifier))))
         }
         _ => panic!("Can't build debugger, panicking"),
-    }
+    };
+
+    PadreServer::new(notifier, debug_server)
 }
 
 pub fn get_debugger_type(cmd: &Vec<&str>) -> Option<String> {
