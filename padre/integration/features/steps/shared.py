@@ -7,6 +7,7 @@ import os
 import re
 import socket
 import subprocess
+import time
 from tempfile import TemporaryDirectory
 from shutil import copyfile
 
@@ -166,8 +167,10 @@ def run_padre(context, timeout=20):
             ), "--debugger={}".format(context.padre.program_type),
             "--host={}".format("127.0.0.1"),
             "--port={}".format(context.padre.port), context.padre.executable,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             loop=loop
+
         )
 
         line = await context.padre.process.stdout.readline()
@@ -236,6 +239,7 @@ def compile_program(context, source, compiler, output):
                     ])
     subprocess.run(execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                    check=True, cwd=os.getcwd())
+    time.sleep(0.1)
 
 
 @given(
@@ -495,3 +499,35 @@ def read_results(expected_results, reader):
             raise Exception("Timed out waiting for response")
 
     return results
+
+
+@when(u'I send a command \'{command}\' using the terminal')
+def send_terminal_command(context, command):
+    """
+    Send a command over the terminal via stdio of PADRE
+    """
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    def cancel():
+        future.cancel()
+        assert False
+
+    async def write_terminal(padre, command, future, loop):
+        def cancel():
+            future.cancel()
+
+        loop.call_at(loop.time() + TIMEOUT, cancel)
+
+        print(padre.process.stdin)
+        padre.process.stdin.write((command + "\n").encode())
+        await padre.process.stdin.drain()
+
+        future.set_result(True)
+
+    loop.call_at(loop.time() + TIMEOUT, cancel)
+
+    loop.run_until_complete(write_terminal(context.padre,
+                                           command,
+                                           future,
+                                           loop))

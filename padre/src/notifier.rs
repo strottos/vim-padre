@@ -56,26 +56,35 @@ impl Notifier {
         self.listeners.push(stream);
     }
 
-    pub fn signal_started(&self) {
-    }
-
     pub fn signal_exited(&self, pid: i32, exit_code: i32) {
-    }
-
-    pub fn log_msg(&self, level: LogLevel, msg: String) {
-        let msg = format!("[\"call\",\"padre#debugger#Log\",[{},\"{}\"]]",
-                          level as i32, msg);
+        let msg = format!("[\"call\",\"padre#debugger#ProcessExited\",[{},{}]]",
+                          pid, exit_code);
         self.send_msg(msg);
     }
 
-    pub fn jump_to_position(&self, file: String, line: i32) {
+    pub fn log_msg(&self, level: LogLevel, msg: String) {
+        let msg = format!("[\"call\",\"padre#debugger#Log\",[{},{}]]",
+                          level as i32, json::stringify(msg));
+        self.send_msg(msg);
     }
 
-    pub fn breakpoint_set(&self, file: String, line: i32) {
+    pub fn jump_to_position(&self, file: String, line: u32) {
+        let msg = format!("[\"call\",\"padre#debugger#JumpToPosition\",[{},{}]]",
+                          json::stringify(file), line);
+        self.send_msg(msg);
     }
 
-    pub fn breakpoint_unset(&self, file: String, line: i32) {
+    pub fn breakpoint_set(&self, file: String, line: u32) {
+        let msg = format!("[\"call\",\"padre#debugger#BreakpointSet\",[{},{}]]",
+                          json::stringify(file), line);
+        self.send_msg(msg);
     }
+
+//    pub fn breakpoint_unset(&self, file: String, line: u32) {
+//        let msg = format!("[\"call\",\"padre#debugger#BreakpointUnset\",[{},{}]]",
+//                          json::stringify(file), line);
+//        self.send_msg(msg);
+//    }
 
     fn send_msg(&self, msg: String) {
         for mut listener in self.listeners.iter() {

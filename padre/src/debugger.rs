@@ -27,49 +27,53 @@ mod tests {
     #[test]
     fn finds_lldb_when_specified_and_in_path() {
         set_path();
-        let v = vec!["lldb-server", "test"];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
+        let v = vec!["lldb-server".to_string(), "test".to_string()];
+        assert_eq!(super::get_debugger_type(v), Some(String::from("lldb")));
     }
 
     #[test]
     fn finds_lldb_when_specified_and_absolute_path() {
-        let v = vec!["./test_files/lldb-server", "test"];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
+        let v = vec!["./test_files/lldb-server".to_string(), "test".to_string()];
+        assert_eq!(super::get_debugger_type(v), Some(String::from("lldb")));
     }
 
     #[test]
     fn finds_lldb_when_elf_file() {
-        let v = vec!["./test_files/hello_world"];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
+        let v = vec!["./test_files/hello_world".to_string()];
+        assert_eq!(super::get_debugger_type(v), Some(String::from("lldb")));
     }
 
     #[test]
     #[should_panic]
     fn errors_when_program_not_found() {
-        let v = vec!["program-not-exists"];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("BALLS EXPECT PANIC")));
+        let v = vec!["program-not-exists".to_string()];
+        assert_eq!(super::get_debugger_type(v), Some(String::from("BALLS EXPECT PANIC")));
     }
 
 //    #[test]
 //    fn finds_node_when_node_program() {
 //        set_path();
 //        let v = vec!["node", "./test_files/test_node.js"];
-//        assert_eq!(super::get_debugger_type(&v), Some(String::from("node")));
+//        assert_eq!(super::get_debugger_type(v), Some(String::from("node")));
 //    }
 //
 //    #[test]
 //    fn finds_node_when_js_file() {
 //        let v = vec!["./test_files/test_node.js"];
-//        assert_eq!(super::get_debugger_type(&v), Some(String::from("node")));
+//        assert_eq!(super::get_debugger_type(v), Some(String::from("node")));
 //    }
 }
 
 pub trait Debugger {
+    fn start(&mut self, debugger_command: String, run_command: &Vec<String>);
+    fn has_started(&self) -> bool;
+    fn stop(&self);
+    fn breakpoint(&self, file: String, line_num: u32) -> Result<Response<Option<String>>, RequestError>;
 }
 
 pub struct PadreServer {
     notifier: Arc<Mutex<Notifier>>,
-    debugger: Arc<Mutex<dyn Debugger + Send>>,
+    pub debugger: Arc<Mutex<dyn Debugger + Send>>,
 }
 
 impl PadreServer {
@@ -80,7 +84,8 @@ impl PadreServer {
         }
     }
 
-    pub fn setup(&self) {
+    pub fn start(&self, debugger_command: String, run_command: &Vec<String>) {
+        self.debugger.lock().unwrap().start(debugger_command, run_command);
     }
 
     pub fn ping(&self) -> Result<Response<Option<String>>, RequestError> {
@@ -94,7 +99,7 @@ impl PadreServer {
     }
 }
 
-pub fn get_debugger(cmd: &Vec<&str>, debugger_type: Option<&str>, notifier: Arc<Mutex<Notifier>>) -> PadreServer {
+pub fn get_debugger(cmd: &Vec<String>, debugger_type: Option<&str>, notifier: Arc<Mutex<Notifier>>) -> PadreServer {
     let debugger_type = match debugger_type {
         Some(s) => s.to_string(),
         None => get_debugger_type(cmd).expect("Can't find debugger type, bailing"),
@@ -110,11 +115,11 @@ pub fn get_debugger(cmd: &Vec<&str>, debugger_type: Option<&str>, notifier: Arc<
     PadreServer::new(notifier, debug_server)
 }
 
-pub fn get_debugger_type(cmd: &Vec<&str>) -> Option<String> {
+pub fn get_debugger_type(cmd: &Vec<String>) -> Option<String> {
 //    if is_node(cmd[0]) {
 //        Some(String::from("node"))
 //    } else
-    if is_lldb(cmd[0]) {
+    if is_lldb(&cmd[0]) {
         Some(String::from("lldb"))
     } else {
         None

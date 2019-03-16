@@ -53,15 +53,11 @@ Rust Design
 
 - The V1 debugger should support basics, V2 multithreading/multiprocess perhaps.
 - There should be a queue on each debugger that the controller can handle as it thinks best. The debugger can places things like logs and jump handlers on this.
-- Any exception should be caught and logged by sending a `padre#debugger#Log` command appropriately.
-- TODO: Work out how the controller will communicate back to the client for requests. For bulk messages it can poll the message queue.
-- TODO: Decide how to implement
-- Program name to run can only be specified at startup
+- Program will queue requests until Padre has started. Padre will send the padre#debugger#SignalPADREStarted signal when it has fully started to all existing clients and any new clients will receive this signal immediately.
 - Program can only run once Padre has given the started up signal, indicated to the calling API by it sending a call to padre#debugger#SignalPADREStarted. Will be called when it's started on every new connection.
 - Running a program will restart it from scratch (warn in VIM probably)
 - Padre can configurably block calls while it's busy or queue them.
-- Anything can return a status of either OK, PENDING or ERROR only with optional arguments on top of this. Anything can return an ERROR and in these cases it will always allow only one optional error message.
-- Interface [<id>,"<command>"], where <id> is an integer (used for responding) and <command> is defined below for different versions:
+- Anything can return a status of either OK, PENDING or ERROR only with optional arguments on top of this.
 - Interface V1 allows <command>s as follows:
   - run <args...> -> OK pid=<pid>
     - <args...>: The arguments to run the program with
@@ -74,7 +70,6 @@ Rust Design
     - <args>: file=<file> line=<line> (Same as breakpoint)
   - stepIn -> OK
   - stepOver -> OK
-  - stepOut -> OK
   - continue -> OK
   - print variable=<variable> -> OK
     - <variable>: The name of the variable to print
@@ -127,7 +122,7 @@ Rust Design
   and the caller should be able to handle each of these <cmd>'s:
   - padre#debugger#SignalPADREStarted
     - Signals that PADRE has started and will start processing commands
-    - Commands sent to PADRE will be ignored before this signal
+    - Commands sent to PADRE will be queued before this signal
   - padre#debugger#ProcessExited <exit_code> <pid>
     - <exit_code>: the exit code the process exited with, usually 0 on success
     - <pid>: the pid of the exiting process
@@ -140,7 +135,7 @@ Rust Design
     - Args same as that of breakpoint interface command
   - padre#debugger#BreakpointUnset <file> <line>
     - Args same as that of breakpoint interface command
-- Any IO that happens in the PADRE process will be forwarded directly to or from the program itself
+- V3 process data?
 
 Done
 
@@ -148,6 +143,12 @@ Done
 - Ideally each debugger should register it's version at compile time so there's no overhead. Surely rust can support this.
 - TODO: Maybe it makes more sense to just have different things that are supported and those that aren't throw exceptions. Probably depends on what works out easiest in Rust, this might be best though.
 - The controller should be able to handle multiple connections.
+- Any exception should be caught and logged by sending a `padre#debugger#Log` command appropriately.
+- TODO: Work out how the controller will communicate back to the client for requests. For bulk messages it can poll the message queue.
+- TODO: Decide how to implement
+- Program name to run can only be specified at startup
+- Interface [<id>,"<command>"], where <id> is an integer (used for responding) and <command> is defined below for different versions.
+- Any IO that happens in the PADRE process will be forwarded directly to or from the program itself
 
 Classes
 -------
