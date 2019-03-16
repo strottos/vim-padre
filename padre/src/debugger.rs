@@ -28,26 +28,26 @@ mod tests {
     fn finds_lldb_when_specified_and_in_path() {
         set_path();
         let v = vec!["lldb-server".to_string(), "test".to_string()];
-        assert_eq!(super::get_debugger_type(v), Some(String::from("lldb")));
+        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
     }
 
     #[test]
     fn finds_lldb_when_specified_and_absolute_path() {
         let v = vec!["./test_files/lldb-server".to_string(), "test".to_string()];
-        assert_eq!(super::get_debugger_type(v), Some(String::from("lldb")));
+        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
     }
 
     #[test]
     fn finds_lldb_when_elf_file() {
         let v = vec!["./test_files/hello_world".to_string()];
-        assert_eq!(super::get_debugger_type(v), Some(String::from("lldb")));
+        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
     }
 
     #[test]
     #[should_panic]
     fn errors_when_program_not_found() {
         let v = vec!["program-not-exists".to_string()];
-        assert_eq!(super::get_debugger_type(v), Some(String::from("BALLS EXPECT PANIC")));
+        assert_eq!(super::get_debugger_type(&v), Some(String::from("BALLS EXPECT PANIC")));
     }
 
 //    #[test]
