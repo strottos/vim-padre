@@ -1,46 +1,57 @@
 //! lldb client process
 
-use std::borrow::Cow;
 use std::io;
-use std::io::{BufRead, Read, Write};
+use std::io::{Read, Write};
 use std::thread;
-use std::process::{Command, Child, Stdio};
-use std::sync::{Arc, Mutex};
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Condvar, Mutex};
+use std::sync::mpsc::{SyncSender, Receiver};
 
-use crate::notifier::{LogLevel, Notifier};
+use crate::notifier::Notifier;
+use crate::debugger::lldb::{LLDBStop, LLDBError};
 
 use regex::Regex;
 
 pub struct LLDBProcess {
     notifier: Arc<Mutex<Notifier>>,
+    stop_listener: Arc<(Mutex<Option<Result<LLDBStop, LLDBError>>>, Condvar)>,
 }
 
 impl LLDBProcess {
-    pub fn new(notifier: Arc<Mutex<Notifier>>) -> LLDBProcess {
+    pub fn new(
+        notifier: Arc<Mutex<Notifier>>,
+        stop_listener: Arc<(Mutex<Option<Result<LLDBStop, LLDBError>>>,
+                            Condvar)>,
+    ) -> LLDBProcess {
         LLDBProcess {
             notifier: notifier,
+            stop_listener: stop_listener,
         }
     }
 
-    pub fn start_process(&mut self, debugger_command: String, run_command: &Vec<String>) {
-        let mut process = Command::new(debugger_command)
-                                  .args(run_command)
-                                  .stdin(Stdio::piped())
-                                  .stdout(Stdio::piped())
-                                  .spawn()
-                                  .unwrap();
+    pub fn start_process(
+        &mut self,
+        debugger_command: String,
+        run_command: &Vec<String>,
+        receiver: Receiver<String>,
+    ) {
+        let process = Command::new(debugger_command)
+                              .args(run_command)
+                              .stdin(Stdio::piped())
+                              .stdout(Stdio::piped())
+                              .spawn()
+                              .unwrap();
 
         let mut process_stdout = process.stdout;
         let notifier = self.notifier.clone();
 
-        let handle1 = thread::spawn(move || {
+        thread::spawn(move || {
             match process_stdout.as_mut() {
                 Some(out) => {
                     loop {
                         let mut buffer: [u8; 512] = [0; 512];
                         out.read(&mut buffer);
                         let data = String::from_utf8_lossy(&buffer[..]);
-                        println!("DATA");
 
                         print!("{}", data);
 
@@ -59,10 +70,9 @@ impl LLDBProcess {
         process_stdin.as_mut().unwrap().write("settings set stop-line-count-before 0\n".as_bytes());
         process_stdin.as_mut().unwrap().write("settings set frame-format frame #${frame.index}: {${module.file.basename}{`${function.name-with-args}{${frame.no-debug}${function.pc-offset}}}}{ at ${line.file.fullpath}:${line.number}}\\n\n".as_bytes());
 
-        let handle2 = thread::spawn(move || {
-            for line in io::stdin().lock().lines() {
-                let line = line.unwrap() + "\n";
-                process_stdin.as_mut().unwrap().write(line.as_bytes());
+        thread::spawn(move || {
+            loop {
+                process_stdin.as_mut().unwrap().write(receiver.recv().unwrap().as_bytes());
             }
         });
     }
@@ -76,13 +86,11 @@ fn analyse_data(data: &str, notifier: &Arc<Mutex<Notifier>>) {
 
     for line in data.split("\n") {
         for cap in RE_BREAKPOINT.captures_iter(line) {
-            println!("HERE {:?}", cap);
             notifier.lock().unwrap().breakpoint_set(
                 cap[2].to_string(), cap[3].parse::<u32>().unwrap());
         }
 
         for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
-            println!("HERE {:?}", cap);
             notifier.lock().unwrap().jump_to_position(
                 cap[1].to_string(), cap[2].parse::<u32>().unwrap());
         }

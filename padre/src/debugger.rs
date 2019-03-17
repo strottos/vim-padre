@@ -47,7 +47,7 @@ mod tests {
     #[should_panic]
     fn errors_when_program_not_found() {
         let v = vec!["program-not-exists".to_string()];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("BALLS EXPECT PANIC")));
+        assert_eq!(super::get_debugger_type(&v), Some(String::from("EXPECT PANIC")));
     }
 
 //    #[test]
