@@ -71,7 +71,7 @@ Rust Design
   - stepIn -> OK
   - stepOver -> OK
   - continue -> OK
-  - print variable=<variable> -> OK
+  - print variable=<variable> -> OK variable=<variable> value=<value> type=<type>
     - <variable>: The name of the variable to print
     - prints a variable in one of the following forms:
       - number: If the debugger determines a number is correct it will respond with

@@ -56,9 +56,9 @@ impl Notifier {
         self.listeners.push(stream);
     }
 
-    pub fn signal_exited(&self, pid: i32, exit_code: i32) {
+    pub fn signal_exited(&self, pid: u32, exit_code: u8) {
         let msg = format!("[\"call\",\"padre#debugger#ProcessExited\",[{},{}]]",
-                          pid, exit_code);
+                          exit_code, pid);
         self.send_msg(msg);
     }
 

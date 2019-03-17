@@ -93,7 +93,7 @@ Feature: Basics
             | padre#debugger#Log | [2,"Can't find command"]       |
             | padre#debugger#Log | [5,"Can't find command: \"\""] |
 
-    Scenario: Check we can handle badly sent data and it will log errors appropriately.
+    Scenario: Check we can handle errors setting breakpoints
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb'
@@ -121,3 +121,22 @@ Feature: Basics
             | function           | args                                                               |
             | padre#debugger#Log | [2,"Bad arguments for breakpoint"]                                 |
             | padre#debugger#Log | [5,"Bad arguments for breakpoint: \\[\"bad_arg\",\"bad_arg2\"\\]"] |
+
+    Scenario: Check we can handle errors getting variables
+        Given that we have a file 'test_prog.c'
+        And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
+        And that we have a test program 'test_prog' that runs with 'lldb'
+        When I debug the program with PADRE
+        Then I expect to be called with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a request to PADRE 'print'
+        Then I receive both a response 'ERROR' and I expect to be called with
+            | function           | args                                |
+            | padre#debugger#Log | [2,"Can't read variable for print"] |
+            | padre#debugger#Log | [5,"Can't read variable for print"] |
+        When I send a request to PADRE 'print variable=a bad_arg=1 bad_arg2=2'
+        Then I receive both a response 'ERROR' and I expect to be called with
+            | function           | args                                                          |
+            | padre#debugger#Log | [2,"Bad arguments for print"]                                 |
+            | padre#debugger#Log | [5,"Bad arguments for print: \\[\"bad_arg\",\"bad_arg2\"\\]"] |

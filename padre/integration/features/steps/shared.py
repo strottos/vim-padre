@@ -519,7 +519,6 @@ def send_terminal_command(context, command):
 
         loop.call_at(loop.time() + TIMEOUT, cancel)
 
-        print(padre.process.stdin)
         padre.process.stdin.write((command + "\n").encode())
         await padre.process.stdin.drain()
 

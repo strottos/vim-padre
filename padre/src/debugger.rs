@@ -68,7 +68,12 @@ pub trait Debugger {
     fn start(&mut self, debugger_command: String, run_command: &Vec<String>);
     fn has_started(&self) -> bool;
     fn stop(&self);
-    fn breakpoint(&self, file: String, line_num: u32) -> Result<Response<Option<String>>, RequestError>;
+    fn run(&mut self) -> Result<Response<Option<String>>, RequestError>;
+    fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<Option<String>>, RequestError>;
+    fn stepIn(&mut self) -> Result<Response<Option<String>>, RequestError>;
+    fn stepOver(&mut self) -> Result<Response<Option<String>>, RequestError>;
+    fn carryOn(&mut self) -> Result<Response<Option<String>>, RequestError>;
+    fn print(&mut self, variable: String) -> Result<Response<Option<String>>, RequestError>;
 }
 
 pub struct PadreServer {

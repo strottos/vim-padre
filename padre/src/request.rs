@@ -131,7 +131,7 @@ impl Error for RequestError {
 }
 
 impl RequestError {
-    fn new(msg: String, debug: String) -> RequestError {
+    pub fn new(msg: String, debug: String) -> RequestError {
         RequestError {
             msg: msg,
             debug: debug,
@@ -210,7 +210,20 @@ fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreServer>>, notifier: &A
         // TODO: Find better method than unwrap()
         "ping" => padre_server.lock().unwrap().ping(),
         "pings" => padre_server.lock().unwrap().pings(),
+        "run" => padre_server.lock()
+                             .unwrap()
+                             .debugger
+                             .lock()
+                             .unwrap()
+                             .run(),
         "breakpoint" => {
+            let bad_args = get_bad_args(&args, vec!("file", "line"));
+
+            if bad_args.len() != 0 {
+                return Err(RequestError::new("Bad arguments for breakpoint".to_string(),
+                                             format!("Bad arguments for breakpoint: {}", json::stringify(bad_args))));
+            }
+
             let file = match args.get("file") {
                 Some(s) => s.to_string(),
                 None => return Err(
@@ -232,26 +245,6 @@ fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreServer>>, notifier: &A
                                       format!("Can't parse line number: {}", err)))
             };
 
-            let mut bad_args = vec!();
-
-            for key in args.keys() {
-                match key.as_str() {
-                    "file" => (),
-                    "line" => (),
-                    _ => {
-                        bad_args.push(format!("{}", key));
-                        ()
-                    }
-                }
-            }
-
-            bad_args.sort_unstable();
-
-            if bad_args.len() != 0 {
-                return Err(RequestError::new("Bad arguments for breakpoint".to_string(),
-                                             format!("Bad arguments for breakpoint: {}", json::stringify(bad_args))));
-            }
-
             notifier.lock().unwrap().log_msg(LogLevel::INFO,
                 format!("Setting breakpoint in file {} at line number {}", file, line));
 
@@ -261,7 +254,47 @@ fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreServer>>, notifier: &A
                         .lock()
                         .unwrap()
                         .breakpoint(file, line)
-        }
+        },
+        "stepIn" => padre_server.lock()
+                                .unwrap()
+                                .debugger
+                                .lock()
+                                .unwrap()
+                                .stepIn(),
+        "stepOver" => padre_server.lock()
+                                  .unwrap()
+                                  .debugger
+                                  .lock()
+                                  .unwrap()
+                                  .stepOver(),
+        "continue" => padre_server.lock()
+                                  .unwrap()
+                                  .debugger
+                                  .lock()
+                                  .unwrap()
+                                  .carryOn(),
+        "print" => {
+            let bad_args = get_bad_args(&args, vec!("variable"));
+
+            if bad_args.len() != 0 {
+                return Err(RequestError::new("Bad arguments for print".to_string(),
+                                             format!("Bad arguments for print: {}", json::stringify(bad_args))));
+            }
+
+            let variable = match args.get("variable") {
+                Some(s) => s.to_string(),
+                None => return Err(
+                    RequestError::new("Can't read variable for print".to_string(),
+                                      "Can't read variable for print".to_string()))
+            };
+
+            padre_server.lock()
+                        .unwrap()
+                        .debugger
+                        .lock()
+                        .unwrap()
+                        .print(variable)
+        },
         _ => Err(RequestError::new("Can't understand request".to_string(),
                                    format!("Can't understand request: {}", data)))
     }
@@ -363,6 +396,20 @@ fn handle_json(data: &str) -> Result<(u32, String), RequestError> {
             }
         }
     }
+}
+
+fn get_bad_args(args: &HashMap<String, String>, valid_args: Vec<&str>) -> Vec<String> {
+    let mut bad_args = vec!();
+
+    for key in args.keys() {
+        if !valid_args.contains(&key.as_str()) {
+            bad_args.push(format!("{}", key));
+        }
+    }
+
+    bad_args.sort_unstable();
+
+    bad_args
 }
 
 fn handle_error(notifier: &Arc<Mutex<Notifier>>, err: RequestError) {
