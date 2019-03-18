@@ -36,7 +36,7 @@ fn main() -> io::Result<()> {
 
     let debugger_rc = Arc::new(
         Mutex::new(
-            debugger::get_debugger(&debug_cmd, args.value_of("type"), Arc::clone(&notifier_rc))
+            debugger::get_debugger(args.value_of("debugger"), args.value_of("type"), Arc::clone(&notifier_rc))
         )
     );
 

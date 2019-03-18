@@ -104,27 +104,32 @@ impl PadreServer {
     }
 }
 
-pub fn get_debugger(cmd: &Vec<String>, debugger_type: Option<&str>, notifier: Arc<Mutex<Notifier>>) -> PadreServer {
+pub fn get_debugger(debugger_cmd: Option<&str>, debugger_type: Option<&str>, notifier: Arc<Mutex<Notifier>>) -> PadreServer {
     let debugger_type = match debugger_type {
         Some(s) => s.to_string(),
-        None => get_debugger_type(cmd).expect("Can't find debugger type, bailing"),
+        None => {
+            match debugger_cmd {
+                Some(s) => get_debugger_type(s).expect("Can't find debugger type, bailing"),
+                None => panic!("Couldn't find debugger, try specifying with -t or -d"),
+            }
+        }
     };
 
     let debug_server = match debugger_type.to_ascii_lowercase().as_ref() {
         "lldb" => {
             Arc::new(Mutex::new(lldb::LLDB::new(Arc::clone(&notifier))))
         }
-        _ => panic!("Can't build debugger, panicking"),
+        _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };
 
     PadreServer::new(notifier, debug_server)
 }
 
-pub fn get_debugger_type(cmd: &Vec<String>) -> Option<String> {
+pub fn get_debugger_type(cmd: &str) -> Option<String> {
 //    if is_node(cmd[0]) {
 //        Some(String::from("node"))
 //    } else
-    if is_lldb(&cmd[0]) {
+    if is_lldb(&cmd) {
         Some(String::from("lldb"))
     } else {
         None
@@ -161,7 +166,7 @@ fn find_file_type(cmd: &str) -> String {
 fn is_lldb(cmd: &str) -> bool {
     let cmd_file_type = find_file_type(cmd);
 
-    if cmd_file_type.contains("ELF") {
+    if cmd_file_type.contains("ELF") || cmd.contains("lldb") {
         return true
     }
 
