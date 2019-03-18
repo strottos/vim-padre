@@ -2,7 +2,6 @@ use std::io;
 use std::net::{TcpListener};
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 #[macro_use] extern crate lazy_static;
@@ -50,7 +49,7 @@ fn main() -> io::Result<()> {
     let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
     let signal_debugger = Arc::clone(&debugger_rc);
     thread::spawn(move || {
-        for sig in signals.forever() {
+        for _ in signals.forever() {
             signal_debugger.lock()
                            .unwrap()
                            .debugger

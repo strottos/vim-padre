@@ -2,24 +2,31 @@ Improvements:
 
 - Padre command
   - (CRITICAL) Rust implementation of PADRE
-  - (CRITICAL) Rust implementation should log properly
-  - (CRITICAL) Version control and definition of the interface the debug server needs to provide
-  - (CRITICAL) Make things more configurable
+  - (CRITICAL) Timeouts
+  - (CRITICAL) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
+  - (CRITICAL) Queueing of requests
+  - (CRITICAL) Fix all warnings
+  - (CRITICAL) Proper termination
+  - (CRITICAL) Networking error when connection terminates
+  - (CRITICAL) Fix all tests
+  - (HIGH) Make things more configurable
   - (HIGH) Remove breakpoints
-  - (HIGH) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
-  - (HIGH) V2 stuff, backtraces, interrupts, record, step out, step back, go to fixed point??
-  - (HIGH) Timeouts
-  - (HIGH) Command line option for specifying debugger program
-  - (HIGH) Ensure we can terminate properly
-  - (MEDIUM) Support for multi-threading/multi-processing (V2?)
-  - (LOW) Clever working out what type of debugger to use
-  - (LOW) Add in preprocessing possibilities like compiling before running PADRE.
   - (HIGH) Make it be able to take a list of files that it will stop in. Otherwise it will configurably either step in till it finds one, step over till it finds one, continue or no action (displaying something??).
+  - (HIGH) Ensure we can terminate properly
+  - (LOW) Support for multi-threading/multi-processing (V2?)
+  - (LOW) V2+ stuff, backtraces, interrupts, record, step out, step back, go to fixed point??
+  - (LOW) Add in preprocessing possibilities like compiling before running PADRE.
 - LLDB
-  - (HIGH) Proper variable printing
-  - (MEDIUM) Get things working for multi-threaded programs in LLDB
-  - (MEDIUM) Get things working for process spawning in LLDB
-  - (MEDIUM) Timeouts on promises
+  - (CRITICAL) Proper variable printing for rust and C++
+  - (CRITICAL) Timeouts
+  - (CRITICAL) Error Handling
+  - (CRITICAL) Proper checking of step ins
+  - (LOW) Get things working for multi-threaded programs in LLDB
+  - (LOW) Get things working for process spawning in LLDB
+
+
+
+
 - Node
   - (HIGH) Asynchronous debugging in Node
   - (HIGH) Ports randomly chosen other than 9229
@@ -28,6 +35,7 @@ Improvements:
   - (CRITICAL) Request error handling
   - (HIGH) Support method overloading
 - VIM
+  - (HIGH) Why it no log immediately
   - (HIGH) Change buffers to be created at PadreDebug command and torn down when exiting
   - (MEDIUM) Support multiple PADRE processes
   - (MEDIUM) Reorder windows properly

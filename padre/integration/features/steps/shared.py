@@ -530,3 +530,11 @@ def send_terminal_command(context, command):
                                            command,
                                            future,
                                            loop))
+
+
+@when(u'I terminate connection {connection}')
+def terminate_connection(context, connection):
+    """
+    Close connection number {connection}
+    """
+    print(context.connections[connection])
