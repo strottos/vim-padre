@@ -53,6 +53,7 @@ Feature: Basics
         Then I receive both a response 'OK' and I expect to be called on connection 2 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
+        When I terminate the program
 
     Scenario: Check we can handle terminating connections
         Given that we have a file 'test_prog.c'
@@ -67,6 +68,18 @@ Feature: Basics
         Then I expect to be called with
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
+        When I open another connection to PADRE
+        Then I expect to be called on connection 1 with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a request to PADRE 'pings' on connection 0
+        Then I receive both a response 'OK' and I expect to be called on connection 0 with
+            | function           | args       |
+            | padre#debugger#Log | [4,"pong"] |
+        And I expect to be called on connection 1 with
+            | function           | args       |
+            | padre#debugger#Log | [4,"pong"] |
+        When I terminate the program
 
     Scenario: Check we can handle badly sent data and it will log errors appropriately.
         Given that we have a file 'test_prog.c'
@@ -106,6 +119,7 @@ Feature: Basics
             | function           | args                           |
             | padre#debugger#Log | [2,"Can't find command"]       |
             | padre#debugger#Log | [5,"Can't find command: \"\""] |
+        When I terminate the program
 
     Scenario: Check we can handle errors setting breakpoints
         Given that we have a file 'test_prog.c'
@@ -135,6 +149,7 @@ Feature: Basics
             | function           | args                                                               |
             | padre#debugger#Log | [2,"Bad arguments for breakpoint"]                                 |
             | padre#debugger#Log | [5,"Bad arguments for breakpoint: \\[\"bad_arg\",\"bad_arg2\"\\]"] |
+        When I terminate the program
 
     Scenario: Check we can handle errors getting variables
         Given that we have a file 'test_prog.c'
@@ -154,3 +169,4 @@ Feature: Basics
             | function           | args                                                          |
             | padre#debugger#Log | [2,"Bad arguments for print"]                                 |
             | padre#debugger#Log | [5,"Bad arguments for print: \\[\"bad_arg\",\"bad_arg2\"\\]"] |
+        When I terminate the program

@@ -56,25 +56,25 @@ impl Notifier {
         self.listeners.push(stream);
     }
 
-    pub fn signal_exited(&self, pid: u32, exit_code: u8) {
+    pub fn signal_exited(&mut self, pid: u32, exit_code: u8) {
         let msg = format!("[\"call\",\"padre#debugger#ProcessExited\",[{},{}]]",
                           exit_code, pid);
         self.send_msg(msg);
     }
 
-    pub fn log_msg(&self, level: LogLevel, msg: String) {
+    pub fn log_msg(&mut self, level: LogLevel, msg: String) {
         let msg = format!("[\"call\",\"padre#debugger#Log\",[{},{}]]",
                           level as i32, json::stringify(msg));
         self.send_msg(msg);
     }
 
-    pub fn jump_to_position(&self, file: String, line: u32) {
+    pub fn jump_to_position(&mut self, file: String, line: u32) {
         let msg = format!("[\"call\",\"padre#debugger#JumpToPosition\",[{},{}]]",
                           json::stringify(file), line);
         self.send_msg(msg);
     }
 
-    pub fn breakpoint_set(&self, file: String, line: u32) {
+    pub fn breakpoint_set(&mut self, file: String, line: u32) {
         let msg = format!("[\"call\",\"padre#debugger#BreakpointSet\",[{},{}]]",
                           json::stringify(file), line);
         self.send_msg(msg);
@@ -86,9 +86,21 @@ impl Notifier {
 //        self.send_msg(msg);
 //    }
 
-    fn send_msg(&self, msg: String) {
-        for mut listener in self.listeners.iter() {
-            listener.write(msg.as_bytes()).expect("Can't send to socket");
+    fn send_msg(&mut self, msg: String) {
+        let mut listeners_to_remove: Vec<usize> = Vec::new();
+
+        for (i, mut listener) in self.listeners.iter().enumerate() {
+            match listener.write(msg.as_bytes()) {
+                Ok(_) => (),
+                Err(error) => {
+                    listeners_to_remove.push(i);
+                    println!("Can't send to socket, taking out of listeners: {}", error);
+                },
+            }
+        }
+
+        for i in listeners_to_remove {
+            self.listeners.remove(i);
         }
     }
 }

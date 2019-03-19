@@ -42,6 +42,7 @@ function! padre#debugger#Debug(...)
 
   let l:program = ''
   let l:debugger = 'lldb'
+  let l:debugger_type = 'lldb'
 
   let l:args = a:000
   let l:process_vim_args = 1
@@ -50,15 +51,27 @@ function! padre#debugger#Debug(...)
     let l:arg = l:args[0]
     let l:args = l:args[1:]
 
-    let l:match = matchlist(l:arg, '^--debugger=\([a-z]*\)$')
+    let l:match = matchlist(l:arg, '^--debugger=\([^ ]*\)$')
     if !empty(l:match) && l:process_vim_args == 1
       let l:debugger = l:match[1]
       continue
     endif
 
-    let l:match = matchlist(l:arg, '^-d=\([a-z]*\)$')
+    let l:match = matchlist(l:arg, '^-d=\([^ ]*\)$')
     if !empty(l:match) && l:process_vim_args == 1
       let l:debugger = l:match[1]
+      continue
+    endif
+
+    let l:match = matchlist(l:arg, '^--type=\([^ ]*\)$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:debugger_type = l:match[1]
+      continue
+    endif
+
+    let l:match = matchlist(l:arg, '^-t=\([^ ]*\)$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:debugger_type = l:match[1]
       continue
     endif
 
@@ -103,7 +116,7 @@ function! padre#debugger#Debug(...)
   wincmd b
 
   " TODO: Check for errors and report
-  let l:command = s:PluginRoot . '/padre/target/debug/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' -- ' . l:program
+  let l:command = s:PluginRoot . '/padre/target/debug/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' --type=' . l:debugger_type . ' -- ' . l:program
   if has('terminal')
     execute 'terminal ++curwin ' . l:command
   else

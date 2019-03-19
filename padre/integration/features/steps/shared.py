@@ -537,4 +537,14 @@ def terminate_connection(context, connection):
     """
     Close connection number {connection}
     """
-    print(context.connections[connection])
+    connection = context.connections[int(connection)]
+    context.connections.remove(connection)
+    connection = None
+
+
+@when(u'I terminate the program')
+def terminate_program(context):
+    """
+    Close PADRE
+    """
+    context.padre.process.terminate()

@@ -1,15 +1,12 @@
 Improvements:
 
 - Padre command
-  - (CRITICAL) Rust implementation of PADRE
-  - (CRITICAL) Timeouts
   - (CRITICAL) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
   - (CRITICAL) Queueing of requests
-  - (CRITICAL) Fix all warnings
   - (CRITICAL) Proper termination
-  - (CRITICAL) Networking error when connection terminates
-  - (CRITICAL) Fix all tests
+  - (CRITICAL) run arguments
   - (HIGH) Make things more configurable
+  - (HIGH) Auto step ins till we find code (configurable?)
   - (HIGH) Remove breakpoints
   - (HIGH) Make it be able to take a list of files that it will stop in. Otherwise it will configurably either step in till it finds one, step over till it finds one, continue or no action (displaying something??).
   - (HIGH) Ensure we can terminate properly
@@ -18,9 +15,8 @@ Improvements:
   - (LOW) Add in preprocessing possibilities like compiling before running PADRE.
 - LLDB
   - (CRITICAL) Proper variable printing for rust and C++
-  - (CRITICAL) Timeouts
   - (CRITICAL) Error Handling
-  - (CRITICAL) Proper checking of step ins
+  - (MEDIUM) Clean code in LLDBProcess, it's ugly.
   - (LOW) Get things working for multi-threaded programs in LLDB
   - (LOW) Get things working for process spawning in LLDB
 

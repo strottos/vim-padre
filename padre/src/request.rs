@@ -154,7 +154,13 @@ pub fn handle_connection(mut stream: TcpStream, notifier: Arc<Mutex<Notifier>>, 
     loop {
         let mut buffer = [0; 512];
 
-        stream.read(&mut buffer).expect("Can't read from socket!");
+        match stream.read(&mut buffer) {
+            Ok(_) => {},
+            Err(err) => {
+                println!("Can't read from socket: {}", err);
+                return
+            },
+        };
 
         let data = String::from_utf8_lossy(&buffer[..]);
 
@@ -260,19 +266,19 @@ fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreServer>>, notifier: &A
                                 .debugger
                                 .lock()
                                 .unwrap()
-                                .stepIn(),
+                                .step_in(),
         "stepOver" => padre_server.lock()
                                   .unwrap()
                                   .debugger
                                   .lock()
                                   .unwrap()
-                                  .stepOver(),
+                                  .step_over(),
         "continue" => padre_server.lock()
                                   .unwrap()
                                   .debugger
                                   .lock()
                                   .unwrap()
-                                  .carryOn(),
+                                  .continue_on(),
         "print" => {
             let bad_args = get_bad_args(&args, vec!("variable"));
 
@@ -333,7 +339,7 @@ fn interpret_cmd(data: &str) -> Result<(String, HashMap<String, String>), Reques
             }
         }.to_string();
         match arg_tuple.next() {
-            Some(s) => {
+            Some(_) => {
                 bad_args.push(arg);
             },
             None => ()

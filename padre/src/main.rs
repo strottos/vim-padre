@@ -50,12 +50,15 @@ fn main() -> io::Result<()> {
     let signal_debugger = Arc::clone(&debugger_rc);
     thread::spawn(move || {
         for _ in signals.forever() {
-            signal_debugger.lock()
-                           .unwrap()
-                           .debugger
-                           .lock()
-                           .unwrap()
-                           .stop();
+            match signal_debugger.lock() {
+                Ok(s) => {
+                    match s.debugger.lock() {
+                        Ok(t) => t.stop(),
+                        Err(err) => println!("Debugger not found: {}", err),
+                    };
+                },
+                Err(err) => println!("Debug server not found: {}", err),
+            };
             println!("Terminated!");
             exit(0);
         }
@@ -137,7 +140,7 @@ fn get_connection_string(args: &ArgMatches) -> String {
     };
 
     let host = match args.value_of("host") {
-        None => "localhost",
+        None => "0.0.0.0",
         Some(s) => s
     };
 

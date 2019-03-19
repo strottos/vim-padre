@@ -29,6 +29,7 @@ Feature: LLDB
         Then I expect to be called with
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
+        When I terminate the program
 
     Scenario Outline: Debug a basic program with LLDB using the PADRE interface
         Given that we have a file 'test_prog.c'
@@ -43,39 +44,89 @@ Feature: LLDB
             | function                     | args                     |
             | padre#debugger#Log           | [4, ".*test_prog.c.*17"] |
             | padre#debugger#BreakpointSet | [".*test_prog.c$", 17]   |
+        When I send a request to PADRE 'breakpoint file=not_exists.c line=17'
+        Then I receive both a response 'PENDING' and I expect to be called with
+            | function           | args                     |
+            | padre#debugger#Log | [4,".*not_exists.c.*17"] |
         When I send a request to PADRE 'run'
-        #Then I receive both a response 'OK pid=\d+' and I expect to be called with
-        Then I receive both a response 'OK' and I expect to be called with
-            | function                      | args                 |
-            | padre#debugger#JumpToPosition | [".*test_prog.c",22] |
+        Then I receive both a response 'OK pid=\d+' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22] |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
         When I send a request to PADRE 'stepIn'
         Then I receive both a response 'OK' and I expect to be called with
-            | function                      | args                |
-            | padre#debugger#JumpToPosition | [".*test_prog.c",8] |
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",8] |
         When I send a request to PADRE 'stepOver'
         Then I receive both a response 'OK' and I expect to be called with
-            | function                      | args                |
-            | padre#debugger#JumpToPosition | [".*test_prog.c",9] |
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",9] |
         When I send a request to PADRE 'stepIn'
         Then I receive both a response 'OK' and I expect to be called with
-            | function                      | args                 |
-            | padre#debugger#JumpToPosition | [".*test_prog.c",13] |
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",13] |
         When I send a request to PADRE 'continue'
         Then I receive both a response 'OK' and I expect to be called with
-            | function                      | args                 |
-            | padre#debugger#JumpToPosition | [".*test_prog.c",17] |
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",17] |
         When I send a request to PADRE 'stepOver'
         Then I receive both a response 'OK' and I expect to be called with
-            | function                      | args                 |
-            | padre#debugger#JumpToPosition | [".*test_prog.c",18] |
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",18] |
         When I send a request to PADRE 'print variable=a'
         Then I receive a response 'OK variable=a value=1 type=number'
         When I send a request to PADRE 'continue'
         Then I receive both a response 'OK' and I expect to be called with
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
+        When I terminate the program
 
         Examples:
         | compiler     |
         | gcc -g -O0   |
         | clang -g -O0 |
+
+    Scenario: Debug a basic program with LLDB using the both the LLDB command line and the PADRE connection
+        Given that we have a file 'test_prog.c'
+        And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
+        And that we have a test program 'test_prog' that runs with 'lldb'
+        When I debug the program with PADRE
+        Then I expect to be called with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a command 'b func3' using the terminal
+        Then I expect to be called with
+            | function                     | args                   |
+            | padre#debugger#BreakpointSet | [".*test_prog.c$", 17] |
+        When I send a request to PADRE 'run'
+        Then I receive both a response 'OK pid=\d+' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22] |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
+        When I send a command 's' using the terminal
+        Then I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$", 8] |
+        When I send a request to PADRE 'stepOver'
+        Then I receive both a response 'OK' and I expect to be called with
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",9] |
+        When I send a command 'n' using the terminal
+        Then I expect to be called with
+            | function                      | args                   |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$", 17] |
+        When I send a command 'n' using the terminal
+        Then I expect to be called with
+            | function                      | args                   |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$", 18] |
+        When I send a request to PADRE 'print variable=a'
+        Then I receive a response 'OK variable=a value=1 type=number'
+        When I send a command 'c' using the terminal
+        Then I expect to be called with
+            | function                      | args                   |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$", 10] |
+        When I send a request to PADRE 'continue'
+        Then I receive both a response 'OK' and I expect to be called with
+            | function                     | args       |
+            | padre#debugger#ProcessExited | [0,"\\d+"] |
+        When I terminate the program

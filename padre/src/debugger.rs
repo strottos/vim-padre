@@ -27,27 +27,23 @@ mod tests {
     #[test]
     fn finds_lldb_when_specified_and_in_path() {
         set_path();
-        let v = vec!["lldb-server".to_string(), "test".to_string()];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
+        assert_eq!(super::get_debugger_type("lldb-server"), Some(String::from("lldb")));
     }
 
     #[test]
     fn finds_lldb_when_specified_and_absolute_path() {
-        let v = vec!["./test_files/lldb-server".to_string(), "test".to_string()];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
+        assert_eq!(super::get_debugger_type("./test_files/lldb-server"), Some(String::from("lldb")));
     }
 
     #[test]
     fn finds_lldb_when_elf_file() {
-        let v = vec!["./test_files/hello_world".to_string()];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("lldb")));
+        assert_eq!(super::get_debugger_type("./test_files/hello_world"), Some(String::from("lldb")));
     }
 
     #[test]
     #[should_panic]
     fn errors_when_program_not_found() {
-        let v = vec!["program-not-exists".to_string()];
-        assert_eq!(super::get_debugger_type(&v), Some(String::from("EXPECT PANIC")));
+        assert_eq!(super::get_debugger_type("program-not-exists"), Some(String::from("EXPECT PANIC")));
     }
 
 //    #[test]
@@ -70,9 +66,9 @@ pub trait Debugger {
     fn stop(&self);
     fn run(&mut self) -> Result<Response<Option<String>>, RequestError>;
     fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<Option<String>>, RequestError>;
-    fn stepIn(&mut self) -> Result<Response<Option<String>>, RequestError>;
-    fn stepOver(&mut self) -> Result<Response<Option<String>>, RequestError>;
-    fn carryOn(&mut self) -> Result<Response<Option<String>>, RequestError>;
+    fn step_in(&mut self) -> Result<Response<Option<String>>, RequestError>;
+    fn step_over(&mut self) -> Result<Response<Option<String>>, RequestError>;
+    fn continue_on(&mut self) -> Result<Response<Option<String>>, RequestError>;
     fn print(&mut self, variable: String) -> Result<Response<Option<String>>, RequestError>;
 }
 

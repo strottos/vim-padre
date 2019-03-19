@@ -1,25 +1,31 @@
 //! lldb client debugger
 
-use std::convert::From;
 use std::io;
 use std::io::{BufRead};
+use std::process::exit;
 use std::sync::{Arc, Condvar, mpsc, Mutex};
 use std::sync::mpsc::SyncSender;
 use std::thread;
+use std::time::Duration;
 
 use crate::request::{RequestError, Response};
 use crate::debugger::Debugger;
-use crate::notifier::Notifier;
+use crate::notifier::{LogLevel, Notifier};
 
 mod lldb_process;
 
-#[derive(Debug)]
+const TIMEOUT: u64 = 5000;
+
+#[derive(Clone)]
 pub enum LLDBStatus {
-    NONE,
-    BREAKPOINT,
-    STEP_IN,
-    STEP_OVER,
-    VARIABLE,
+    None,
+    ProcessStarted,
+    Breakpoint,
+    BreakpointPending,
+    StepIn,
+    StepOver,
+    Continue,
+    Variable,
 }
 
 pub struct LLDB {
@@ -60,72 +66,61 @@ impl Debugger for LLDB {
     }
 
     fn stop(&self) {
-        println!("STOP");
+        self.sender.clone().unwrap().send("quit\n".to_string()).expect("Can't communicate with LLDB");
     }
 
     fn run(&mut self) -> Result<Response<Option<String>>, RequestError> {
-        self.sender.clone().unwrap().send("break set --name main\n".to_string()).expect("Can't communicate with LLDB");
-        self.sender.clone().unwrap().send("process launch\n".to_string()).expect("Can't communicate with LLDB");
-        Ok(Response::OK(None))
+        let (_, _) = self.check_response("break set --name main\n".to_string());
+
+        let (_, args) = self.check_response("process launch\n".to_string());
+
+        let ret = format!("pid={}", args.get(0).unwrap());
+
+        Ok(Response::OK(Some(ret)))
     }
 
     fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<Option<String>>, RequestError> {
-        // Check breakpoint comes back
-        let &(ref lock, ref cvar) = &*self.listener;
-        let mut started = lock.lock().unwrap();
-        *started = (LLDBStatus::NONE, vec!());
+        let (status, _) = self.check_response(format!("break set --file {} --line {}\n", file, line_num));
 
-        self.sender.clone().unwrap().send(format!("break set --file {} --line {}\n", file, line_num)).expect("Can't communicate with LLDB");
-
-        // Check breakpoint comes back
-        loop {
-            match started.0 {
-                LLDBStatus::NONE => {}
-                _ => {break}
-            };
-            started = cvar.wait(started).unwrap();
+        match status {
+            LLDBStatus::Breakpoint => Ok(Response::OK(None)),
+            LLDBStatus::BreakpointPending => Ok(Response::PENDING(None)),
+            _ => panic!("Didn't get a breakpoint response"),
         }
-
-        Ok(Response::OK(None))
     }
 
-    fn stepIn(&mut self) -> Result<Response<Option<String>>, RequestError> {
-        self.sender.clone().unwrap().send("thread step-in\n".to_string()).expect("Can't communicate with LLDB");
-        Ok(Response::OK(None))
+    fn step_in(&mut self) -> Result<Response<Option<String>>, RequestError> {
+        let (status, _) = self.check_response("thread step-in\n".to_string());
+        match status {
+            LLDBStatus::StepIn => Ok(Response::OK(None)),
+            _ => panic!("Didn't get a step-in response"),
+        }
     }
 
-    fn stepOver(&mut self) -> Result<Response<Option<String>>, RequestError> {
-        self.sender.clone().unwrap().send("thread step-over\n".to_string()).expect("Can't communicate with LLDB");
-        Ok(Response::OK(None))
+    fn step_over(&mut self) -> Result<Response<Option<String>>, RequestError> {
+        let (status, _) = self.check_response("thread step-over\n".to_string());
+        match status {
+            LLDBStatus::StepOver => Ok(Response::OK(None)),
+            _ => panic!("Didn't get a step-in response"),
+        }
     }
 
-    fn carryOn(&mut self) -> Result<Response<Option<String>>, RequestError> {
-        self.sender.clone().unwrap().send("thread continue\n".to_string()).expect("Can't communicate with LLDB");
-        Ok(Response::OK(None))
+    fn continue_on(&mut self) -> Result<Response<Option<String>>, RequestError> {
+        let (status, _) = self.check_response("thread continue\n".to_string());
+        match status {
+            LLDBStatus::Continue => Ok(Response::OK(None)),
+            _ => panic!("Didn't get a step-in response"),
+        }
     }
 
     fn print(&mut self, variable: String) -> Result<Response<Option<String>>, RequestError> {
-        // Check variable comes back
-        let &(ref lock, ref cvar) = &*self.listener;
-        let mut started = lock.lock().unwrap();
-        *started = (LLDBStatus::NONE, vec!());
+        let (status, args) = self.check_response(format!("frame variable {}\n", variable));
 
-        self.sender.clone().unwrap().send(format!("frame variable {}\n", variable)).expect("Can't communicate with LLDB");
-
-        loop {
-            match started.0 {
-                LLDBStatus::NONE => {}
-                _ => {break}
-            };
-            started = cvar.wait(started).unwrap();
-        }
-
-        match started.0 {
-            LLDBStatus::VARIABLE => {},
+        match status {
+            LLDBStatus::Variable => {},
             _ => panic!("Shouldn't get here")
         }
 
-        let args = &started.1;
         let ret = format!("variable={} value={} type={}",
                           args.get(0).unwrap(),
                           args.get(1).unwrap(),
@@ -138,7 +133,7 @@ impl Debugger for LLDB {
 impl LLDB {
     pub fn new(notifier: Arc<Mutex<Notifier>>) -> LLDB {
         let process_notifier_clone = notifier.clone();
-        let listener = Arc::new((Mutex::new((LLDBStatus::NONE, vec!())), Condvar::new()));
+        let listener = Arc::new((Mutex::new((LLDBStatus::None, vec!())), Condvar::new()));
         let listener_process = listener.clone();
         LLDB {
             notifier: notifier,
@@ -150,5 +145,37 @@ impl LLDB {
             listener: listener,
             sender: None,
         }
+    }
+
+    pub fn check_response(&self, msg: String) -> (LLDBStatus, Vec<String>) {
+        // Reset the current status
+        let &(ref lock, ref cvar) = &*self.listener;
+        let mut started = lock.lock().unwrap();
+        *started = (LLDBStatus::None, vec!());
+
+        // Send the request
+        self.sender.clone().unwrap().send(msg.clone()).expect("Can't communicate with LLDB");
+
+        // Check for the status change
+        let result = cvar.wait_timeout(started, Duration::from_millis(TIMEOUT)).unwrap();
+        started = result.0;
+
+        match started.0 {
+            LLDBStatus::None => {
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::CRITICAL,
+                             format!("Timed out waiting for condition: {}", &msg));
+                println!("Timed out waiting for condition: {}", msg);
+                exit(1);
+            },
+            _ => {},
+        };
+
+        let status = started.0.clone();
+        let args = started.1.clone();
+
+        (status, args)
     }
 }
