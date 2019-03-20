@@ -419,10 +419,19 @@ fn get_bad_args(args: &HashMap<String, String>, valid_args: Vec<&str>) -> Vec<St
 }
 
 fn handle_error(notifier: &Arc<Mutex<Notifier>>, err: RequestError) {
-    notifier.lock()
-            .unwrap()
-            .log_msg(LogLevel::ERROR, format!("{}", err));
-    notifier.lock()
-            .unwrap()
-            .log_msg(LogLevel::DEBUG, format!("{}", err.get_debug_info()));
+    let err_details = format!("{}", err);
+
+    if err_details != "" {
+        notifier.lock()
+                .unwrap()
+                .log_msg(LogLevel::ERROR, err_details);
+    }
+
+    let debug_info = format!("{}", err.get_debug_info());
+
+    if debug_info != "" {
+        notifier.lock()
+                .unwrap()
+                .log_msg(LogLevel::DEBUG, debug_info);
+    }
 }

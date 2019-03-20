@@ -8,6 +8,7 @@ import re
 import socket
 import subprocess
 import time
+import threading
 from tempfile import TemporaryDirectory
 from shutil import copyfile
 
@@ -187,6 +188,18 @@ def run_padre(context, timeout=20):
     expected = "Listening on 127.0.0.1:{}\n".format(context.padre.port).encode()
     assert_that(line, equal_to(expected), "Started server")
     context.connections = []
+
+    def do_stuff(loop, context):
+        async def print_stuff(context):
+            while True:
+                print(await context.padre.process.stdout.readline())
+
+        ensure = asyncio.ensure_future(print_stuff(context),
+                                       loop=loop)
+
+    t = threading.Thread(target=do_stuff, args=(loop, context))
+    t.start()
+
     yield True  # Pause teardown till later
 
     context.padre.process.terminate()

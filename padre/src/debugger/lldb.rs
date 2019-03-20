@@ -12,13 +12,16 @@ use crate::request::{RequestError, Response};
 use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
 
+use regex::Regex;
+
 mod lldb_process;
 
 const TIMEOUT: u64 = 5000;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum LLDBStatus {
     None,
+    NoProcess,
     ProcessStarted,
     Breakpoint,
     BreakpointPending,
@@ -26,6 +29,7 @@ pub enum LLDBStatus {
     StepOver,
     Continue,
     Variable,
+    VariableNotFound,
 }
 
 pub struct LLDB {
@@ -40,20 +44,23 @@ impl Debugger for LLDB {
     fn start(&mut self, debugger_command: String, run_command: &Vec<String>) {
         let (tx, rx) = mpsc::sync_channel(512);
 
-        self.sender = Some(tx.clone());
+        self.process.add_sender(Some(tx.clone()));
+        self.sender = Some(tx);
 
         // Kick off lldb
         self.process.start_process(debugger_command, run_command, rx);
 
-        tx.send("settings set stop-line-count-after 0\n".to_string()).unwrap();
-        tx.send("settings set stop-line-count-before 0\n".to_string()).unwrap();
-        tx.send("settings set frame-format frame #${frame.index}: {${module.file.basename}{`${function.name-with-args}{${frame.no-debug}${function.pc-offset}}}}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string()).unwrap();
+        let sender = self.sender.clone().unwrap();
+
+        sender.send("settings set stop-line-count-after 0\n".to_string()).unwrap();
+        sender.send("settings set stop-line-count-before 0\n".to_string()).unwrap();
+        sender.send("settings set frame-format frame #${frame.index}: {${module.file.basename}{`${function.name-with-args}{${frame.no-debug}${function.pc-offset}}}}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string()).unwrap();
 
         // Send stdin to process
         thread::spawn(move || {
             for line in io::stdin().lock().lines() {
                 let line = line.unwrap() + "\n";
-                tx.send(line).unwrap();
+                sender.send(line).unwrap();
             }
         });
 
@@ -93,6 +100,7 @@ impl Debugger for LLDB {
         let (status, _) = self.check_response("thread step-in\n".to_string());
         match status {
             LLDBStatus::StepIn => Ok(Response::OK(None)),
+            LLDBStatus::NoProcess => {return self.throw_empty_error();}
             _ => panic!("Didn't get a step-in response"),
         }
     }
@@ -101,6 +109,7 @@ impl Debugger for LLDB {
         let (status, _) = self.check_response("thread step-over\n".to_string());
         match status {
             LLDBStatus::StepOver => Ok(Response::OK(None)),
+            LLDBStatus::NoProcess => {return self.throw_empty_error();}
             _ => panic!("Didn't get a step-in response"),
         }
     }
@@ -109,6 +118,7 @@ impl Debugger for LLDB {
         let (status, _) = self.check_response("thread continue\n".to_string());
         match status {
             LLDBStatus::Continue => Ok(Response::OK(None)),
+            LLDBStatus::NoProcess => {return self.throw_empty_error();}
             _ => panic!("Didn't get a step-in response"),
         }
     }
@@ -118,13 +128,29 @@ impl Debugger for LLDB {
 
         match status {
             LLDBStatus::Variable => {},
+            LLDBStatus::VariableNotFound => {
+                self.notifier.lock()
+                             .unwrap()
+                             .log_msg(LogLevel::WARN,
+                                      format!("variable '{}' doesn't exist here", variable));
+                return self.throw_empty_error();
+            },
+            LLDBStatus::NoProcess => {return self.throw_empty_error();}
             _ => panic!("Shouldn't get here")
         }
 
-        let ret = format!("variable={} value={} type={}",
+        let variable = args.get(0).unwrap();
+        let variable_value = args.get(1).unwrap();
+        let variable_type = args.get(2).unwrap();
+
+        if self.is_pointer_or_reference(variable_type) {
+            return self.analyse_pointer(variable, variable_type)
+        }
+
+        let ret = format!("variable={} value=\"{}\" type=\"{}\"",
                           args.get(0).unwrap(),
-                          args.get(1).unwrap(),
-                          args.get(2).unwrap());
+                          variable_value,
+                          variable_type);
 
         Ok(Response::OK(Some(ret)))
     }
@@ -141,13 +167,14 @@ impl LLDB {
             process: lldb_process::LLDBProcess::new(
                 process_notifier_clone,
                 listener_process,
+                None,
             ),
             listener: listener,
             sender: None,
         }
     }
 
-    pub fn check_response(&self, msg: String) -> (LLDBStatus, Vec<String>) {
+    fn check_response(&self, msg: String) -> (LLDBStatus, Vec<String>) {
         // Reset the current status
         let &(ref lock, ref cvar) = &*self.listener;
         let mut started = lock.lock().unwrap();
@@ -177,5 +204,48 @@ impl LLDB {
         let args = started.1.clone();
 
         (status, args)
+    }
+
+    fn throw_empty_error(&self) -> Result<Response<Option<String>>, RequestError> {
+        Err(RequestError::new("".to_string(), "".to_string()))
+    }
+
+    fn is_pointer_or_reference(&self, variable_type: &str) -> bool {
+        lazy_static! {
+            static ref RE_RUST_IS_POINTER_OR_REFERENCE: Regex = Regex::new("^&*.* \\*$").unwrap();
+        }
+
+        for _ in RE_RUST_IS_POINTER_OR_REFERENCE.captures_iter(variable_type) {
+            return true;
+        }
+
+        false
+    }
+
+    fn analyse_pointer(&self,
+                       variable: &str,
+                       variable_type: &str) -> Result<Response<Option<String>>, RequestError> {
+        let (status, args) = self.check_response(format!("frame variable *{}\n", variable));
+
+        match status {
+            LLDBStatus::Variable => {},
+            _ => panic!("Shouldn't get here")
+        }
+
+        let mut obj = json::object::Object::new();
+        obj.insert("type", json::from(variable_type.to_string()));
+        obj.insert("deref", json::from(args.get(1).unwrap().to_string()));
+
+        let variable_value = json::stringify(obj);
+        let variable_type = "JSON";
+        println!("{}", variable_value);
+
+        let ret = json::stringify(format!("variable={} value=\"{}\" type=\"{}\"",
+                                          variable,
+                                          variable_value,
+                                          variable_type));
+        println!("{}", ret);
+
+        Ok(Response::OK(Some(ret)))
     }
 }

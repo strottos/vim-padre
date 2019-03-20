@@ -16,6 +16,8 @@ Improvements:
 - LLDB
   - (CRITICAL) Proper variable printing for rust and C++
   - (CRITICAL) Error Handling
+  - (CRITICAL) Fix printing when no variable exists
+  - (MEDIUM) If rust continue to main main on startup.
   - (MEDIUM) Clean code in LLDBProcess, it's ugly.
   - (LOW) Get things working for multi-threaded programs in LLDB
   - (LOW) Get things working for process spawning in LLDB
@@ -94,9 +96,9 @@ Rust Design
       - JSON: If the debugger determines the value is complicated enough to warrant
         something with more structure it will respond with
                     "OK variable=<variable> value='<value>' type=JSON"
-        where <value> is the JSON returned with backslashes and quotations escaped with backslashes.
+        where <value> is the JSON returned with JSON encoding.
         - This will be different for different debuggers, for example in C we might have a pointer `a` to a struct of type `b`, e.g.
-            value='{\"type\":\"b*\",\"deref\":{...}}'
+            value='{\"type\":\"*b\",\"deref\":{...}}'
           and if we have a struct b of the form (example taken from https://www.tutorialspoint.com/cprogramming/c_structures.htm)
             struct Books {
                char  title[50];
