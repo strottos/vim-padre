@@ -64,12 +64,12 @@ pub trait Debugger {
     fn start(&mut self, debugger_command: String, run_command: &Vec<String>);
     fn has_started(&self) -> bool;
     fn stop(&self);
-    fn run(&mut self) -> Result<Response<Option<String>>, RequestError>;
-    fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<Option<String>>, RequestError>;
-    fn step_in(&mut self) -> Result<Response<Option<String>>, RequestError>;
-    fn step_over(&mut self) -> Result<Response<Option<String>>, RequestError>;
-    fn continue_on(&mut self) -> Result<Response<Option<String>>, RequestError>;
-    fn print(&mut self, variable: String) -> Result<Response<Option<String>>, RequestError>;
+    fn run(&mut self) -> Result<Response<json::object::Object>, RequestError>;
+    fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<json::object::Object>, RequestError>;
+    fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError>;
+    fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError>;
+    fn continue_on(&mut self) -> Result<Response<json::object::Object>, RequestError>;
+    fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError>;
 }
 
 pub struct PadreServer {
@@ -89,14 +89,17 @@ impl PadreServer {
         self.debugger.lock().unwrap().start(debugger_command, run_command);
     }
 
-    pub fn ping(&self) -> Result<Response<Option<String>>, RequestError> {
-        Ok(Response::OK(Some(String::from("pong"))))
+    pub fn ping(&self) -> Result<Response<json::object::Object>, RequestError> {
+        let mut pong = json::object::Object::new();
+        pong.insert("ping", json::from("pong".to_string()));
+        Ok(Response::OK(pong))
     }
 
-    pub fn pings(&self) -> Result<Response<Option<String>>, RequestError> {
+    pub fn pings(&self) -> Result<Response<json::object::Object>, RequestError> {
         // TODO: Better than unwrap?
+        let pongs = json::object::Object::new();
         self.notifier.lock().unwrap().log_msg(LogLevel::INFO, "pong".to_string());
-        Ok(Response::OK(None))
+        Ok(Response::OK(pongs))
     }
 }
 

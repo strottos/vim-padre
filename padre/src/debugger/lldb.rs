@@ -76,83 +76,59 @@ impl Debugger for LLDB {
         self.sender.clone().unwrap().send("quit\n".to_string()).expect("Can't communicate with LLDB");
     }
 
-    fn run(&mut self) -> Result<Response<Option<String>>, RequestError> {
+    fn run(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (_, _) = self.check_response("break set --name main\n".to_string());
 
         let (_, args) = self.check_response("process launch\n".to_string());
 
-        let ret = format!("pid={}", args.get(0).unwrap());
+        let mut ret = json::object::Object::new();
+        ret.insert("pid", json::from(args.get(0).unwrap().to_string()));
 
-        Ok(Response::OK(Some(ret)))
+        Ok(Response::OK(ret))
     }
 
-    fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<Option<String>>, RequestError> {
+    fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response(format!("break set --file {} --line {}\n", file, line_num));
 
         match status {
-            LLDBStatus::Breakpoint => Ok(Response::OK(None)),
-            LLDBStatus::BreakpointPending => Ok(Response::PENDING(None)),
+            LLDBStatus::Breakpoint => Ok(Response::OK(json::object::Object::new())),
+            LLDBStatus::BreakpointPending => Ok(Response::PENDING(json::object::Object::new())),
             _ => panic!("Didn't get a breakpoint response"),
         }
     }
 
-    fn step_in(&mut self) -> Result<Response<Option<String>>, RequestError> {
+    fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response("thread step-in\n".to_string());
         match status {
-            LLDBStatus::StepIn => Ok(Response::OK(None)),
+            LLDBStatus::StepIn => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
             _ => panic!("Didn't get a step-in response"),
         }
     }
 
-    fn step_over(&mut self) -> Result<Response<Option<String>>, RequestError> {
+    fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response("thread step-over\n".to_string());
         match status {
-            LLDBStatus::StepOver => Ok(Response::OK(None)),
+            LLDBStatus::StepOver => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
             _ => panic!("Didn't get a step-in response"),
         }
     }
 
-    fn continue_on(&mut self) -> Result<Response<Option<String>>, RequestError> {
+    fn continue_on(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response("thread continue\n".to_string());
         match status {
-            LLDBStatus::Continue => Ok(Response::OK(None)),
+            LLDBStatus::Continue => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
             _ => panic!("Didn't get a step-in response"),
         }
     }
 
-    fn print(&mut self, variable: String) -> Result<Response<Option<String>>, RequestError> {
-        let (status, args) = self.check_response(format!("frame variable {}\n", variable));
-
-        match status {
-            LLDBStatus::Variable => {},
-            LLDBStatus::VariableNotFound => {
-                self.notifier.lock()
-                             .unwrap()
-                             .log_msg(LogLevel::WARN,
-                                      format!("variable '{}' doesn't exist here", variable));
-                return self.throw_empty_error();
-            },
-            LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => panic!("Shouldn't get here")
-        }
-
-        let variable = args.get(0).unwrap();
-        let variable_value = args.get(1).unwrap();
-        let variable_type = args.get(2).unwrap();
-
-        if self.is_pointer_or_reference(variable_type) {
-            return self.analyse_pointer(variable, variable_type)
-        }
-
-        let ret = format!("variable={} value=\"{}\" type=\"{}\"",
-                          args.get(0).unwrap(),
-                          variable_value,
-                          variable_type);
-
-        Ok(Response::OK(Some(ret)))
+    fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError> {
+        match self.write_variable(&variable) {
+            Ok(s) => return Ok(Response::OK(s)),
+            Err(err) => return Err(err),
+        };
     }
 }
 
@@ -206,7 +182,7 @@ impl LLDB {
         (status, args)
     }
 
-    fn throw_empty_error(&self) -> Result<Response<Option<String>>, RequestError> {
+    fn throw_empty_error(&self) -> Result<Response<json::object::Object>, RequestError> {
         Err(RequestError::new("".to_string(), "".to_string()))
     }
 
@@ -222,9 +198,48 @@ impl LLDB {
         false
     }
 
+    fn write_variable(&self,
+                      variable: &str) -> Result<json::object::Object, RequestError> {
+        let (status, args) = self.check_response(format!("frame variable {}\n", variable));
+
+        match status {
+            LLDBStatus::Variable => {},
+            LLDBStatus::VariableNotFound => {
+                self.notifier.lock()
+                             .unwrap()
+                             .log_msg(LogLevel::WARN,
+                                      format!("variable '{}' doesn't exist here", variable));
+                return Err(RequestError::new("".to_string(), "".to_string()));
+            },
+            LLDBStatus::NoProcess => {return Err(RequestError::new("".to_string(), "".to_string()));}
+            _ => panic!("Shouldn't get here")
+        }
+
+        let variable = args.get(0).unwrap();
+        let variable_type = args.get(2).unwrap();
+
+        let mut ret = json::object::Object::new();
+        ret.insert("variable", json::from(variable.to_string()));
+        ret.insert("type", json::from(variable_type.to_string()));
+
+        if self.is_pointer_or_reference(variable_type) {
+            let variable = format!("*{}", variable);
+            let variable_deref = match self.write_variable(&variable) {
+                Ok(s) => s,
+                Err(err) => return Err(err),
+            };
+            ret.insert("deref", json::from(variable_deref));
+        } else {
+            let variable_value = args.get(1).unwrap();
+            ret.insert("value", json::from(variable_value.to_string()));
+        }
+
+        Ok(ret)
+    }
+
     fn analyse_pointer(&self,
                        variable: &str,
-                       variable_type: &str) -> Result<Response<Option<String>>, RequestError> {
+                       variable_type: &str) -> Result<Response<json::object::Object>, RequestError> {
         let (status, args) = self.check_response(format!("frame variable *{}\n", variable));
 
         match status {
@@ -232,20 +247,19 @@ impl LLDB {
             _ => panic!("Shouldn't get here")
         }
 
-        let mut obj = json::object::Object::new();
-        obj.insert("type", json::from(variable_type.to_string()));
-        obj.insert("deref", json::from(args.get(1).unwrap().to_string()));
+        let mut variable_value = json::object::Object::new();
+        variable_value.insert("type", json::from(variable_type.to_string()));
+        variable_value.insert("deref", json::from(args.get(1).unwrap().to_string()));
 
-        let variable_value = json::stringify(obj);
         let variable_type = "JSON";
-        println!("{}", variable_value);
 
-        let ret = json::stringify(format!("variable={} value=\"{}\" type=\"{}\"",
-                                          variable,
-                                          variable_value,
-                                          variable_type));
-        println!("{}", ret);
+        let mut ret = json::object::Object::new();
+        ret.insert("variable", json::from(variable.to_string()));
+        ret.insert("value", json::from(variable_value));
+        ret.insert("type", json::from(variable_type.to_string()));
 
-        Ok(Response::OK(Some(ret)))
+        println!("{:?}", ret);
+
+        Ok(Response::OK(ret))
     }
 }

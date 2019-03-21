@@ -482,12 +482,26 @@ def check_response_in(results, request_number, expected_response):
     assert_that(response[0],
                 equal_to(request_number),
                 "Found correct request number")
-    assert_that(response[1].split(' ')[0],
-                equal_to(expected_response.split(' ')[0]),
-                "Got expected start of response")
-    assert_that(response[1],
-                matches_regexp(expected_response),
-                "Response matches")
+
+    expected_response = json.loads(expected_response)
+    check_json(response[1], expected_response)
+
+
+def check_json(response, expected_response):
+    """
+    Recursively verify the JSON matches
+    """
+    assert_that(expected_response.keys(),
+                equal_to(response.keys()),
+                "Got correct keys in response")
+
+    for key in response.keys():
+        if not isinstance(response[key], dict):
+            assert_that(response[key],
+                        matches_regexp(expected_response[key]),
+                        "Response regexp matches")
+        else:
+            check_json(response[key], expected_response[key])
 
 
 def read_results(expected_results, reader):

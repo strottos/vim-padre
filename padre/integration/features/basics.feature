@@ -18,13 +18,13 @@ Feature: Basics
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE 'ping' on connection 0
-        Then I receive a response 'OK pong' on connection 0
+        Then I receive a response '{"status":"OK","ping":"pong"}' on connection 0
         When I send a request to PADRE 'ping' on connection 1
-        Then I receive a response 'OK pong' on connection 1
+        Then I receive a response '{"status":"OK","ping":"pong"}' on connection 1
         When I send a request to PADRE 'ping' on connection 2
-        Then I receive a response 'OK pong' on connection 2
+        Then I receive a response '{"status":"OK","ping":"pong"}' on connection 2
         When I send a request to PADRE 'pings' on connection 0
-        Then I receive both a response 'OK' and I expect to be called on connection 0 with
+        Then I receive both a response '{"status":"OK"}' and I expect to be called on connection 0 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
         And I expect to be called on connection 1 with
@@ -37,7 +37,7 @@ Feature: Basics
         Then I expect to be called on connection 0 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
-        Then I receive both a response 'OK' and I expect to be called on connection 1 with
+        Then I receive both a response '{"status":"OK"}' and I expect to be called on connection 1 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
         And I expect to be called on connection 2 with
@@ -50,7 +50,7 @@ Feature: Basics
         And I expect to be called on connection 1 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
-        Then I receive both a response 'OK' and I expect to be called on connection 2 with
+        Then I receive both a response '{"status":"OK"}' and I expect to be called on connection 2 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
         When I terminate the program
@@ -73,7 +73,7 @@ Feature: Basics
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE 'pings' on connection 0
-        Then I receive both a response 'OK' and I expect to be called on connection 0 with
+        Then I receive both a response '{"status":"OK"}' and I expect to be called on connection 0 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
         And I expect to be called on connection 1 with
@@ -110,12 +110,12 @@ Feature: Basics
             | padre#debugger#Log | [2,"Can't read command"]                 |
             | padre#debugger#Log | [5,"Can't read command: \\[1,2\\]"] |
         When I send a request to PADRE 'bad_request'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                   |
             | padre#debugger#Log | [2,"Can't understand request"]                         |
             | padre#debugger#Log | [5,"Can't understand request: [\\d+,\"bad_request\"]"] |
         When I send a raw request to PADRE '[1,""]'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                           |
             | padre#debugger#Log | [2,"Can't find command"]       |
             | padre#debugger#Log | [5,"Can't find command: \"\""] |
@@ -130,22 +130,22 @@ Feature: Basics
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE 'breakpoint'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                 |
             | padre#debugger#Log | [2,"Can't read file for breakpoint"] |
             | padre#debugger#Log | [5,"Can't read file for breakpoint"] |
         When I send a request to PADRE 'breakpoint file=test.c'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                 |
             | padre#debugger#Log | [2,"Can't read line for breakpoint"] |
             | padre#debugger#Log | [5,"Can't read line for breakpoint"] |
         When I send a request to PADRE 'breakpoint file=test.c line=a'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                 |
             | padre#debugger#Log | [2,"Can't parse line number"] |
             | padre#debugger#Log | [5,"Can't parse line number: invalid digit found in string"] |
         When I send a request to PADRE 'breakpoint line=1 file=test.c bad_arg=1 bad_arg2=2'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                               |
             | padre#debugger#Log | [2,"Bad arguments for breakpoint"]                                 |
             | padre#debugger#Log | [5,"Bad arguments for breakpoint: \\[\"bad_arg\",\"bad_arg2\"\\]"] |
@@ -160,12 +160,12 @@ Feature: Basics
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE 'print'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                |
             | padre#debugger#Log | [2,"Can't read variable for print"] |
             | padre#debugger#Log | [5,"Can't read variable for print"] |
         When I send a request to PADRE 'print variable=a bad_arg=1 bad_arg2=2'
-        Then I receive both a response 'ERROR' and I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                          |
             | padre#debugger#Log | [2,"Bad arguments for print"]                                 |
             | padre#debugger#Log | [5,"Bad arguments for print: \\[\"bad_arg\",\"bad_arg2\"\\]"] |

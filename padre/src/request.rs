@@ -172,39 +172,45 @@ pub fn handle_connection(mut stream: TcpStream, notifier: Arc<Mutex<Notifier>>, 
             }
         };
 
-        let ret = handle_cmd(cmd.to_string(), &padre_server, &notifier);
-        let response = match ret {
+        let mut response = json::object::Object::new();
+
+        let args: json::object::Object = match handle_cmd(cmd.to_string(), &padre_server, &notifier) {
             Ok(s) => {
                 match s {
                     Response::OK(t) => {
-                        match t {
-                            Some(u) => format!("OK {}", u),
-                            None => String::from("OK"),
-                        }
+                        response.insert("status", json::from("OK".to_string()));
+                        t
                     },
                     Response::PENDING(t) => {
-                        match t {
-                            Some(u) => format!("PENDING {}", u),
-                            None => String::from("PENDING"),
-                        }
+                        response.insert("status", json::from("PENDING".to_string()));
+                        t
                     }
                 }
             },
             Err(err) => {
                 handle_error(&notifier, err);
-                stream.write(&format!("[{},\"ERROR\"]", id).into_bytes())
-                      .expect("Can't write to socket");
-                continue;
+                response.insert("status", json::from("ERROR".to_string()));
+                json::object::Object::new()
             }
         };
 
-        stream.write(&format!("[{},{}]", id, json::stringify(response))
-                     .into_bytes())
+        match args.get("status") {
+            Some(_) => panic!("Can't specify status in response"),
+            None => {}
+        };
+
+        for arg in args.iter() {
+            response.insert(arg.0, arg.1.clone());
+        }
+
+        let response = json::array![id, response];
+
+        stream.write(&json::stringify(response).into_bytes())
               .expect("Can't write to socket");
     }
 }
 
-fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreServer>>, notifier: &Arc<Mutex<Notifier>>) -> Result<Response<Option<String>>, RequestError> {
+fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreServer>>, notifier: &Arc<Mutex<Notifier>>) -> Result<Response<json::object::Object>, RequestError> {
     let (prog, args) = match interpret_cmd(&data) {
         Ok(s) => s,
         Err(err) => {

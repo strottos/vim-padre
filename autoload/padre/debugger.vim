@@ -233,19 +233,19 @@ function! padre#debugger#StderrCallback(jobId, data, args)
 endfunction
 
 function! padre#debugger#RunCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
-  if !empty(l:match)
-    let l:msg = 'Process ' . l:match[1] . ' Running'
-    call padre#debugger#Log(4, l:msg)
-  else
-    call padre#debugger#Log(1, 'Cannot understand: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
+    return
+  endif
+
+  if has_key(a:data, 'pid')
+    call padre#debugger#Log(4, 'Process ' . a:data['pid'] . ' Running')
   endif
 endfunction
 
 function! padre#debugger#BreakpointCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if empty(l:match)
-    call padre#debugger#Log(1, 'Cannot understand breakpoint response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
@@ -255,45 +255,34 @@ function! padre#debugger#BreakpointSet(fileName, lineNum)
 endfunction
 
 function! padre#debugger#StepInCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if !empty(l:match)
-    call padre#debugger#Log(4, 'Step In')
-  else
-    call padre#debugger#Log(1, 'Cannot understand step in response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
 function! padre#debugger#StepOverCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if !empty(l:match)
-    call padre#debugger#Log(4, 'Step Over')
-  else
-    call padre#debugger#Log(1, 'Cannot understand step over response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
 function! padre#debugger#ContinueCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if !empty(l:match)
-    call padre#debugger#Log(4, 'Continuing')
-  else
-    call padre#debugger#Log(1, 'Cannot understand continue response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
 function! padre#debugger#PrintVariableCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK variable=\(.*\) value=\(.*\) type=\(.*\)$')
-  if !empty(l:match)
-    if (match[3] == 'JSON')
-      execute "let l:json = system('python -m json.tool', " . l:match[2] . ")"
-      let l:msg = 'Variable ' . l:match[1] . '=' . l:json
-    else
-      let l:msg = 'Variable ' . l:match[1] . '=' . l:match[2]
-    endif
-    call padre#debugger#Log(4, l:msg)
-  else
-    call padre#debugger#Log(2, "Don't understand: " . a:data)
+  let l:status = remove(a:data, 'status')
+  if l:status != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
+
+  let l:variable_name = remove(a:data, 'variable')
+
+  execute "let l:json = system('python -m json.tool', '" . json_encode(a:data) . "')"
+  let l:msg = 'Variable ' . l:variable_name . '=' . string(l:json)
+  call padre#debugger#Log(4, l:msg)
 endfunction
 
 function! padre#debugger#JumpToPosition(file, line)

@@ -352,10 +352,7 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
         }
 
         for cap in RE_PRINTED_VARIABLE.captures_iter(line) {
-            let variable_type = get_variable_type(&cap[1]);
-            if variable_type == "" {
-                panic!("Code this: {}", line);
-            }
+            let variable_type = cap[1].to_string();
             let variable_name = cap[2].to_string();
             let variable_value = get_variable_value(listener, sender, notifier, &cap[1], &cap[2], &cap[3]);
             let args = vec!(variable_name, variable_value, variable_type);
@@ -405,38 +402,6 @@ fn send_listener(listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>, ll
     let mut started = lock.lock().unwrap();
     *started = (lldb_status, args);
     cvar.notify_one();
-}
-
-fn get_variable_type(variable_type: &str) -> String {
-    lazy_static! {
-        static ref RE_RUST_IS_STRING: Regex = Regex::new("^str$|^&?alloc::string::String").unwrap();
-        static ref RE_RUST_IS_NUMBER: Regex = Regex::new("^(unsigned )?(int|short|long|__int128)|^isize$|^usize$|^float$|^double$").unwrap();
-        static ref RE_RUST_IS_BOOLEAN: Regex = Regex::new("^bool$").unwrap();
-        static ref RE_RUST_IS_POINTER_OR_REFERENCE: Regex = Regex::new("^&*.* \\*$").unwrap();
-    }
-
-    if get_variable_is_vector(variable_type) {
-        return "JSON".to_string();
-    }
-
-    for _ in RE_RUST_IS_POINTER_OR_REFERENCE.captures_iter(variable_type) {
-        // To be handled above
-        return variable_type.to_string();
-    }
-
-    for _ in RE_RUST_IS_STRING.captures_iter(variable_type) {
-        return "string".to_string();
-    }
-
-    for _ in RE_RUST_IS_NUMBER.captures_iter(variable_type) {
-        return "number".to_string();
-    }
-
-    for _ in RE_RUST_IS_BOOLEAN.captures_iter(variable_type) {
-        return "boolean".to_string();
-    }
-
-    "".to_string()
 }
 
 // TODO: Fix all these listeners, must be a way of getting these functions into the object (or an
