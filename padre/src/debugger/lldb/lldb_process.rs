@@ -19,123 +19,41 @@ const TIMEOUT: u64 = 5000;
 #[cfg(test)]
 mod tests {
     #[test]
-    fn check_type_number_int() {
-        assert_eq!(super::get_variable_type("int"), "number");
+    fn check_value_int() {
+        let ret = super::get_variable_value("(int) i = 42", "int", "i", "42");
+        assert_eq!(ret, "42".to_string());
     }
 
     #[test]
-    fn check_type_number_int_ref() {
-        assert_eq!(super::get_variable_type("&int *"), "JSON");
+    fn check_value_string() {
+        let ret = super::get_variable_value("(alloc::string::String) s = \"TESTING\"",
+                                            "alloc::string::String", "s", "TESTING");
+        assert_eq!(ret, "TESTING".to_string());
     }
 
     #[test]
-    fn check_type_number_unsigned_int() {
-        assert_eq!(super::get_variable_type("unsigned int"), "number");
+    fn check_value_string_ref() {
+        let ret = super::get_variable_value("(&str *) s = 0x00007ffeefbff368",
+                                            "&str *", "s", "0x00007ffeefbff368");
+        assert_eq!(ret, "0x00007ffeefbff368".to_string());
     }
 
-    #[test]
-    fn check_type_number_short() {
-        assert_eq!(super::get_variable_type("short"), "number");
-    }
-
-    #[test]
-    fn check_type_number_unsigned_short() {
-        assert_eq!(super::get_variable_type("unsigned short"), "number");
-    }
-
-    #[test]
-    fn check_type_number_long() {
-        assert_eq!(super::get_variable_type("long"), "number");
-    }
-
-    #[test]
-    fn check_type_number_unsigned_long() {
-        assert_eq!(super::get_variable_type("unsigned long"), "number");
-    }
-
-    #[test]
-    fn check_type_number_long_long() {
-        assert_eq!(super::get_variable_type("__int128"), "number");
-    }
-
-    #[test]
-    fn check_type_number_unsigned_long_long() {
-        assert_eq!(super::get_variable_type("unsigned __int128"), "number");
-    }
-
-    #[test]
-    fn check_type_number_isize() {
-        assert_eq!(super::get_variable_type("isize"), "number");
-    }
-
-    #[test]
-    fn check_type_number_usize() {
-        assert_eq!(super::get_variable_type("usize"), "number");
-    }
-
-    #[test]
-    fn check_type_number_float() {
-        assert_eq!(super::get_variable_type("float"), "number");
-    }
-
-    #[test]
-    fn check_type_number_double() {
-        assert_eq!(super::get_variable_type("double"), "number");
-    }
-
-    #[test]
-    fn check_type_boolean() {
-        assert_eq!(super::get_variable_type("bool"), "boolean");
-    }
-
-    #[test]
-    fn check_type_string_str() {
-        assert_eq!(super::get_variable_type("str"), "string");
-    }
-
-    #[test]
-    fn check_type_string_str_ref() {
-        assert_eq!(super::get_variable_type("&str *"), "JSON");
-    }
-
-    #[test]
-    fn check_type_string_string() {
-        assert_eq!(super::get_variable_type("alloc::string::String"), "string");
-    }
-
-    #[test]
-    fn check_type_string_string_ref() {
-        assert_eq!(super::get_variable_type("&alloc::string::String"), "string");
-    }
-
-    #[test]
-    fn check_type_vector_of_strings() {
-        assert_eq!(super::get_variable_type("alloc::vec::Vec<alloc::string::String>"), "JSON");
-    }
-
-//    #[test]
-//    fn check_value_int() {
-//        let ret = super::get_variable_value("int", "42");
-//        assert_eq!(ret, "42".to_string());
-//    }
-//
-//    #[test]
-//    fn check_value_string() {
-//        let ret = super::get_variable_value("alloc::string::String", "TESTING");
-//        assert_eq!(ret, "TESTING".to_string());
-//    }
-//
-//    #[test]
-//    fn check_value_string_ref() {
-//        let ret = super::get_variable_value("&str *", "&0x7ffeefbff2a8");
-//        assert_eq!(ret, "&0x7ffeefbff2a8".to_string());
-//    }
-//
 //    #[test]
 //    fn check_value_vector_of_strings() {
 //        let ret = super::get_variable_value("alloc::vec::Vec<alloc::string::String>",
 //                                            "vec![\"TEST1\", \"TEST2\", \"TEST3\"]");
 //        assert_eq!(ret, "[\"TEST1\", \"TEST2\", \"TEST3\"]");
+//    }
+//
+//    #[test]
+//    fn check_value_struct() {
+//        let data = "(std::net::tcp::TcpListener) listener = TcpListener(TcpListener {
+//inner: Socket(FileDesc {
+//fd: 3
+//})
+//})";
+//        let ret = super::get_variable_value(data, "int", "i", "42");
+//        assert_eq!(ret, "42".to_string());
 //    }
 }
 
@@ -209,7 +127,7 @@ impl LLDBProcess {
 
                         print!("{}", &data);
 
-                        analyse_stdout(data, &notifier, &listener, &sender);
+                        analyse_stdout(data, &notifier, &listener);
 
                         io::stdout().flush().unwrap();
                     }
@@ -293,8 +211,7 @@ impl LLDBProcess {
 }
 
 fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
-                  listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>,
-                  sender: &Option<SyncSender<String>>) {
+                  listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>) {
     lazy_static! {
         static ref RE_BREAKPOINT: Regex = Regex::new("^Breakpoint (\\d+): where = \\S+`\\S+ \\+ \\d+ at (\\S+):(\\d+), address = 0x[0-9a-f]*$").unwrap();
         static ref RE_BREAKPOINT_PENDING: Regex = Regex::new("^Breakpoint (\\d+): no locations \\(pending\\)\\.$").unwrap();
@@ -354,7 +271,7 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
         for cap in RE_PRINTED_VARIABLE.captures_iter(line) {
             let variable_type = cap[1].to_string();
             let variable_name = cap[2].to_string();
-            let variable_value = get_variable_value(listener, sender, notifier, &cap[1], &cap[2], &cap[3]);
+            let variable_value = get_variable_value(&data, &cap[1], &cap[2], &cap[3]);
             let args = vec!(variable_name, variable_value, variable_type);
 
             send_listener(listener, LLDBStatus::Variable, args);
@@ -406,34 +323,13 @@ fn send_listener(listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>, ll
 
 // TODO: Fix all these listeners, must be a way of getting these functions into the object (or an
 // object on top maybe).
-fn get_variable_value(listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>,
-                      sender: &Option<SyncSender<String>>,
-                      notifier: &Arc<Mutex<Notifier>>,
-                      variable_type: &str, variable_name: &str, value: &str) -> String {
+fn get_variable_value(data: &str, variable_type: &str, variable_name: &str, value: &str) -> String {
     if get_variable_is_vector(variable_type) {
         let x: &[_] = &['v', 'e', 'c', '!'];
         return value.trim_start_matches(x).to_string();
     }
 
-//    if get_variable_is_pointer_or_reference(variable_type) {
-//        let (status, args) = check_response(listener, sender, notifier,
-//                                            format!("frame variable *{}", variable_name));
-//        println!("{:?} {:?}", status, args);
-//    }
-
     value.to_string()
-}
-
-fn get_variable_is_pointer_or_reference(variable_type: &str) -> bool {
-    lazy_static! {
-        static ref RE_RUST_IS_POINTER_OR_REFERENCE: Regex = Regex::new("^&*.* \\*$").unwrap();
-    }
-
-    for _ in RE_RUST_IS_POINTER_OR_REFERENCE.captures_iter(variable_type) {
-        return true;
-    }
-
-    false
 }
 
 fn get_variable_is_vector(variable_type: &str) -> bool {
@@ -446,39 +342,4 @@ fn get_variable_is_vector(variable_type: &str) -> bool {
     }
 
     false
-}
-
-// TODO: Move everything into an object here.
-fn check_response(listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>,
-                  sender: &Option<SyncSender<String>>,
-                  notifier: &Arc<Mutex<Notifier>>,
-                  msg: String) -> (LLDBStatus, Vec<String>) {
-    // Reset the current status
-    let &(ref lock, ref cvar) = &**listener;
-    let mut started = lock.lock().unwrap();
-    *started = (LLDBStatus::None, vec!());
-
-    // Send the request
-    sender.clone().unwrap().send(msg.clone()).expect("Can't communicate with LLDB");
-
-    // Check for the status change
-    let result = cvar.wait_timeout(started, Duration::from_millis(TIMEOUT)).unwrap();
-    started = result.0;
-
-    match started.0 {
-        LLDBStatus::None => {
-            notifier.lock()
-                    .unwrap()
-                    .log_msg(LogLevel::CRITICAL,
-                             format!("Timed out waiting for condition: {}", &msg));
-            println!("Timed out waiting for condition: {}", msg);
-            exit(1);
-        },
-        _ => {},
-    };
-
-    let status = started.0.clone();
-    let args = started.1.clone();
-
-    (status, args)
 }

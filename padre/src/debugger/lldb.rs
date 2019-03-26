@@ -171,7 +171,7 @@ impl LLDB {
                     .log_msg(LogLevel::CRITICAL,
                              format!("Timed out waiting for condition: {}", &msg));
                 println!("Timed out waiting for condition: {}", msg);
-                exit(1);
+                return (LLDBStatus::None, vec!());
             },
             _ => {},
         };
@@ -222,6 +222,9 @@ impl LLDB {
         ret.insert("variable", json::from(variable.to_string()));
         ret.insert("type", json::from(variable_type.to_string()));
 
+        let variable_value = args.get(1).unwrap();
+        ret.insert("value", json::from(variable_value.to_string()));
+
         if self.is_pointer_or_reference(variable_type) {
             let variable = format!("*{}", variable);
             let variable_deref = match self.write_variable(&variable) {
@@ -229,37 +232,8 @@ impl LLDB {
                 Err(err) => return Err(err),
             };
             ret.insert("deref", json::from(variable_deref));
-        } else {
-            let variable_value = args.get(1).unwrap();
-            ret.insert("value", json::from(variable_value.to_string()));
         }
 
         Ok(ret)
-    }
-
-    fn analyse_pointer(&self,
-                       variable: &str,
-                       variable_type: &str) -> Result<Response<json::object::Object>, RequestError> {
-        let (status, args) = self.check_response(format!("frame variable *{}\n", variable));
-
-        match status {
-            LLDBStatus::Variable => {},
-            _ => panic!("Shouldn't get here")
-        }
-
-        let mut variable_value = json::object::Object::new();
-        variable_value.insert("type", json::from(variable_type.to_string()));
-        variable_value.insert("deref", json::from(args.get(1).unwrap().to_string()));
-
-        let variable_type = "JSON";
-
-        let mut ret = json::object::Object::new();
-        ret.insert("variable", json::from(variable.to_string()));
-        ret.insert("value", json::from(variable_value));
-        ret.insert("type", json::from(variable_type.to_string()));
-
-        println!("{:?}", ret);
-
-        Ok(Response::OK(ret))
     }
 }
