@@ -213,10 +213,10 @@ impl LLDBProcess {
 fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
                   listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>) {
     lazy_static! {
-        static ref RE_BREAKPOINT: Regex = Regex::new("^Breakpoint (\\d+): where = \\S+`\\S+ \\+ \\d+ at (\\S+):(\\d+), address = 0x[0-9a-f]*$").unwrap();
+        static ref RE_BREAKPOINT: Regex = Regex::new("^Breakpoint (\\d+): where = .* at (\\S+):(\\d+), address = 0x[0-9a-f]*$").unwrap();
         static ref RE_BREAKPOINT_PENDING: Regex = Regex::new("^Breakpoint (\\d+): no locations \\(pending\\)\\.$").unwrap();
         static ref RE_BREAKPOINT_MULTI: Regex = Regex::new("^Breakpoint (\\d+): (\\d+) locations\\.$").unwrap();
-        static ref RE_STOPPED_AT_UNKNOWN_POSITION: Regex = Regex::new("^ *frame #\\d: \\S+`(.*)$").unwrap();
+        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new("^ *frame #\\d.*$").unwrap();
         static ref RE_STEP_IN: Regex = Regex::new("^\\* .* stop reason = step in$").unwrap();
         static ref RE_STEP_OVER: Regex = Regex::new("^\\* .* stop reason = step over$").unwrap();
         static ref RE_CONTINUE: Regex = Regex::new("^Process (\\d+) resuming$").unwrap();
@@ -241,7 +241,7 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
             send_listener(listener, LLDBStatus::Breakpoint, vec!());
         }
 
-        for _ in RE_STOPPED_AT_UNKNOWN_POSITION.captures_iter(line) {
+        for _ in RE_STOPPED_AT_POSITION.captures_iter(line) {
             analyse_stopped_output(&notifier, line);
         }
 
@@ -281,11 +281,18 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
 
 fn analyse_stderr(data: &str, notifier: &Arc<Mutex<Notifier>>, listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>) {
     lazy_static! {
+        static ref RE_ERROR: Regex = Regex::new("^error: (.*)$").unwrap();
         static ref RE_PROCESS_NOT_RUNNING: Regex = Regex::new("^error: invalid process$").unwrap();
         static ref RE_VARIABLE_NOT_FOUND: Regex = Regex::new("^error: no variable named 'a' found in this frame$").unwrap();
     }
 
     for line in data.split("\n") {
+        for cap in RE_ERROR.captures_iter(line) {
+            let args = vec!(cap[1].to_string());
+
+            send_listener(listener, LLDBStatus::Error, args);
+        }
+
         for _ in RE_PROCESS_NOT_RUNNING.captures_iter(line) {
             notifier.lock()
                     .unwrap()
@@ -301,7 +308,7 @@ fn analyse_stderr(data: &str, notifier: &Arc<Mutex<Notifier>>, listener: &Arc<(M
 
 fn analyse_stopped_output(notifier: &Arc<Mutex<Notifier>>, line: &str) {
     lazy_static! {
-        static ref RE_JUMP_TO_POSITION: Regex = Regex::new("^ *frame #\\d: \\S+`\\S.* at (\\S+):(\\d+)$").unwrap();
+        static ref RE_JUMP_TO_POSITION: Regex = Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
     }
 
     for cap in RE_JUMP_TO_POSITION.captures_iter(line) {

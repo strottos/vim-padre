@@ -2,7 +2,6 @@
 
 use std::io;
 use std::io::{BufRead};
-use std::process::exit;
 use std::sync::{Arc, Condvar, mpsc, Mutex};
 use std::sync::mpsc::SyncSender;
 use std::thread;
@@ -16,12 +15,13 @@ use regex::Regex;
 
 mod lldb_process;
 
-const TIMEOUT: u64 = 5000;
+const TIMEOUT: u64 = 60000;
 
 #[derive(Debug, Clone)]
 pub enum LLDBStatus {
     None,
     NoProcess,
+    Error,
     ProcessStarted,
     Breakpoint,
     BreakpointPending,
@@ -54,7 +54,7 @@ impl Debugger for LLDB {
 
         sender.send("settings set stop-line-count-after 0\n".to_string()).unwrap();
         sender.send("settings set stop-line-count-before 0\n".to_string()).unwrap();
-        sender.send("settings set frame-format frame #${frame.index}: {${module.file.basename}{`${function.name-with-args}{${frame.no-debug}${function.pc-offset}}}}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string()).unwrap();
+        sender.send("settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string()).unwrap();
 
         // Send stdin to process
         thread::spawn(move || {
@@ -100,18 +100,16 @@ impl Debugger for LLDB {
     fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response("thread step-in\n".to_string());
         match status {
-            LLDBStatus::StepIn => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => panic!("Didn't get a step-in response"),
+            _ => Ok(Response::OK(json::object::Object::new())),
         }
     }
 
     fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response("thread step-over\n".to_string());
         match status {
-            LLDBStatus::StepOver => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => panic!("Didn't get a step-in response"),
+            _ => Ok(Response::OK(json::object::Object::new())),
         }
     }
 
@@ -211,6 +209,10 @@ impl LLDB {
                                       format!("variable '{}' doesn't exist here", variable));
                 return Err(RequestError::new("".to_string(), "".to_string()));
             },
+            LLDBStatus::Error => {
+                let err_msg = format!("{}", args.get(0).unwrap());
+                return Err(RequestError::new(err_msg, "".to_string()));
+            }
             LLDBStatus::NoProcess => {return Err(RequestError::new("".to_string(), "".to_string()));}
             _ => panic!("Shouldn't get here")
         }

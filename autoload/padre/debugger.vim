@@ -280,8 +280,8 @@ function! padre#debugger#PrintVariableCallback(channel_id, data)
 
   let l:variable_name = remove(a:data, 'variable')
 
-  execute "let l:json = system('python -m json.tool', '" . json_encode(a:data) . "')"
-  let l:msg = 'Variable ' . l:variable_name . '=' . string(l:json)
+  execute "let l:json = system('python -m json.tool', '" . substitute(json_encode(a:data), "'", "''", "g") . "')"
+  let l:msg = 'Variable ' . l:variable_name . '=' . l:json
   call padre#debugger#Log(4, l:msg)
 endfunction
 
