@@ -223,7 +223,6 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
         static ref RE_PRINTED_VARIABLE: Regex = Regex::new("^\\((.*)\\) (\\S+) = (.*)$").unwrap();
         static ref RE_PROCESS_STARTED: Regex = Regex::new("^Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
         static ref RE_PROCESS_EXITED: Regex = Regex::new("^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
-        static ref RE_PROCESS_NOT_RUNNING: Regex = Regex::new("^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
     }
 
     for line in data.split("\n") {
@@ -281,27 +280,36 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
 
 fn analyse_stderr(data: &str, notifier: &Arc<Mutex<Notifier>>, listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>) {
     lazy_static! {
-        static ref RE_ERROR: Regex = Regex::new("^error: (.*)$").unwrap();
         static ref RE_PROCESS_NOT_RUNNING: Regex = Regex::new("^error: invalid process$").unwrap();
-        static ref RE_VARIABLE_NOT_FOUND: Regex = Regex::new("^error: no variable named 'a' found in this frame$").unwrap();
+        static ref RE_VARIABLE_NOT_FOUND: Regex = Regex::new("^error: no variable named '(.*)' found in this frame$").unwrap();
+        static ref RE_ERROR: Regex = Regex::new("^error: (.*)$").unwrap();
     }
 
+    let mut matched: bool = false;
+
     for line in data.split("\n") {
-        for cap in RE_ERROR.captures_iter(line) {
-            let args = vec!(cap[1].to_string());
-
-            send_listener(listener, LLDBStatus::Error, args);
-        }
-
         for _ in RE_PROCESS_NOT_RUNNING.captures_iter(line) {
             notifier.lock()
                     .unwrap()
                     .log_msg(LogLevel::WARN, "program not running".to_string());
             send_listener(listener, LLDBStatus::NoProcess, vec!());
+            matched = true;
         }
 
         for _ in RE_VARIABLE_NOT_FOUND.captures_iter(line) {
             send_listener(listener, LLDBStatus::VariableNotFound, vec!());
+            matched = true;
+        }
+
+        if matched {
+            matched = false;
+            continue;
+        }
+
+        for cap in RE_ERROR.captures_iter(line) {
+            let args = vec!(cap[1].to_string());
+
+            send_listener(listener, LLDBStatus::Error, args);
         }
     }
 }

@@ -30,7 +30,7 @@ Feature: LLDB
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate the program
-    
+
     Scenario Outline: Debug a basic program with LLDB using the PADRE interface
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler '<compiler>' to program 'test_prog'
@@ -80,12 +80,12 @@ Feature: LLDB
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate the program
-    
+
         Examples:
         | compiler     |
         | gcc -g -O0   |
         | clang -g -O0 |
-    
+
     Scenario: Debug a basic program with LLDB using the both the LLDB command line and the PADRE connection
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
@@ -130,7 +130,7 @@ Feature: LLDB
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate the program
-    
+
     Scenario: Error over PADRE when program not running
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
@@ -156,7 +156,7 @@ Feature: LLDB
             | function           | args                      |
             | padre#debugger#Log | [3,"program not running"] |
         When I terminate the program
-    
+
     Scenario: General error handling over PADRE when program is running
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
@@ -190,41 +190,41 @@ Feature: LLDB
             | padre#debugger#Log | [3,"Stopped at unknown position"] |
         When I send a request to PADRE 'continue'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                             |
-            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",4] |
+            | function                      | args                              |
+            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",16] |
         When I send a request to PADRE 'stepOver'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                             |
-            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",5] |
+            | function                      | args                              |
+            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",17] |
         When I send a request to PADRE 'print variable=a'
         Then I receive a response '{"status":"OK","variable":"a","value":"42","type":"int"}'
         When I send a request to PADRE 'stepOver'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                             |
-            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",6] |
+            | function                      | args                              |
+            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",18] |
         When I send a request to PADRE 'print variable=b'
-        Then I receive a response '{"status":"OK","variable":"b","deref":{"variable":"\\*b","type":"int","value":"42"},"type":"int \\*"}'
+        Then I receive a response '{"status":"OK","variable":"b","deref":{"variable":"\\*b","type":"int","value":"42"},"type":"int \\*","value":"^&0x[0-9a-f]*$"}'
         When I send a request to PADRE 'stepOver'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                             |
-            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",7] |
+            | function                      | args                              |
+            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",19] |
         When I send a request to PADRE 'print variable=a'
         Then I receive a response '{"status":"OK","variable":"a","value":"^42.[0-9][0-9]*$","type":"float"}'
         When I send a request to PADRE 'stepOver'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                             |
-            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",8] |
+            | function                      | args                              |
+            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",20] |
         When I send a request to PADRE 'print variable=a'
         Then I receive a response '{"status":"OK","variable":"a","value":"true","type":"bool"}'
         When I send a request to PADRE 'stepOver'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                             |
-            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",9] |
+            | function                      | args                              |
+            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",21] |
         When I send a request to PADRE 'print variable=a'
         Then I receive a response '{"status":"OK","variable":"a","value":"TEST","type":"&str"}'
         When I send a request to PADRE 'stepOver'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                              |
-            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",10] |
+            | function                      | args                               |
+            | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",22] |
         When I send a request to PADRE 'print variable=b'
-        Then I receive a response '{"status":"OK","variable":"b","deref":{"variable":"\\*b","type":"&str","value":"TEST"},"type":"&str *"}'
+        Then I receive a response '{"status":"OK","variable":"b","deref":{"variable":"\\*b","type":"&str","value":"TEST"},"type":"&str *","value":"^&0x[0-9a-f]*$"}'

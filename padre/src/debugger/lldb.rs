@@ -100,16 +100,18 @@ impl Debugger for LLDB {
     fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response("thread step-in\n".to_string());
         match status {
+            LLDBStatus::StepIn => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => Ok(Response::OK(json::object::Object::new())),
+            _ => panic!("Didn't get a step-in response"),
         }
     }
 
     fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
         let (status, _) = self.check_response("thread step-over\n".to_string());
         match status {
+            LLDBStatus::StepOver => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => Ok(Response::OK(json::object::Object::new())),
+            _ => panic!("Didn't get a step-in response"),
         }
     }
 
