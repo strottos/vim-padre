@@ -16,6 +16,7 @@ use regex::Regex;
 mod lldb_process;
 
 const TIMEOUT: u64 = 60000;
+const SMALL_TIMEOUT: u64 = 5000;
 
 #[derive(Debug, Clone)]
 pub enum LLDBStatus {
@@ -73,13 +74,14 @@ impl Debugger for LLDB {
     }
 
     fn stop(&self) {
+        println!("STOPPING");
         self.sender.clone().unwrap().send("quit\n".to_string()).expect("Can't communicate with LLDB");
     }
 
     fn run(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        let (_, _) = self.check_response("break set --name main\n".to_string());
+        let (_, _) = self.check_response("break set --name main".to_string(), SMALL_TIMEOUT);
 
-        let (_, args) = self.check_response("process launch\n".to_string());
+        let (_, args) = self.check_response("process launch".to_string(), SMALL_TIMEOUT);
 
         let mut ret = json::object::Object::new();
         ret.insert("pid", json::from(args.get(0).unwrap().to_string()));
@@ -88,7 +90,7 @@ impl Debugger for LLDB {
     }
 
     fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<json::object::Object>, RequestError> {
-        let (status, _) = self.check_response(format!("break set --file {} --line {}\n", file, line_num));
+        let (status, _) = self.check_response(format!("break set --file {} --line {}", file, line_num), SMALL_TIMEOUT);
 
         match status {
             LLDBStatus::Breakpoint => Ok(Response::OK(json::object::Object::new())),
@@ -98,29 +100,47 @@ impl Debugger for LLDB {
     }
 
     fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        let (status, _) = self.check_response("thread step-in\n".to_string());
+        let (status, _) = self.check_response("thread step-in".to_string(), SMALL_TIMEOUT);
         match status {
             LLDBStatus::StepIn => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => panic!("Didn't get a step-in response"),
+            _ => {
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::WARN, format!("Timed out continuing"));
+                return Ok(Response::OK(json::object::Object::new()));
+            }
         }
     }
 
     fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        let (status, _) = self.check_response("thread step-over\n".to_string());
+        let (status, _) = self.check_response("thread step-over".to_string(), SMALL_TIMEOUT);
         match status {
             LLDBStatus::StepOver => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => panic!("Didn't get a step-in response"),
+            _ => {
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::WARN, format!("Timed out continuing"));
+                return Ok(Response::OK(json::object::Object::new()));
+            }
         }
     }
 
     fn continue_on(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        let (status, _) = self.check_response("thread continue\n".to_string());
+        let (status, _) = self.check_response("thread continue".to_string(), SMALL_TIMEOUT);
         match status {
             LLDBStatus::Continue => Ok(Response::OK(json::object::Object::new())),
             LLDBStatus::NoProcess => {return self.throw_empty_error();}
-            _ => panic!("Didn't get a step-in response"),
+            _ => {
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::WARN, format!("Timed out continuing"));
+                return Ok(Response::OK(json::object::Object::new()));
+            }
         }
     }
 
@@ -150,17 +170,19 @@ impl LLDB {
         }
     }
 
-    fn check_response(&self, msg: String) -> (LLDBStatus, Vec<String>) {
+    fn check_response(&self, msg: String, timeout: u64) -> (LLDBStatus, Vec<String>) {
         // Reset the current status
         let &(ref lock, ref cvar) = &*self.listener;
         let mut started = lock.lock().unwrap();
         *started = (LLDBStatus::None, vec!());
 
+        let cmd = format!("{}\n", msg);
+
         // Send the request
-        self.sender.clone().unwrap().send(msg.clone()).expect("Can't communicate with LLDB");
+        self.sender.clone().unwrap().send(cmd).expect("Can't communicate with LLDB");
 
         // Check for the status change
-        let result = cvar.wait_timeout(started, Duration::from_millis(TIMEOUT)).unwrap();
+        let result = cvar.wait_timeout(started, Duration::from_millis(timeout)).unwrap();
         started = result.0;
 
         match started.0 {
@@ -170,7 +192,6 @@ impl LLDB {
                     .unwrap()
                     .log_msg(LogLevel::CRITICAL,
                              format!("Timed out waiting for condition: {}", &msg));
-                println!("Timed out waiting for condition: {}", msg);
                 return (LLDBStatus::None, vec!());
             },
             _ => {},
@@ -200,7 +221,7 @@ impl LLDB {
 
     fn write_variable(&self,
                       variable: &str) -> Result<json::object::Object, RequestError> {
-        let (status, args) = self.check_response(format!("frame variable {}\n", variable));
+        let (status, args) = self.check_response(format!("frame variable {}", variable), TIMEOUT);
 
         match status {
             LLDBStatus::Variable => {},

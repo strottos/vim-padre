@@ -146,9 +146,7 @@ impl RequestError {
 // TODO: Work out how to handle networking errors
 pub fn handle_connection(mut stream: TcpStream, notifier: Arc<Mutex<Notifier>>, padre_server: Arc<Mutex<PadreServer>>) {
     if padre_server.lock().unwrap().debugger.lock().unwrap().has_started() {
-        let msg = "[\"call\",\"padre#debugger#SignalPADREStarted\",[]]".to_string();
-        stream.write(msg.as_bytes())
-              .expect("Can't write to socket");
+        notifier.lock().unwrap().signal_started();
     }
 
     loop {

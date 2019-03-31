@@ -1,60 +1,52 @@
 //! lldb client process
 
+extern crate nix;
+
+use std::fs::File;
 use std::io;
 use std::io::{Read, Write};
-use std::thread;
+use std::os::unix::io::{FromRawFd, AsRawFd};
 use std::path::Path;
 use std::process::{Command, exit, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
 use std::sync::mpsc::{SyncSender, Receiver};
-use std::time::Duration;
+use std::thread;
 
 use crate::notifier::{LogLevel, Notifier};
 use crate::debugger::lldb::LLDBStatus;
 
+use nix::fcntl::{OFlag, open};
+use nix::pty::{grantpt, posix_openpt, unlockpt};
+use nix::sys::{stat, termios};
+use nix::libc::{STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+use nix::unistd::{fork, ForkResult, setsid, dup, dup2};
 use regex::Regex;
 
-const TIMEOUT: u64 = 5000;
+// Code based on https://github.com/philippkeller/rexpect/blob/master/src/process.rs
+#[cfg(target_os = "linux")]
+use nix::pty::ptsname_r;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn check_value_int() {
-        let ret = super::get_variable_value("(int) i = 42", "int", "i", "42");
-        assert_eq!(ret, "42".to_string());
+#[cfg(target_os = "macos")]
+/// ptsname_r is a linux extension but ptsname isn't thread-safe
+/// instead of using a static mutex this calls ioctl with TIOCPTYGNAME directly
+/// based on https://blog.tarq.io/ptsname-on-osx-with-rust/
+fn ptsname_r(fd: &PtyMaster) -> nix::Result<String> {
+    use std::ffi::CStr;
+    use std::os::unix::io::AsRawFd;
+    use nix::libc::{ioctl, TIOCPTYGNAME};
+
+    /// the buffer size on OSX is 128, defined by sys/ttycom.h
+    let buf: [i8; 128] = [0; 128];
+
+    unsafe {
+        match ioctl(fd.as_raw_fd(), TIOCPTYGNAME as u64, &buf) {
+            0 => {
+                let res = CStr::from_ptr(buf.as_ptr()).to_string_lossy().into_owned();
+                Ok(res)
+            }
+            _ => Err(nix::Error::last()),
+        }
     }
-
-    #[test]
-    fn check_value_string() {
-        let ret = super::get_variable_value("(alloc::string::String) s = \"TESTING\"",
-                                            "alloc::string::String", "s", "TESTING");
-        assert_eq!(ret, "TESTING".to_string());
-    }
-
-    #[test]
-    fn check_value_string_ref() {
-        let ret = super::get_variable_value("(&str *) s = 0x00007ffeefbff368",
-                                            "&str *", "s", "0x00007ffeefbff368");
-        assert_eq!(ret, "0x00007ffeefbff368".to_string());
-    }
-
-//    #[test]
-//    fn check_value_vector_of_strings() {
-//        let ret = super::get_variable_value("alloc::vec::Vec<alloc::string::String>",
-//                                            "vec![\"TEST1\", \"TEST2\", \"TEST3\"]");
-//        assert_eq!(ret, "[\"TEST1\", \"TEST2\", \"TEST3\"]");
-//    }
-//
-//    #[test]
-//    fn check_value_struct() {
-//        let data = "(std::net::tcp::TcpListener) listener = TcpListener(TcpListener {
-//inner: Socket(FileDesc {
-//fd: 3
-//})
-//})";
-//        let ret = super::get_variable_value(data, "int", "i", "42");
-//        assert_eq!(ret, "42".to_string());
-//    }
 }
 
 pub struct LLDBProcess {
@@ -92,26 +84,71 @@ impl LLDBProcess {
             exit(1);
         }
 
-        let process = Command::new(debugger_command)
-                              .args(run_command)
-                              .stdin(Stdio::piped())
-                              .stdout(Stdio::piped())
-                              .stderr(Stdio::piped())
-                              .spawn()
-                              .unwrap();
+        // Code based on https://github.com/philippkeller/rexpect/blob/master/src/process.rs
+        let master_fd = posix_openpt(OFlag::O_RDWR).unwrap();
 
-        let mut process_stdout = process.stdout;
-        let notifier = self.notifier.clone();
-        let notifier_err = self.notifier.clone();
-        let listener = self.listener.clone();
-        let sender = self.sender.clone();
+        // Allow a slave to be generated for it
+        grantpt(&master_fd).unwrap();
+        unlockpt(&master_fd).unwrap();
 
-        thread::spawn(move || {
-            match process_stdout.as_mut() {
-                Some(out) => {
+        // on Linux this is the libc function, on OSX this is our implementation of ptsname_r
+        let slave_name = ptsname_r(&master_fd).unwrap();
+
+        match fork().unwrap() {
+            ForkResult::Child => {
+                setsid().unwrap(); // create new session with child as session leader
+                let slave_fd = open(std::path::Path::new(&slave_name),
+                                    OFlag::O_RDWR,
+                                    stat::Mode::empty()).unwrap();
+
+                // assign stdin, stdout, stderr to the tty, just like a terminal does
+                dup2(slave_fd, STDIN_FILENO).unwrap();
+                dup2(slave_fd, STDOUT_FILENO).unwrap();
+                dup2(slave_fd, STDERR_FILENO).unwrap();
+
+                // set echo off?
+                //let mut flags = termios::tcgetattr(STDIN_FILENO).unwrap();
+                //flags.local_flags &= !termios::LocalFlags::ECHO;
+                //termios::tcsetattr(STDIN_FILENO, termios::SetArg::TCSANOW, &flags).unwrap();
+
+                Command::new(debugger_command)
+                        .args(run_command)
+                        .status()
+                        .unwrap();
+
+                exit(-1);
+            },
+            ForkResult::Parent { child: _child_pid } => {
+                let fd = dup(master_fd.as_raw_fd()).unwrap();
+                let mut process_stdio = unsafe { File::from_raw_fd(fd) };
+                let mut process_out = process_stdio.try_clone().unwrap();
+
+                let notifier = self.notifier.clone();
+                let notifier_err = self.notifier.clone();
+                let listener = self.listener.clone();
+
+                thread::spawn(move || {
+                    loop {
+                        match process_stdio.write(receiver.recv().unwrap().as_bytes()) {
+                            Err(err) => {
+                                notifier_err.lock()
+                                            .unwrap()
+                                            .log_msg(LogLevel::CRITICAL,
+                                                     format!("Can't write to LLDB stdin: {}", err));
+                                println!("Can't write to LLDB stdin: {}", err);
+                                exit(1);
+                            },
+                            _ => {}
+                        };
+                    }
+                });
+
+                let notifier_err = self.notifier.clone();
+
+                thread::spawn(move || {
                     loop {
                         let mut buffer: [u8; 512] = [0; 512];
-                        match out.read(&mut buffer) {
+                        match process_out.read(&mut buffer) {
                             Err(err) => {
                                 notifier_err.lock()
                                             .unwrap()
@@ -127,82 +164,17 @@ impl LLDBProcess {
 
                         print!("{}", &data);
 
-                        analyse_stdout(data, &notifier, &listener);
+                        analyse_stdout(&data, &notifier, &listener);
+                        analyse_stderr(&data, &notifier, &listener);
 
                         io::stdout().flush().unwrap();
                     }
-                }
-                None => {
-                    notifier_err.lock()
-                                .unwrap()
-                                .log_msg(LogLevel::CRITICAL,
-                                         "Can't read from LLDB".to_string());
-                    println!("Can't read from LLDB");
-                    exit(1);
-                }
+                });
+
+                self.notifier.lock().unwrap().signal_started();
             }
-        });
+        };
 
-        let mut process_stderr = process.stderr;
-        let notifier = self.notifier.clone();
-        let notifier_err = self.notifier.clone();
-        let listener = self.listener.clone();
-
-        thread::spawn(move || {
-            match process_stderr.as_mut() {
-                Some(out) => {
-                    loop {
-                        let mut buffer: [u8; 512] = [0; 512];
-                        match out.read(&mut buffer) {
-                            Err(err) => {
-                                notifier_err.lock()
-                                            .unwrap()
-                                            .log_msg(LogLevel::CRITICAL,
-                                                     format!("Can't read from LLDB stderr: {}", err));
-                                println!("Can't read from LLDB stderr: {}", err);
-                                exit(1);
-                            },
-                            _ => {},
-                        };
-                        let data = String::from_utf8_lossy(&buffer[..]);
-                        let data = data.trim_matches(char::from(0));
-
-                        eprint!("{}", &data);
-
-                        analyse_stderr(data, &notifier, &listener);
-
-                        io::stdout().flush().unwrap();
-                    }
-                }
-                None => {
-                    notifier_err.lock()
-                                .unwrap()
-                                .log_msg(LogLevel::CRITICAL,
-                                         "Can't read from LLDB stderr".to_string());
-                    println!("Can't read from LLDB stderr");
-                    exit(1);
-                }
-            }
-        });
-
-        let mut process_stdin = process.stdin;
-        let notifier_err = self.notifier.clone();
-
-        thread::spawn(move || {
-            loop {
-                match process_stdin.as_mut().unwrap().write(receiver.recv().unwrap().as_bytes()) {
-                    Err(err) => {
-                        notifier_err.lock()
-                                    .unwrap()
-                                    .log_msg(LogLevel::CRITICAL,
-                                             format!("Can't read from PADRE stdin: {}", err));
-                        println!("Can't read from PADRE stdin: {}", err);
-                        exit(1);
-                    },
-                    _ => {}
-                };
-            }
-        });
     }
 
     pub fn add_sender(&mut self, sender: Option<SyncSender<String>>) {
@@ -225,7 +197,7 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
         static ref RE_PROCESS_EXITED: Regex = Regex::new("^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
     }
 
-    for line in data.split("\n") {
+    for line in data.split("\r\n") {
         for cap in RE_BREAKPOINT.captures_iter(line) {
             notifier.lock().unwrap().breakpoint_set(
                 cap[2].to_string(), cap[3].parse::<u32>().unwrap());
@@ -357,4 +329,45 @@ fn get_variable_is_vector(variable_type: &str) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn check_value_int() {
+        let ret = super::get_variable_value("(int) i = 42", "int", "i", "42");
+        assert_eq!(ret, "42".to_string());
+    }
+
+    #[test]
+    fn check_value_string() {
+        let ret = super::get_variable_value("(alloc::string::String) s = \"TESTING\"",
+                                            "alloc::string::String", "s", "TESTING");
+        assert_eq!(ret, "TESTING".to_string());
+    }
+
+    #[test]
+    fn check_value_string_ref() {
+        let ret = super::get_variable_value("(&str *) s = 0x00007ffeefbff368",
+                                            "&str *", "s", "0x00007ffeefbff368");
+        assert_eq!(ret, "0x00007ffeefbff368".to_string());
+    }
+
+//    #[test]
+//    fn check_value_vector_of_strings() {
+//        let ret = super::get_variable_value("alloc::vec::Vec<alloc::string::String>",
+//                                            "vec![\"TEST1\", \"TEST2\", \"TEST3\"]");
+//        assert_eq!(ret, "[\"TEST1\", \"TEST2\", \"TEST3\"]");
+//    }
+//
+//    #[test]
+//    fn check_value_struct() {
+//        let data = "(std::net::tcp::TcpListener) listener = TcpListener(TcpListener {
+//inner: Socket(FileDesc {
+//fd: 3
+//})
+//})";
+//        let ret = super::get_variable_value(data, "int", "i", "42");
+//        assert_eq!(ret, "42".to_string());
+//    }
 }
