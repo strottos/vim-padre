@@ -1,9 +1,10 @@
 Improvements:
 
 - Padre command
-  - (CRITICAL) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
-  - (CRITICAL) Queueing of requests
   - (CRITICAL) Proper termination
+  - (CRITICAL) Fix all tests
+  - (CRITICAL) Queueing of requests
+  - (CRITICAL) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
   - (CRITICAL) run arguments
   - (HIGH) Make things more configurable
   - (HIGH) Auto step ins till we find code (configurable?)
@@ -14,10 +15,10 @@ Improvements:
   - (LOW) Add in preprocessing possibilities like compiling before running PADRE.
 - LLDB
   - (CRITICAL) Proper variable printing for rust and C++
-  - (CRITICAL) Error Handling
+  - (CRITICAL) Error Handling, doesn't panic in threads
   - (CRITICAL) Fix printing when no variable exists
+  - (HIGH) Clean code in LLDBProcess, it's ugly.
   - (MEDIUM) If rust continue to main main on startup.
-  - (MEDIUM) Clean code in LLDBProcess, it's ugly.
   - (LOW) Get things working for multi-threaded programs in LLDB
   - (LOW) Get things working for process spawning in LLDB
 
@@ -32,11 +33,11 @@ Improvements:
   - (CRITICAL) Request error handling
   - (HIGH) Support method overloading
 - VIM
+  - (CRITICAL) Padre can be ran multiple times without restarting vim
   - (HIGH) Why it no log immediately
   - (HIGH) Change buffers to be created at PadreDebug command and torn down when exiting
   - (MEDIUM) Support multiple PADRE processes
   - (MEDIUM) Reorder windows properly
-  - (HIGH) Padre can be ran multiple times without restarting vim
   - (LOW) Highlighting/Change backround colour of left column for PADRE_Main
   - (LOW) Socket closing
   - (LOW) Full stdio data window
@@ -48,7 +49,6 @@ Nice to have:
 
 Epics:
 - Debugger in Go
-- Debugger in Rust? Comes just from lldb?
 - Debugger for LLDB Server
 - Reverse Engineering a binary?
 

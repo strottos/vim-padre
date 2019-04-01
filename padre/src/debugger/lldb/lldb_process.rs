@@ -2,12 +2,13 @@
 
 extern crate nix;
 
+use std::ffi::CString;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Write};
 use std::os::unix::io::{FromRawFd, AsRawFd};
 use std::path::Path;
-use std::process::{Command, exit, Stdio};
+use std::process::exit;
 use std::sync::{Arc, Condvar, Mutex};
 use std::sync::mpsc::{SyncSender, Receiver};
 use std::thread;
@@ -17,9 +18,9 @@ use crate::debugger::lldb::LLDBStatus;
 
 use nix::fcntl::{OFlag, open};
 use nix::pty::{grantpt, posix_openpt, unlockpt};
-use nix::sys::{stat, termios};
+use nix::sys::stat;
 use nix::libc::{STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
-use nix::unistd::{fork, ForkResult, setsid, dup, dup2};
+use nix::unistd::{fork, ForkResult, setsid, dup, dup2, execvp};
 use regex::Regex;
 
 // Code based on https://github.com/philippkeller/rexpect/blob/master/src/process.rs
@@ -111,10 +112,13 @@ impl LLDBProcess {
                 //flags.local_flags &= !termios::LocalFlags::ECHO;
                 //termios::tcsetattr(STDIN_FILENO, termios::SetArg::TCSANOW, &flags).unwrap();
 
-                Command::new(debugger_command)
-                        .args(run_command)
-                        .status()
-                        .unwrap();
+                let path = CString::new(debugger_command).unwrap();
+                let mut argv: Vec<CString> = vec!(path.clone(), CString::new("--").unwrap());
+                for arg in run_command.into_iter() {
+                    argv.push(CString::new(arg.as_bytes()).unwrap());
+                }
+
+                execvp(&path, &argv[..]).unwrap();
 
                 exit(-1);
             },
@@ -185,16 +189,16 @@ impl LLDBProcess {
 fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
                   listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>) {
     lazy_static! {
-        static ref RE_BREAKPOINT: Regex = Regex::new("^Breakpoint (\\d+): where = .* at (\\S+):(\\d+), address = 0x[0-9a-f]*$").unwrap();
-        static ref RE_BREAKPOINT_PENDING: Regex = Regex::new("^Breakpoint (\\d+): no locations \\(pending\\)\\.$").unwrap();
-        static ref RE_BREAKPOINT_MULTI: Regex = Regex::new("^Breakpoint (\\d+): (\\d+) locations\\.$").unwrap();
-        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new("^ *frame #\\d.*$").unwrap();
-        static ref RE_STEP_IN: Regex = Regex::new("^\\* .* stop reason = step in$").unwrap();
-        static ref RE_STEP_OVER: Regex = Regex::new("^\\* .* stop reason = step over$").unwrap();
-        static ref RE_CONTINUE: Regex = Regex::new("^Process (\\d+) resuming$").unwrap();
-        static ref RE_PRINTED_VARIABLE: Regex = Regex::new("^\\((.*)\\) (\\S+) = (.*)$").unwrap();
-        static ref RE_PROCESS_STARTED: Regex = Regex::new("^Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
-        static ref RE_PROCESS_EXITED: Regex = Regex::new("^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
+        static ref RE_BREAKPOINT: Regex = Regex::new("Breakpoint (\\d+): where = .* at (\\S+):(\\d+), address = 0x[0-9a-f]*$").unwrap();
+        static ref RE_BREAKPOINT_PENDING: Regex = Regex::new("Breakpoint (\\d+): no locations \\(pending\\)\\.$").unwrap();
+        static ref RE_BREAKPOINT_MULTI: Regex = Regex::new("Breakpoint (\\d+): (\\d+) locations\\.$").unwrap();
+        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
+        static ref RE_STEP_IN: Regex = Regex::new("\\* .* stop reason = step in$").unwrap();
+        static ref RE_STEP_OVER: Regex = Regex::new("\\* .* stop reason = step over$").unwrap();
+        static ref RE_CONTINUE: Regex = Regex::new("Process (\\d+) resuming$").unwrap();
+        static ref RE_PRINTED_VARIABLE: Regex = Regex::new("\\((.*)\\) (\\S+) = (.*)$").unwrap();
+        static ref RE_PROCESS_STARTED: Regex = Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
+        static ref RE_PROCESS_EXITED: Regex = Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
     }
 
     for line in data.split("\r\n") {
@@ -250,16 +254,17 @@ fn analyse_stdout(data: &str, notifier: &Arc<Mutex<Notifier>>,
     }
 }
 
+// TODO: Coalesce with previous function
 fn analyse_stderr(data: &str, notifier: &Arc<Mutex<Notifier>>, listener: &Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>) {
     lazy_static! {
-        static ref RE_PROCESS_NOT_RUNNING: Regex = Regex::new("^error: invalid process$").unwrap();
-        static ref RE_VARIABLE_NOT_FOUND: Regex = Regex::new("^error: no variable named '(.*)' found in this frame$").unwrap();
-        static ref RE_ERROR: Regex = Regex::new("^error: (.*)$").unwrap();
+        static ref RE_PROCESS_NOT_RUNNING: Regex = Regex::new("error: invalid process$").unwrap();
+        static ref RE_VARIABLE_NOT_FOUND: Regex = Regex::new("error: no variable named '(.*)' found in this frame$").unwrap();
+        static ref RE_ERROR: Regex = Regex::new("error: (.*)$").unwrap();
     }
 
     let mut matched: bool = false;
 
-    for line in data.split("\n") {
+    for line in data.split("\r\n") {
         for _ in RE_PROCESS_NOT_RUNNING.captures_iter(line) {
             notifier.lock()
                     .unwrap()

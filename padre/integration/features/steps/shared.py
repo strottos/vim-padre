@@ -192,7 +192,10 @@ def run_padre(context, timeout=20):
     def do_stuff(loop, context):
         async def print_stuff(context):
             while True:
-                print(await context.padre.process.stdout.readline())
+                try:
+                    print(await context.padre.process.stdout.readline())
+                except AttributeError:
+                    break
 
         ensure = asyncio.ensure_future(print_stuff(context),
                                        loop=loop)
@@ -217,8 +220,8 @@ def connect_to_padre(context):
             context.padre.port)
 
         context.connections.append(await asyncio.wait_for(con,
-                                                        int(TIMEOUT),
-                                                        loop=loop))
+                                                          int(TIMEOUT),
+                                                          loop=loop))
 
     loop = asyncio.get_event_loop()
 
@@ -569,9 +572,23 @@ def terminate_connection(context, connection):
     connection = None
 
 
-@when(u'I terminate the program')
+@when(u'I terminate padre')
 def terminate_program(context):
     """
     Close PADRE
     """
     context.padre.process.terminate()
+
+
+@then(u'padre is not running')
+def padre_not_running(context):
+    """
+    Close PADRE
+    """
+    for i in range(50):
+        if context.padre.process.returncode == 0:
+            break
+        time.sleep(TIMEOUT / 50)
+
+    assert_that(context.padre.process.returncode,
+                equal_to(0), "Expected 0 exit code")
