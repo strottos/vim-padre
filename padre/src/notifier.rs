@@ -3,7 +3,10 @@
 // The notifier is responsible for communicating with everything connected to PADRE
 
 use std::io::Write;
-use std::net::TcpStream;
+use std::net::SocketAddr;
+
+use tokio::io::WriteHalf;
+use tokio::net::TcpStream;
 
 pub enum LogLevel {
     CRITICAL = 1,
@@ -13,8 +16,10 @@ pub enum LogLevel {
     DEBUG
 }
 
+#[derive(Debug)]
 struct Listener {
-    tcpstream: TcpStream,
+    writer: WriteHalf<TcpStream>,
+    addr: SocketAddr,
     has_started: bool,
 }
 
@@ -29,9 +34,11 @@ impl Notifier {
         }
     }
 
-    pub fn add_listener(&mut self, stream: TcpStream) {
+    pub fn add_listener(&mut self, writer: WriteHalf<TcpStream>, addr: SocketAddr) {
+        println!("Adding listener: {:?}", addr);
         self.listeners.push(Listener{
-            tcpstream: stream,
+            writer,
+            addr,
             has_started: false,
         });
     }
@@ -40,8 +47,7 @@ impl Notifier {
         let msg = format!("[\"call\",\"padre#debugger#SignalPADREStarted\",[]]");
         for mut listener in self.listeners.iter_mut() {
             if !listener.has_started {
-                let mut stream = &listener.tcpstream;
-                match stream.write(msg.as_bytes()) {
+                match listener.writer.write(msg.as_bytes()) {
                     Ok(_) => (),
                     Err(error) => {
                         println!("Can't send to socket: {}", error);
@@ -82,22 +88,20 @@ impl Notifier {
 //        self.send_msg(msg);
 //    }
 
-    fn send_msg(&mut self, msg: String) {
-        let mut listeners_to_remove: Vec<usize> = Vec::new();
+    pub fn remove_listener(&mut self, addr: &SocketAddr) {
+        println!("Listeners: {:?}", &self.listeners);
+        self.listeners.retain(|listener| listener.addr != *addr);
+        println!("Listeners: {:?}", &self.listeners);
+    }
 
-        for (i, listener) in self.listeners.iter().enumerate() {
-            let mut stream = &listener.tcpstream;
-            match stream.write(msg.as_bytes()) {
+    fn send_msg(&mut self, msg: String) {
+        for listener in self.listeners.iter_mut() {
+            match listener.writer.write(msg.as_bytes()) {
                 Ok(_) => (),
                 Err(error) => {
-                    listeners_to_remove.push(i);
-                    println!("Can't send to socket, taking out of listeners: {}", error);
+                    println!("Notifier can't send to socket: {}", error);
                 },
             }
-        }
-
-        for i in listeners_to_remove {
-            self.listeners.remove(i);
         }
     }
 }

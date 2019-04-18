@@ -136,7 +136,7 @@ function! padre#debugger#Run()
     echoerr 'PADRE is not running'
   endif
 
-  call padre#socket#Send('run', function('padre#debugger#RunCallback'))
+  call padre#socket#Send({"cmd": "run"}, function('padre#debugger#RunCallback'))
 endfunction
 
 function! padre#debugger#Stop()
@@ -150,7 +150,7 @@ function! padre#debugger#Stop()
 endfunction
 
 function! s:SetBreakpointInDebugger(line, file)
-  call padre#socket#Send('breakpoint file=' . a:file . ' line=' . a:line, function('padre#debugger#BreakpointCallback'))
+  call padre#socket#Send({"cmd": "breakpoint", "file": a:file, "line": str2nr(a:line)}, function('padre#debugger#BreakpointCallback'))
 endfunction
 
 function! padre#debugger#Breakpoint()
@@ -162,19 +162,19 @@ function! padre#debugger#Breakpoint()
 endfunction
 
 function! padre#debugger#StepIn()
-  call padre#socket#Send('stepIn', function('padre#debugger#StepInCallback'))
+  call padre#socket#Send({"cmd": "stepIn"}, function('padre#debugger#StepInCallback'))
 endfunction
 
 function! padre#debugger#StepOver()
-  call padre#socket#Send('stepOver', function('padre#debugger#StepOverCallback'))
+  call padre#socket#Send({"cmd": "stepOver"}, function('padre#debugger#StepOverCallback'))
 endfunction
 
 function! padre#debugger#PrintVariable(variable)
-  call padre#socket#Send('print variable=' . a:variable, function('padre#debugger#PrintVariableCallback'))
+  call padre#socket#Send({"cmd": "print", "variable": a:variable}, function('padre#debugger#PrintVariableCallback'))
 endfunction
 
 function! padre#debugger#Continue()
-  call padre#socket#Send('continue', function('padre#debugger#ContinueCallback'))
+  call padre#socket#Send({"cmd": "continue"}, function('padre#debugger#ContinueCallback'))
 endfunction
 
 function! padre#debugger#AddDataWindow()

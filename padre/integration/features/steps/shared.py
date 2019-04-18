@@ -340,9 +340,9 @@ def padre_request(context, request, connection):
     """
     I send to PADRE on the connection <connection> a request of the form
 
-    [<request_counter>,"<request>"]
+    [<request_counter>,<request>]
 
-    e.g. [1,"breakpoint file=test_prog.c line=16"]
+    e.g. [1,{"cmd":"breakpoint","file":"test_prog.c","line":16} ]
     """
     request = json.dumps([context.padre.request_counter, request],
                          separators=(',', ':'))
@@ -354,17 +354,16 @@ def padre_request_connection_zero(context, request):
     """
     I send to PADRE a request on connection 0 of the form
 
-    [<request_counter>,"<request>"]
+    [<request_counter>,<request>]
 
-    e.g. [1,"breakpoint file=test_prog.c line=16"]
+    e.g. [1,{"cmd":"breakpoint","file":"test_prog.c","line":16} ]
     """
     padre_request(context, request, 0)
 
 
-@then("I receive a response '{response}' on connection {connection}")
-def padre_response(context, response, connection):
+def get_response(connection):
     """
-    I expect the correct response to a request on connection <connection>
+    Perform getting a response
     """
     loop = asyncio.get_event_loop()
     future = loop.create_future()
@@ -376,8 +375,18 @@ def padre_response(context, response, connection):
     loop.call_at(loop.time() + TIMEOUT, cancel)
 
     loop.run_until_complete(do_read_from_padre(future,
-                                               context.connections[int(connection)][0],
+                                               connection,
                                                loop))
+
+    return future
+
+
+@then("I receive a response '{response}' on connection {connection}")
+def padre_response(context, response, connection):
+    """
+    I expect the correct response to a request on connection <connection>
+    """
+    future = get_response(context.connections[int(connection)][0])
     assert_that(len(future.result()), equal_to(1), "Got one response")
     check_response_in(future.result(),
                       context.padre.last_request_number,
@@ -391,6 +400,16 @@ def padre_response_connection_zero(context, response):
     I expect the correct response to a request
     """
     padre_response(context, response, 0)
+
+
+@then("I receive a raw response '{response}'")
+def padre_raw_response(context, response):
+    """
+    I expect the correct response to a request
+    """
+    future = get_response(context.connections[0][0])
+    assert_that(len(future.result()), equal_to(1), "Got one response")
+    assert_that(future.result()[0], equal_to(response))
 
 
 @then("I receive both a response '{response}' and I expect to be called on connection {connection} with")

@@ -17,13 +17,15 @@ Feature: Basics
         Then I expect to be called on connection 2 with
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
-        When I send a request to PADRE 'ping' on connection 0
+        When I send a request to PADRE '{"cmd":"ping"}' on connection 0
         Then I receive a response '{"status":"OK","ping":"pong"}' on connection 0
-        When I send a request to PADRE 'ping' on connection 1
+        When I send a request to PADRE '{
+        "cmd":"ping"
+        }' on connection 1
         Then I receive a response '{"status":"OK","ping":"pong"}' on connection 1
-        When I send a request to PADRE 'ping' on connection 2
+        When I send a request to PADRE '{"cmd":"ping"}' on connection 2
         Then I receive a response '{"status":"OK","ping":"pong"}' on connection 2
-        When I send a request to PADRE 'pings' on connection 0
+        When I send a request to PADRE '{"cmd":"pings"}' on connection 0
         Then I receive both a response '{"status":"OK"}' and I expect to be called on connection 0 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
@@ -33,7 +35,7 @@ Feature: Basics
         And I expect to be called on connection 2 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
-        When I send a request to PADRE 'pings' on connection 1
+        When I send a request to PADRE '{"cmd":"pings"}' on connection 1
         Then I expect to be called on connection 0 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
@@ -43,7 +45,7 @@ Feature: Basics
         And I expect to be called on connection 2 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
-        When I send a request to PADRE 'pings' on connection 2
+        When I send a request to PADRE '{"cmd":"pings"}' on connection 2
         Then I expect to be called on connection 0 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
@@ -72,7 +74,7 @@ Feature: Basics
         Then I expect to be called on connection 1 with
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
-        When I send a request to PADRE 'pings' on connection 0
+        When I send a request to PADRE '{"cmd":"pings"}' on connection 0
         Then I receive both a response '{"status":"OK"}' and I expect to be called on connection 0 with
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
@@ -119,6 +121,12 @@ Feature: Basics
             | function           | args                           |
             | padre#debugger#Log | [2,"Can't find command"]       |
             | padre#debugger#Log | [5,"Can't find command: \"\""] |
+        When I send a raw request to PADRE '[1,{"cmd":"ping"}][2,{"cmd":"ping"}]'
+        Then I receive a raw response '[1,{"status":"OK","ping":"pong"}][2,{"status":"OK","ping":"pong"}]'
+        When I send a raw request to PADRE '[3,{"cmd":"ping"}]'
+        And I send a raw request to PADRE '[4,{"cmd":"ping"}]'
+        Then I receive a raw response '[3,{"status":"OK","ping":"pong"}]'
+        And I receive a raw response '[4,{"status":"OK","ping":"pong"}]'
         When I terminate the program
 
     Scenario: Check we can handle errors setting breakpoints
@@ -129,22 +137,22 @@ Feature: Basics
         Then I expect to be called with
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
-        When I send a request to PADRE 'breakpoint'
+        When I send a request to PADRE '{"cmd":"breakpoint"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                 |
             | padre#debugger#Log | [2,"Can't read file for breakpoint"] |
             | padre#debugger#Log | [5,"Can't read file for breakpoint"] |
-        When I send a request to PADRE 'breakpoint file=test.c'
+        When I send a request to PADRE '{"cmd":"breakpoint","file":"test.c"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                 |
             | padre#debugger#Log | [2,"Can't read line for breakpoint"] |
             | padre#debugger#Log | [5,"Can't read line for breakpoint"] |
-        When I send a request to PADRE 'breakpoint file=test.c line=a'
+        When I send a request to PADRE '{"cmd":"breakpoint","file":"test.c","line":"a"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                 |
             | padre#debugger#Log | [2,"Can't parse line number"] |
             | padre#debugger#Log | [5,"Can't parse line number: invalid digit found in string"] |
-        When I send a request to PADRE 'breakpoint line=1 file=test.c bad_arg=1 bad_arg2=2'
+        When I send a request to PADRE '{"cmd":"breakpoint","line":1,"file":"test.c","bad_arg":1,"bad_arg2":2}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                               |
             | padre#debugger#Log | [2,"Bad arguments for breakpoint"]                                 |
@@ -159,12 +167,12 @@ Feature: Basics
         Then I expect to be called with
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
-        When I send a request to PADRE 'print'
+        When I send a request to PADRE '{"cmd":"print"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                |
             | padre#debugger#Log | [2,"Can't read variable for print"] |
             | padre#debugger#Log | [5,"Can't read variable for print"] |
-        When I send a request to PADRE 'print variable=a bad_arg=1 bad_arg2=2'
+        When I send a request to PADRE '{"cmd":"print","variable":"a","bad_arg":1,"bad_arg2":2}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                          |
             | padre#debugger#Log | [2,"Bad arguments for print"]                                 |

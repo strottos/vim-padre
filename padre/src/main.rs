@@ -1,5 +1,5 @@
 use std::io;
-use std::net::{TcpListener};
+use std::net::SocketAddr;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -8,90 +8,18 @@ use std::thread;
 extern crate regex;
 extern crate clap;
 extern crate signal_hook;
+extern crate tokio;
+extern crate futures;
 
+use tokio::runtime::current_thread::Runtime;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::prelude::*;
 use clap::{Arg, App, ArgMatches};
 use signal_hook::iterator::Signals;
 
 mod request;
 mod debugger;
 mod notifier;
-
-fn main() -> io::Result<()> {
-
-    let args = get_config();
-
-    let connection_string = get_connection_string(&args);
-    let listener = TcpListener::bind(&connection_string)
-                               .expect(&format!("Can't open TCP listener on {}", connection_string));
-
-    println!("Listening on {}", connection_string);
-
-    let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
-
-    let debug_cmd: Vec<String> = args.values_of("debug_cmd")
-                                     .expect("Can't find program to debug, please rerun with correct parameters")
-                                     .map(|x| x.to_string())
-                                     .collect::<Vec<String>>();
-
-    let debugger_rc = Arc::new(
-        Mutex::new(
-            debugger::get_debugger(args.value_of("debugger"), args.value_of("type"), Arc::clone(&notifier_rc))
-        )
-    );
-
-    let thread_debugger = Arc::clone(&debugger_rc);
-
-    let debugger_arg = match args.value_of("debugger") {
-        Some(s) => s,
-        None => "lldb",
-    }.clone().to_string();
-
-    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
-    let signal_debugger = Arc::clone(&debugger_rc);
-    thread::spawn(move || {
-        for _ in signals.forever() {
-            match signal_debugger.lock() {
-                Ok(s) => {
-                    match s.debugger.lock() {
-                        Ok(t) => t.stop(),
-                        Err(err) => println!("Debugger not found: {}", err),
-                    };
-                },
-                Err(err) => println!("Debug server not found: {}", err),
-            };
-            println!("Terminated!");
-            exit(0);
-        }
-    });
-
-    thread::spawn(move || {
-        thread_debugger.lock().unwrap().start(debugger_arg, &debug_cmd);
-    });
-
-    let mut handles = vec![];
-
-    for stream in listener.incoming() {
-        let stream = stream?;
-        let notifier_stream = stream.try_clone().expect("Can't clone stream");
-
-        // TODO: Something better than unwrap
-        notifier_rc.lock().unwrap().add_listener(notifier_stream);
-
-        let thread_notifier = Arc::clone(&notifier_rc);
-        let thread_debugger = Arc::clone(&debugger_rc);
-
-        let handle = thread::spawn(move || {
-            request::handle_connection(stream, thread_notifier, thread_debugger);
-        });
-        handles.push(handle);
-    }
-
-    for handle in handles {
-        handle.join().unwrap();
-    }
-
-    Ok(())
-}
 
 fn get_config<'a>() -> ArgMatches<'a> {
     let app = App::new("VIM Padre")
@@ -126,7 +54,7 @@ fn get_config<'a>() -> ArgMatches<'a> {
     app
 }
 
-fn get_connection_string(args: &ArgMatches) -> String {
+fn get_connection(args: &ArgMatches) -> SocketAddr {
     let port = match args.value_of("port") {
         None => 12345,
         Some(s) => {
@@ -144,5 +72,83 @@ fn get_connection_string(args: &ArgMatches) -> String {
         Some(s) => s
     };
 
-    return format!("{}:{}", host, port)
+    return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
+}
+
+fn install_signals(signals: Signals, debugger: Arc<Mutex<debugger::PadreServer>>) {
+    thread::spawn(move || {
+        for _ in signals.forever() {
+            match debugger.lock() {
+                Ok(s) => {
+                    match s.debugger.lock() {
+                        Ok(t) => t.stop(),
+                        Err(err) => println!("Debugger not found: {}", err),
+                    };
+                },
+                Err(err) => println!("Debug server not found: {}", err),
+            };
+            println!("Terminated!");
+            exit(0);
+        }
+    });
+}
+
+fn main() -> io::Result<()> {
+
+    let args = get_config();
+
+    let connection_string = get_connection(&args);
+    let listener = TcpListener::bind(&connection_string)
+                               .expect(&format!("Can't open TCP listener on {}", connection_string));
+
+    println!("Listening on {}", connection_string);
+
+    let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
+
+    let debug_cmd: Vec<String> = args.values_of("debug_cmd")
+                                     .expect("Can't find program to debug, please rerun with correct parameters")
+                                     .map(|x| x.to_string())
+                                     .collect::<Vec<String>>();
+
+    let debugger_rc = Arc::new(
+        Mutex::new(
+            debugger::get_debugger(args.value_of("debugger"),
+                                   args.value_of("type"),
+                                   Arc::clone(&notifier_rc))
+        )
+    );
+
+//    let thread_debugger = Arc::clone(&debugger_rc);
+
+//    let debugger_arg = match args.value_of("debugger") {
+//        Some(s) => s,
+//        None => "lldb",
+//    }.clone().to_string();
+
+//    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
+//    install_signals(signals, Arc::clone(&debugger_rc));
+
+//    thread::spawn(move || {
+//        thread_debugger.lock().unwrap().start(debugger_arg, &debug_cmd);
+//    });
+
+    let mut runtime = Runtime::new().unwrap();
+
+    runtime.spawn(listener.incoming()
+        .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
+        .for_each(move |socket| {
+            let thread_debugger = Arc::clone(&debugger_rc);
+            let thread_notifier = Arc::clone(&notifier_rc);
+
+            let mut padre_request = request::PadreConnection::new(socket, thread_notifier, thread_debugger);
+
+//            padre_request.handle();
+
+            Ok(())
+        })
+    );
+
+    runtime.run().unwrap();
+
+    Ok(())
 }
