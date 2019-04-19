@@ -170,6 +170,16 @@ impl fmt::Display for PadreRequest {
     }
 }
 
+impl Future for PadreRequest {
+    type Item = ();
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<(), io::Error> {
+        println!("HERE Running Padre Request Future");
+        Ok(Async::Ready(()))
+    }
+}
+
 #[derive(Debug)]
 struct PadreCodec {}
 
@@ -181,7 +191,10 @@ impl Decoder for PadreCodec {
         let data = String::from_utf8_lossy(buf);
         let data = data.trim().trim_matches(char::from(0));
 
-        let mut s = json::parse(&data).unwrap();
+        let mut s = match json::parse(&data) {
+            Ok(t) => t,
+            Err(err) => return Ok(None) // TODO
+        };
 
 //        match json {
 //            Ok(s) => {
@@ -326,6 +339,7 @@ impl PadreConnection {
     }
 
     // Based on from https://github.com/tokio-rs/tokio/blob/master/tokio/examples/chat.rs
+    // Returns ready only when the socket is closed
     fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
         loop {
             self.rd.reserve(1024);
@@ -341,7 +355,6 @@ impl PadreConnection {
 
 impl Drop for PadreConnection {
     fn drop(&mut self) {
-        println!("Dropping Padre Request");
         self.notifier.lock()
             .unwrap().remove_listener(&self.addr);
     }
@@ -354,32 +367,37 @@ impl Stream for PadreConnection {
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
 //        let padre_server = Arc::clone(&self.padre_server);
 
-//        let fut = self.transport_read.for_each(move |padre_cmd| {
-//            println!("GOT: {:?}", padre_cmd);
-//
-//            let a = match padre_cmd.cmd.as_str() {
-//                // TODO: Find better method than unwrap()
-//                "ping" => padre_server.lock().unwrap().ping(),
-//                _ => Err(RequestError::new("Can't understand request".to_string(),
-//                                           format!("Can't understand request: {}", padre_cmd)))
-//            };
-//
-//            println!("{:?}", a);
-//
-//            Ok(())
-//        }).map_err(|err| {
-//            println!("Error: {}", err);
-//        });
-//
-//        tokio::spawn(fut);
-
         let sock_closed = self.fill_read_buf()?.is_ready();
+        println!("sock_closed {:?}", sock_closed);
 
-        println!("HERE: {:?}", self.rd);
+        let mut padre_codec = PadreCodec{};
+        let padre_request = padre_codec.decode(&mut self.rd);
+        println!("padre_request {:?}", padre_request);
+        match padre_request {
+            Ok(s) => match s {
+                Some(mut t) => {
+                    println!("PadreRequest {:?}", t);
+                    match t.poll() {
+                        Ok(u) => {
+                            println!("Polling Padre Request Future OK: {:?}", u);
+                            return Ok(Async::Ready(Some(t)));
+                        }
+                        _ => panic!("TODO: Figure out")
+                    }
+                },
+                None => {},
+            },
+            Err(err) => {
+                println!("TODO: Handle Error {:?}:", err);
+                panic!("ERROR");
+            },
+        };
 
         if sock_closed {
+            println!("Socket closed");
             Ok(Async::Ready(None))
         } else {
+            println!("Not ready");
             Ok(Async::NotReady)
         }
     }

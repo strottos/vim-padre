@@ -148,12 +148,29 @@ fn main() -> io::Result<()> {
 
             tokio::spawn(
                 padre_connection
-                    .into_future()
-                    .map_err(|(e, _)| e)
-                    .and_then(|_| {
-                        // Dropped connection
-                        future::ok(())
+                    .for_each(|a| {
+                        println!("Main foreach a: {:?}", a);
+                        Ok(())
                     })
+//                    .into_future()
+//                    .map_err(|(e, _)| e)
+//                    .and_then(|(first, rest)| {
+//                        println!("TEST: {:?}", first);
+//                        println!("TEST: {:?}", rest);
+//
+//                        let s = match first {
+//                            Some(s) => s,
+//                            None => {
+//                                // The remote client closed the connection without sending
+//                                // any data.
+//                                return Either::A(future::ok(()));
+//                            }
+//                        };
+//
+//                        println!("s: {:?}", s);
+//
+//                        Either::B(s)
+//                    })
                     .map_err(|e| {
                         println!("connection error = {:?}", e);
                     })
