@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 
-use crate::debugger::PadreServer;
+use crate::debugger::PadreDebugger;
 use crate::notifier::{LogLevel, Notifier};
 
 use bytes::{BytesMut, BufMut};
@@ -156,7 +156,7 @@ pub struct PadreRequest {
     id: u32,
     cmd: String,
     args: HashMap<String, String>,
-    padre_server: Arc<Mutex<PadreServer>>,
+    padre_server: Arc<Mutex<PadreDebugger>>,
     response: Option<json::object::Object>,
 }
 
@@ -164,7 +164,7 @@ impl PadreRequest {
     pub fn new(id: u32,
                cmd: String,
                args: HashMap<String, String>,
-               padre_server: Arc<Mutex<PadreServer>>,
+               padre_server: Arc<Mutex<PadreDebugger>>,
                ) -> Self {
         PadreRequest {
             id,
@@ -348,14 +348,14 @@ pub struct PadreConnection {
     addr: SocketAddr,
     reader: ReadHalf<TcpStream>,
     notifier: Arc<Mutex<Notifier>>,
-    padre_server: Arc<Mutex<PadreServer>>,
+    padre_server: Arc<Mutex<PadreDebugger>>,
     rd: BytesMut,
 }
 
 impl PadreConnection {
     pub fn new(socket: TcpStream,
                notifier: Arc<Mutex<Notifier>>,
-               padre_server: Arc<Mutex<PadreServer>>) -> Self {
+               padre_server: Arc<Mutex<PadreDebugger>>) -> Self {
         let addr = socket.peer_addr().unwrap();
 
         let (reader, writer) = socket.split();
@@ -512,10 +512,11 @@ impl Stream for PadreConnection {
 }
 
 // TODO: Work out how to handle networking errors
-pub fn handle_connection(mut stream: TcpStream, notifier: Arc<Mutex<Notifier>>, padre_server: Arc<Mutex<PadreServer>>) {
-    if padre_server.lock().unwrap().debugger.lock().unwrap().has_started() {
-        notifier.lock().unwrap().signal_started();
-    }
+pub fn handle_connection(mut stream: TcpStream, notifier: Arc<Mutex<Notifier>>, padre_server: Arc<Mutex<PadreDebugger>>) {
+    //    TODO
+//    if padre_server.lock().unwrap().process.lock().unwrap().has_started() {
+//        notifier.lock().unwrap().signal_started();
+//    }
 
     loop {
         let mut buffer = [0; 512];
@@ -576,7 +577,7 @@ pub fn handle_connection(mut stream: TcpStream, notifier: Arc<Mutex<Notifier>>, 
     }
 }
 
-fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreServer>>, notifier: &Arc<Mutex<Notifier>>) -> Result<Response<json::object::Object>, RequestError> {
+fn handle_cmd(data: String, padre_server: &Arc<Mutex<PadreDebugger>>, notifier: &Arc<Mutex<Notifier>>) -> Result<Response<json::object::Object>, RequestError> {
     let (prog, args) = match interpret_cmd(&data) {
         Ok(s) => s,
         Err(err) => {

@@ -1,7 +1,10 @@
 //! debugger
 
+mod lldb;
+
 use std::env;
 use std::fmt::Debug;
+use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -9,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use crate::request::{RequestError, Response};
 use crate::notifier::{LogLevel, Notifier};
 
-mod lldb;
+use tokio::prelude::*;
 
 #[cfg(test)]
 mod tests {
@@ -61,10 +64,7 @@ mod tests {
 //    }
 }
 
-pub trait Debugger: Debug {
-    fn start(&mut self, debugger_command: String, run_command: &Vec<String>);
-    fn has_started(&self) -> bool;
-    fn stop(&self);
+pub trait DebuggerTrait: Debug {
     fn run(&mut self) -> Result<Response<json::object::Object>, RequestError>;
     fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<json::object::Object>, RequestError>;
     fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError>;
@@ -73,22 +73,25 @@ pub trait Debugger: Debug {
     fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError>;
 }
 
-#[derive(Debug)]
-pub struct PadreServer {
-    notifier: Arc<Mutex<Notifier>>,
-    pub debugger: Arc<Mutex<dyn Debugger + Send>>,
+pub trait ProcessTrait: Debug {
+    fn start(&mut self);
+    fn has_started(&self) -> bool;
+    fn stop(&self);
 }
 
-impl PadreServer {
-    pub fn new(notifier: Arc<Mutex<Notifier>>, debugger: Arc<Mutex<dyn Debugger + Send>>) -> PadreServer {
-        PadreServer {
-            notifier: notifier,
-            debugger: debugger,
-        }
-    }
+#[derive(Debug)]
+pub struct PadreDebugger {
+    notifier: Arc<Mutex<Notifier>>,
+    pub debugger: Arc<Mutex<dyn DebuggerTrait + Send>>,
+}
 
-    pub fn start(&self, debugger_command: String, run_command: &Vec<String>) {
-        self.debugger.lock().unwrap().start(debugger_command, run_command);
+impl PadreDebugger {
+    pub fn new(notifier: Arc<Mutex<Notifier>>,
+               debugger: Arc<Mutex<dyn DebuggerTrait + Send>>,) -> PadreDebugger {
+        PadreDebugger {
+            notifier,
+            debugger,
+        }
     }
 
     pub fn ping(&self) -> Result<Response<json::object::Object>, RequestError> {
@@ -105,7 +108,34 @@ impl PadreServer {
     }
 }
 
-pub fn get_debugger(debugger_cmd: Option<&str>, debugger_type: Option<&str>, notifier: Arc<Mutex<Notifier>>) -> PadreServer {
+#[derive(Debug)]
+pub struct PadreProcess {
+    process: Arc<Mutex<dyn ProcessTrait + Send>>,
+}
+
+impl PadreProcess {
+    pub fn new(process: Arc<Mutex<dyn ProcessTrait + Send>>) -> PadreProcess {
+        PadreProcess {
+            process,
+        }
+    }
+}
+
+impl Future for PadreProcess {
+    type Item = ();
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        println!("Process polled");
+        //self.process.start();
+        Ok(Async::Ready(()))
+    }
+}
+
+pub fn get_debugger(debugger_cmd: Option<&str>,
+                    debugger_type: Option<&str>,
+                    run_cmd: Vec<String>,
+                    notifier: Arc<Mutex<Notifier>>) -> (PadreDebugger, PadreProcess) {
     let debugger_type = match debugger_type {
         Some(s) => s.to_string(),
         None => {
@@ -116,14 +146,36 @@ pub fn get_debugger(debugger_cmd: Option<&str>, debugger_type: Option<&str>, not
         }
     };
 
-    let debug_server = match debugger_type.to_ascii_lowercase().as_ref() {
+    let debugger = match debugger_type.to_ascii_lowercase().as_ref() {
         "lldb" => {
-            Arc::new(Mutex::new(lldb::LLDB::new(Arc::clone(&notifier))))
+            Arc::new(Mutex::new(lldb::ImplDebugger::new(Arc::clone(&notifier))))
         }
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };
 
-    PadreServer::new(notifier, debug_server)
+    let debugger_arg = match debugger_cmd {
+        Some(s) => s,
+        None => "lldb",
+    }.clone().to_string();
+
+    let process = match debugger_type.to_ascii_lowercase().as_ref() {
+        "lldb" => {
+            PadreProcess::new(
+                Arc::new(
+                    Mutex::new(
+                        lldb::ImplProcess::new(
+                            Arc::clone(&notifier),
+                            debugger_arg,
+                            run_cmd,
+                        )
+                    )
+                )
+            )
+        }
+        _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
+    };
+
+    (PadreDebugger::new(notifier, debugger), process)
 }
 
 pub fn get_debugger_type(cmd: &str) -> Option<String> {

@@ -79,23 +79,23 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn install_signals(signals: Signals, debugger: Arc<Mutex<debugger::PadreServer>>) {
-    thread::spawn(move || {
-        for _ in signals.forever() {
-            match debugger.lock() {
-                Ok(s) => {
-                    match s.debugger.lock() {
-                        Ok(t) => t.stop(),
-                        Err(err) => println!("Debugger not found: {}", err),
-                    };
-                },
-                Err(err) => println!("Debug server not found: {}", err),
-            };
-            println!("Terminated!");
-            exit(0);
-        }
-    });
-}
+//fn install_signals(signals: Signals, debugger: Arc<Mutex<debugger::PadreServer>>) {
+//    thread::spawn(move || {
+//        for _ in signals.forever() {
+//            match debugger.lock() {
+//                Ok(s) => {
+//                    match s.debugger.lock() {
+//                        Ok(t) => t.stop(),
+//                        Err(err) => println!("Debugger not found: {}", err),
+//                    };
+//                },
+//                Err(err) => println!("Debug server not found: {}", err),
+//            };
+//            println!("Terminated!");
+//            exit(0);
+//        }
+//    });
+//}
 
 fn main() -> io::Result<()> {
 
@@ -114,37 +114,29 @@ fn main() -> io::Result<()> {
                                      .map(|x| x.to_string())
                                      .collect::<Vec<String>>();
 
-    let debugger_rc = Arc::new(
-        Mutex::new(
-            debugger::get_debugger(args.value_of("debugger"),
-                                   args.value_of("type"),
-                                   Arc::clone(&notifier_rc))
-        )
+    let (padre_server, padre_process) = debugger::get_debugger(
+        args.value_of("debugger"),
+        args.value_of("type"),
+        debug_cmd,
+        Arc::clone(&notifier_rc),
     );
 
-//    let thread_debugger = Arc::clone(&debugger_rc);
-
-//    let debugger_arg = match args.value_of("debugger") {
-//        Some(s) => s,
-//        None => "lldb",
-//    }.clone().to_string();
+    let padre_server_rc = Arc::new(Mutex::new(padre_server));
 
 //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
-//    install_signals(signals, Arc::clone(&debugger_rc));
-
-//    thread::spawn(move || {
-//        thread_debugger.lock().unwrap().start(debugger_arg, &debug_cmd);
-//    });
+//    install_signals(signals, Arc::clone(&padre_server_rc));
 
     let mut runtime = Runtime::new().unwrap();
+
+    let request_debugger = Arc::clone(&padre_server_rc);
+    let request_notifier = Arc::clone(&notifier_rc);
 
     runtime.spawn(listener.incoming()
         .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
         .for_each(move |socket| {
-            let thread_debugger = Arc::clone(&debugger_rc);
-            let thread_notifier = Arc::clone(&notifier_rc);
-
-            let padre_connection = request::PadreConnection::new(socket, thread_notifier, thread_debugger);
+            let padre_connection = request::PadreConnection::new(socket,
+                                                                 Arc::clone(&request_notifier),
+                                                                 Arc::clone(&request_debugger));
 
             tokio::spawn(
                 padre_connection
@@ -152,31 +144,19 @@ fn main() -> io::Result<()> {
                         println!("Main foreach a: {:?}", a);
                         Ok(())
                     })
-//                    .into_future()
-//                    .map_err(|(e, _)| e)
-//                    .and_then(|(first, rest)| {
-//                        println!("TEST: {:?}", first);
-//                        println!("TEST: {:?}", rest);
-//
-//                        let s = match first {
-//                            Some(s) => s,
-//                            None => {
-//                                // The remote client closed the connection without sending
-//                                // any data.
-//                                return Either::A(future::ok(()));
-//                            }
-//                        };
-//
-//                        println!("s: {:?}", s);
-//
-//                        Either::B(s)
-//                    })
                     .map_err(|e| {
                         println!("connection error = {:?}", e);
                     })
             );
 
             Ok(())
+        })
+    );
+
+    // TODO: Spawn debugger process as future
+    runtime.spawn(
+        padre_process.map_err(|e| {
+            println!("connection error = {:?}", e);
         })
     );
 

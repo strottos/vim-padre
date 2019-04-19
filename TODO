@@ -117,6 +117,13 @@ Done
 - Interface [<id>,"<command>"], where <id> is an integer (used for responding) and <command> is defined below for different versions.
 - Any IO that happens in the PADRE process will be forwarded directly to or from the program itself
 
+TODO on tokio update:
+- Handle error in JSON including bad arguments
+- Add error response logging
+- Change PadreServer debugger/LLDB to be future based rather than current synchronous model
+- Future up the spawning, will help with ^^
+- Get rid or Arc once we're fully single threaded (except maybe signals).
+
 Classes
 -------
 
