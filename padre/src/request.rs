@@ -1,7 +1,5 @@
 //! handling requests
 
-extern crate bytes;
-
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -287,10 +285,13 @@ impl Encoder for PadreCodec {
 //    }
 //}
 
+#[derive(Debug)]
 pub struct PadreConnection {
     addr: SocketAddr,
+    reader: ReadHalf<TcpStream>,
     notifier: Arc<Mutex<Notifier>>,
     padre_server: Arc<Mutex<PadreServer>>,
+    rd: BytesMut,
 }
 
 impl PadreConnection {
@@ -299,24 +300,41 @@ impl PadreConnection {
                padre_server: Arc<Mutex<PadreServer>>) -> Self {
         let addr = socket.peer_addr().unwrap();
 
-        let (reader, _) = socket.split();
+        let (reader, writer) = socket.split();
 
-        let transport_read = FramedRead::new(reader, PadreCodec{});
+//        let transport_read = FramedRead::new(reader, PadreCodec{});
+//
+//        tokio::spawn({
+//            transport_read.for_each(|padre_cmd| {
+//                println!("GOT: {:?}", padre_cmd);
+//
+//                Ok(())
+//            }).map_err(|err| {
+//                println!("Error: {}", err);
+//            })
+//        });
 
-        let fut = transport_read.for_each(move |padre_cmd| {
-            println!("GOT: {:?}", padre_cmd);
-
-            Ok(())
-        }).map_err(|err| {
-            println!("Error: {}", err);
-        });
-
-        tokio::spawn(fut);
+        notifier.lock().unwrap().add_listener(writer, addr);
 
         PadreConnection {
             addr,
+            reader,
             notifier,
             padre_server,
+            rd: BytesMut::new(),
+        }
+    }
+
+    // Based on from https://github.com/tokio-rs/tokio/blob/master/tokio/examples/chat.rs
+    fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
+        loop {
+            self.rd.reserve(1024);
+
+            let n = try_ready!(self.reader.read_buf(&mut self.rd));
+
+            if n == 0 {
+                return Ok(Async::Ready(()));
+            }
         }
     }
 }
@@ -334,16 +352,7 @@ impl Stream for PadreConnection {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-//        let (tx, rx) = mpsc::unbounded();
-
-//        let task = my_inner_future.and_then(|my_inner_value| {
-//            println!("Got a value {:?} from second future", my_inner_value);
-//            Ok(())
-//        });
-
-//        self.notifier.lock().unwrap().add_listener(writer, self.addr);
-
-        let padre_server = Arc::clone(&self.padre_server);
+//        let padre_server = Arc::clone(&self.padre_server);
 
 //        let fut = self.transport_read.for_each(move |padre_cmd| {
 //            println!("GOT: {:?}", padre_cmd);
@@ -364,7 +373,15 @@ impl Stream for PadreConnection {
 //
 //        tokio::spawn(fut);
 
-        Ok(Async::NotReady)
+        let sock_closed = self.fill_read_buf()?.is_ready();
+
+        println!("HERE: {:?}", self.rd);
+
+        if sock_closed {
+            Ok(Async::Ready(None))
+        } else {
+            Ok(Async::NotReady)
+        }
     }
 
 //    fn handle_cmd(mut padre_cmd: PadreRequest, padre_server: &Arc<Mutex<PadreServer>>, notifier: &Arc<Mutex<Notifier>>) -> Result<Response<json::object::Object>, RequestError> {

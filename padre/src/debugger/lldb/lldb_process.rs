@@ -50,6 +50,7 @@ fn ptsname_r(fd: &PtyMaster) -> nix::Result<String> {
     }
 }
 
+#[derive(Debug)]
 pub struct LLDBProcess {
     notifier: Arc<Mutex<Notifier>>,
     listener: Arc<(Mutex<(LLDBStatus, Vec<String>)>, Condvar)>,

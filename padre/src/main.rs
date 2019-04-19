@@ -4,16 +4,20 @@ use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-#[macro_use] extern crate lazy_static;
+#[macro_use]
+extern crate lazy_static;
 extern crate regex;
 extern crate clap;
 extern crate signal_hook;
 extern crate tokio;
+#[macro_use]
 extern crate futures;
+extern crate bytes;
 
 use tokio::runtime::current_thread::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
+use futures::future::{self, Either};
 use clap::{Arg, App, ArgMatches};
 use signal_hook::iterator::Signals;
 
@@ -140,9 +144,20 @@ fn main() -> io::Result<()> {
             let thread_debugger = Arc::clone(&debugger_rc);
             let thread_notifier = Arc::clone(&notifier_rc);
 
-            let mut padre_request = request::PadreConnection::new(socket, thread_notifier, thread_debugger);
+            let padre_connection = request::PadreConnection::new(socket, thread_notifier, thread_debugger);
 
-//            padre_request.handle();
+            tokio::spawn(
+                padre_connection
+                    .into_future()
+                    .map_err(|(e, _)| e)
+                    .and_then(|_| {
+                        // Dropped connection
+                        future::ok(())
+                    })
+                    .map_err(|e| {
+                        println!("connection error = {:?}", e);
+                    })
+            );
 
             Ok(())
         })

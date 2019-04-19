@@ -23,6 +23,7 @@ struct Listener {
     has_started: bool,
 }
 
+#[derive(Debug)]
 pub struct Notifier {
     listeners: Vec<Listener>,
 }

@@ -33,6 +33,7 @@ pub enum LLDBStatus {
     VariableNotFound,
 }
 
+#[derive(Debug)]
 pub struct LLDB {
     notifier: Arc<Mutex<Notifier>>,
     started: bool,

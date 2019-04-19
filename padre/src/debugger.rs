@@ -1,6 +1,7 @@
 //! debugger
 
 use std::env;
+use std::fmt::Debug;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -60,7 +61,7 @@ mod tests {
 //    }
 }
 
-pub trait Debugger {
+pub trait Debugger: Debug {
     fn start(&mut self, debugger_command: String, run_command: &Vec<String>);
     fn has_started(&self) -> bool;
     fn stop(&self);
@@ -72,6 +73,7 @@ pub trait Debugger {
     fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError>;
 }
 
+#[derive(Debug)]
 pub struct PadreServer {
     notifier: Arc<Mutex<Notifier>>,
     pub debugger: Arc<Mutex<dyn Debugger + Send>>,
