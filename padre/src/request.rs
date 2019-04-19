@@ -17,7 +17,6 @@ use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
-use tokio::codec::{Decoder, Encoder, FramedRead};
 
 #[cfg(test)]
 mod tests {
@@ -157,7 +156,24 @@ pub struct PadreRequest {
     id: u32,
     cmd: String,
     args: HashMap<String, String>,
+    padre_server: Arc<Mutex<PadreServer>>,
     response: Option<json::object::Object>,
+}
+
+impl PadreRequest {
+    pub fn new(id: u32,
+               cmd: String,
+               args: HashMap<String, String>,
+               padre_server: Arc<Mutex<PadreServer>>,
+               ) -> Self {
+        PadreRequest {
+            id,
+            cmd,
+            args,
+            padre_server,
+            response: None,
+        }
+    }
 }
 
 impl fmt::Display for PadreRequest {
@@ -176,6 +192,106 @@ impl Future for PadreRequest {
 
     fn poll(&mut self) -> Poll<(), io::Error> {
         println!("HERE Running Padre Request Future");
+
+        let response = match self.cmd.as_str() {
+            // TODO: Find better method than unwrap()
+            "ping" => self.padre_server.lock().unwrap().ping(),
+            "pings" => self.padre_server.lock().unwrap().pings(),
+            "run" => self.padre_server
+                         .lock()
+                         .unwrap()
+                         .debugger
+                         .lock()
+                         .unwrap()
+                         .run(),
+//            "breakpoint" => {
+//                let bad_args = get_bad_args(&args, vec!("file", "line"));
+//
+//                if bad_args.len() != 0 {
+//                    return Err(RequestError::new("Bad arguments for breakpoint".to_string(),
+//                                                 format!("Bad arguments for breakpoint: {}", json::stringify(bad_args))));
+//                }
+//
+//                let file = match args.get("file") {
+//                    Some(s) => s.to_string(),
+//                    None => return Err(
+//                        RequestError::new("Can't read file for breakpoint".to_string(),
+//                                          "Can't read file for breakpoint".to_string()))
+//                };
+//
+//                let line = match args.get("line") {
+//                    Some(s) => s.to_string(),
+//                    None => return Err(
+//                        RequestError::new("Can't read line for breakpoint".to_string(),
+//                                          "Can't read line for breakpoint".to_string()))
+//                };
+//
+//                let line = match line.parse::<u32>() {
+//                    Ok(s) => s,
+//                    Err(err) => return Err(
+//                        RequestError::new("Can't parse line number".to_string(),
+//                                          format!("Can't parse line number: {}", err)))
+//                };
+//
+//                notifier.lock().unwrap().log_msg(LogLevel::INFO,
+//                    format!("Setting breakpoint in file {} at line number {}", file, line));
+//
+//                padre_server.lock()
+//                            .unwrap()
+//                            .debugger
+//                            .lock()
+//                            .unwrap()
+//                            .breakpoint(file, line)
+//            },
+            "stepIn" => self.padre_server
+                            .lock()
+                            .unwrap()
+                            .debugger
+                            .lock()
+                            .unwrap()
+                            .step_in(),
+            "stepOver" => self.padre_server
+                              .lock()
+                              .unwrap()
+                              .debugger
+                              .lock()
+                              .unwrap()
+                              .step_over(),
+            "continue" => self.padre_server
+                              .lock()
+                              .unwrap()
+                              .debugger
+                              .lock()
+                              .unwrap()
+                              .continue_on(),
+//            "print" => {
+//                let bad_args = get_bad_args(&args, vec!("variable"));
+//
+//                if bad_args.len() != 0 {
+//                    return Err(RequestError::new("Bad arguments for print".to_string(),
+//                                                 format!("Bad arguments for print: {}", json::stringify(bad_args))));
+//                }
+//
+//                let variable = match args.get("variable") {
+//                    Some(s) => s.to_string(),
+//                    None => return Err(
+//                        RequestError::new("Can't read variable for print".to_string(),
+//                                          "Can't read variable for print".to_string()))
+//                };
+//
+//                padre_server.lock()
+//                            .unwrap()
+//                            .debugger
+//                            .lock()
+//                            .unwrap()
+//                            .print(variable)
+//            },
+            _ => Err(RequestError::new("Can't understand request".to_string(),
+                                       format!("Can't understand request: {}", self)))
+        };
+
+        println!("Response: {:?}", response);
+
         Ok(Async::Ready(()))
     }
 }
@@ -183,96 +299,25 @@ impl Future for PadreRequest {
 #[derive(Debug)]
 struct PadreCodec {}
 
-impl Decoder for PadreCodec {
-    type Item = PadreRequest;
-    type Error = io::Error;
-
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let data = String::from_utf8_lossy(buf);
-        let data = data.trim().trim_matches(char::from(0));
-
-        let mut s = match json::parse(&data) {
-            Ok(t) => t,
-            Err(err) => return Ok(None) // TODO
-        };
-
-//        match json {
-//            Ok(s) => {
-                let id = s[0].as_u32().unwrap();
-//                match s[0].as_u32() {
-//                    Some(t) => t,
-//                    None => {
-//                        return Err(RequestError::new("Can't read id".to_string(),
-//                                                     format!("Can't read id: {}",
-//                                                             data.to_string())))
-//                    }
-//                };
-
-                let mut args = HashMap::new();
-                let mut cmd: String = "".to_string();
-
-                let s = s[1].take();
-                for entry in s.entries() {
-                    let key = entry.0.to_string();
-                    let value = entry.1.as_str().unwrap().to_string();
-                    if key == "cmd" {
-                        cmd = value;
-                        continue;
-                    }
-                    args.insert(key, value);
-                }
-
-                buf.split_to(buf.len());
-
-                Ok(Some(PadreRequest{
-                    id,
-                    cmd,
-                    args,
-                    response: None,
-                }))
-//            },
-//            Err(err) => {
-//                match err {
-//                    json::Error::UnexpectedCharacter {
-//                        ref ch,
-//                        ref line,
-//                        ref column,
-//                    } => Err(RequestError::new("Must be valid JSON".to_string(),
-//                                               format!("Can't read JSON character {} in line {} at column {}: {}",
-//                                                       ch, line, column, data))),
+//impl Encoder for PadreCodec {
+//    type Item = PadreRequest;
+//    type Error = io::Error;
 //
-//                    json::Error:: UnexpectedEndOfJson =>
-//                        Err(RequestError::new("Must be valid JSON".to_string(),
-//                                               format!("Can't read JSON: {}",
-//                                                       data.to_string()))),
-//
-//                    // TODO: Cover these, they're unusual I believe
-//                    _ => panic!(format!("Can't recover from error: {}", err)),
-//                }
-//            }
+//    fn encode(&mut self, padre_cmd: PadreRequest, buf: &mut BytesMut) -> Result<(), io::Error> {
+//        println!("ENCODING");
+//        let response = match padre_cmd.response {
+//            Some(s) => s,
+//            None => json::object::Object::new(),
 //        };
-    }
-}
-
-impl Encoder for PadreCodec {
-    type Item = PadreRequest;
-    type Error = io::Error;
-
-    fn encode(&mut self, padre_cmd: PadreRequest, buf: &mut BytesMut) -> Result<(), io::Error> {
-        println!("ENCODING");
-        let response = match padre_cmd.response {
-            Some(s) => s,
-            None => json::object::Object::new(),
-        };
-
-        let response = json::stringify(json::array![json::from(padre_cmd.id), response]);
-
-        buf.reserve(response.len());
-        buf.put(&response[..]);
-
-        Ok(())
-    }
-}
+//
+//        let response = json::stringify(json::array![json::from(padre_cmd.id), response]);
+//
+//        buf.reserve(response.len());
+//        buf.put(&response[..]);
+//
+//        Ok(())
+//    }
+//}
 
 //struct PadreWriter {
 //    writer: WriteHalf<TcpStream>,
@@ -351,6 +396,72 @@ impl PadreConnection {
             }
         }
     }
+
+    fn decode(&mut self) -> Result<Option<PadreRequest>, io::Error> {
+        let data = String::from_utf8_lossy(&self.rd);
+        let data = data.trim().trim_matches(char::from(0));
+
+        let mut s = match json::parse(&data) {
+            Ok(t) => t,
+            Err(err) => return Ok(None) // TODO
+        };
+
+//        match json {
+//            Ok(s) => {
+                let id = s[0].as_u32().unwrap();
+//                match s[0].as_u32() {
+//                    Some(t) => t,
+//                    None => {
+//                        return Err(RequestError::new("Can't read id".to_string(),
+//                                                     format!("Can't read id: {}",
+//                                                             data.to_string())))
+//                    }
+//                };
+
+                let mut args = HashMap::new();
+                let mut cmd: String = "".to_string();
+
+                let s = s[1].take();
+                for entry in s.entries() {
+                    let key = entry.0.to_string();
+                    let value = entry.1.as_str().unwrap().to_string();
+                    if key == "cmd" {
+                        cmd = value;
+                        continue;
+                    }
+                    args.insert(key, value);
+                }
+
+                self.rd.split_to(self.rd.len());
+
+                Ok(Some(PadreRequest::new(
+                    id,
+                    cmd,
+                    args,
+                    Arc::clone(&self.padre_server), // TODO: More efficient way??
+                )))
+//            },
+//            Err(err) => {
+//                match err {
+//                    json::Error::UnexpectedCharacter {
+//                        ref ch,
+//                        ref line,
+//                        ref column,
+//                    } => Err(RequestError::new("Must be valid JSON".to_string(),
+//                                               format!("Can't read JSON character {} in line {} at column {}: {}",
+//                                                       ch, line, column, data))),
+//
+//                    json::Error:: UnexpectedEndOfJson =>
+//                        Err(RequestError::new("Must be valid JSON".to_string(),
+//                                               format!("Can't read JSON: {}",
+//                                                       data.to_string()))),
+//
+//                    // TODO: Cover these, they're unusual I believe
+//                    _ => panic!(format!("Can't recover from error: {}", err)),
+//                }
+//            }
+//        };
+    }
 }
 
 impl Drop for PadreConnection {
@@ -365,13 +476,10 @@ impl Stream for PadreConnection {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-//        let padre_server = Arc::clone(&self.padre_server);
-
         let sock_closed = self.fill_read_buf()?.is_ready();
         println!("sock_closed {:?}", sock_closed);
 
-        let mut padre_codec = PadreCodec{};
-        let padre_request = padre_codec.decode(&mut self.rd);
+        let padre_request = self.decode();
         println!("padre_request {:?}", padre_request);
         match padre_request {
             Ok(s) => match s {
@@ -401,101 +509,6 @@ impl Stream for PadreConnection {
             Ok(Async::NotReady)
         }
     }
-
-//    fn handle_cmd(mut padre_cmd: PadreRequest, padre_server: &Arc<Mutex<PadreServer>>, notifier: &Arc<Mutex<Notifier>>) -> Result<Response<json::object::Object>, RequestError> {
-//        match padre_cmd.cmd.as_str() {
-//            // TODO: Find better method than unwrap()
-//            "ping" => padre_server.lock().unwrap().ping(),
-//            "pings" => padre_server.lock().unwrap().pings(),
-//            "run" => padre_server.lock()
-//                                 .unwrap()
-//                                 .debugger
-//                                 .lock()
-//                                 .unwrap()
-//                                 .run(),
-//            "breakpoint" => {
-//                let bad_args = get_bad_args(&args, vec!("file", "line"));
-//
-//                if bad_args.len() != 0 {
-//                    return Err(RequestError::new("Bad arguments for breakpoint".to_string(),
-//                                                 format!("Bad arguments for breakpoint: {}", json::stringify(bad_args))));
-//                }
-//
-//                let file = match args.get("file") {
-//                    Some(s) => s.to_string(),
-//                    None => return Err(
-//                        RequestError::new("Can't read file for breakpoint".to_string(),
-//                                          "Can't read file for breakpoint".to_string()))
-//                };
-//
-//                let line = match args.get("line") {
-//                    Some(s) => s.to_string(),
-//                    None => return Err(
-//                        RequestError::new("Can't read line for breakpoint".to_string(),
-//                                          "Can't read line for breakpoint".to_string()))
-//                };
-//
-//                let line = match line.parse::<u32>() {
-//                    Ok(s) => s,
-//                    Err(err) => return Err(
-//                        RequestError::new("Can't parse line number".to_string(),
-//                                          format!("Can't parse line number: {}", err)))
-//                };
-//
-//                notifier.lock().unwrap().log_msg(LogLevel::INFO,
-//                    format!("Setting breakpoint in file {} at line number {}", file, line));
-//
-//                padre_server.lock()
-//                            .unwrap()
-//                            .debugger
-//                            .lock()
-//                            .unwrap()
-//                            .breakpoint(file, line)
-//            },
-//            "stepIn" => padre_server.lock()
-//                                    .unwrap()
-//                                    .debugger
-//                                    .lock()
-//                                    .unwrap()
-//                                    .step_in(),
-//            "stepOver" => padre_server.lock()
-//                                      .unwrap()
-//                                      .debugger
-//                                      .lock()
-//                                      .unwrap()
-//                                      .step_over(),
-//            "continue" => padre_server.lock()
-//                                      .unwrap()
-//                                      .debugger
-//                                      .lock()
-//                                      .unwrap()
-//                                      .continue_on(),
-//            "print" => {
-//                let bad_args = get_bad_args(&args, vec!("variable"));
-//
-//                if bad_args.len() != 0 {
-//                    return Err(RequestError::new("Bad arguments for print".to_string(),
-//                                                 format!("Bad arguments for print: {}", json::stringify(bad_args))));
-//                }
-//
-//                let variable = match args.get("variable") {
-//                    Some(s) => s.to_string(),
-//                    None => return Err(
-//                        RequestError::new("Can't read variable for print".to_string(),
-//                                          "Can't read variable for print".to_string()))
-//                };
-//
-//                padre_server.lock()
-//                            .unwrap()
-//                            .debugger
-//                            .lock()
-//                            .unwrap()
-//                            .print(variable)
-//            },
-//            _ => Err(RequestError::new("Can't understand request".to_string(),
-//                                       format!("Can't understand request: {}", data)))
-//        }
-//    }
 }
 
 // TODO: Work out how to handle networking errors
@@ -777,6 +790,7 @@ fn get_bad_args(args: &HashMap<String, String>, valid_args: Vec<&str>) -> Vec<St
     bad_args
 }
 
+// TODO: Don't forget to handle this, super important
 fn handle_error(notifier: &Arc<Mutex<Notifier>>, err: RequestError) {
     let err_details = format!("{}", err);
 
