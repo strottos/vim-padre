@@ -11,7 +11,10 @@ use crate::debugger::ProcessTrait;
 use crate::notifier::{LogLevel, Notifier};
 
 use futures::{Future, Stream};
+use futures::sync::mpsc;
 use tokio_process::{CommandExt};
+use tokio::prelude::*;
+use regex::Regex;
 
 #[derive(Debug)]
 pub struct ImplProcess {
@@ -48,6 +51,7 @@ impl ProcessTrait for ImplProcess {
             exit(1);
         }
 
+        println!("{:?}", &self.run_command);
         let mut process = Command::new(&self.debugger_command)
                                   .arg("--")
                                   .args(&self.run_command)
@@ -60,7 +64,26 @@ impl ProcessTrait for ImplProcess {
         let process_stdout = process.stdout().take().unwrap();
         let reader = io::BufReader::new(process_stdout);
         let lines = tokio::io::lines(reader);
-        let stdout_process = lines.for_each(|l| {
+        let notifier = Arc::clone(&self.notifier);
+        let stdout_process = lines.for_each(move |l| {
+            lazy_static! {
+                static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
+            }
+
+            for _ in RE_STOPPED_AT_POSITION.captures_iter(&l) {
+                lazy_static! {
+                    static ref RE_JUMP_TO_POSITION: Regex = Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
+                }
+
+                for cap in RE_JUMP_TO_POSITION.captures_iter(&l) {
+                    notifier.lock().unwrap().jump_to_position(
+                        cap[1].to_string(), cap[2].parse::<u32>().unwrap());
+                }
+
+                notifier.lock().unwrap().log_msg(
+                    LogLevel::WARN, "Stopped at unknown position".to_string());
+            }
+
             println!("{}", l);
 
             io::stdout().flush().unwrap();
@@ -79,14 +102,38 @@ impl ProcessTrait for ImplProcess {
             Ok(())
         });
 
-        let process_stdin = process.stdin().take().unwrap();
-
         // TODO: Find out how to take from stdin and from the PADRE debugger
+//        let mut process_stdin = process.stdin().take().unwrap();
+//        let writer = io::BufWriter::new(process_stdin);
+//        let lines = tokio::io::lines(writer);
+//
+//        let (tx, mut rx) = mpsc::unbounded();
+//
+//        tx.unbounded_send("b main\n".as_bytes()).unwrap();
+//
+//        match rx.poll().unwrap() {
+//            Async::Ready(Some(v)) => {
+//                println!("HERE: {:?}", &process);
+//                println!("HERE: {:?}", v);
+////                match process_stdin.write(v) {
+////                    Ok(s) => println!("HERE2: {:?}", s),
+////                    Err(err) => println!("HERE3: {:?}", err),
+////                };
+//            },
+//            _ => {},
+//        }
 
-        let future = stdout_process.join(stderr_process)
-                                   .join(process)
-                                   .map(|_| ())
-                                   .map_err(|e| panic!("{}", e));
+        println!("HERE: {:?}", process);
+
+        let future = stdout_process
+            .join(stderr_process)
+            .join(process)
+            .map(|status| {
+                println!("Finished with status: {:?}", status);
+            })
+            .map_err(|e| {
+                println!("Errored with: {:?}", e);
+            });
 
         // TODO: Should be triggered by analysing stdout
         self.has_started = true;

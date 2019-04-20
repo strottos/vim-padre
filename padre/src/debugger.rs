@@ -126,7 +126,6 @@ impl Future for PadreProcess {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        println!("Process polled");
         self.process.lock().unwrap().start();
         Ok(Async::Ready(()))
     }

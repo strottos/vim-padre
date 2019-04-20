@@ -120,9 +120,8 @@ Done
 TODO on tokio update:
 - Handle error in JSON including bad arguments
 - Add error response logging
-- Change PadreServer debugger/LLDB to be future based rather than current synchronous model
-- Future up the spawning, will help with ^^
-- Get rid or Arc once we're fully single threaded (except maybe signals).
+- Get rid of Arc once we're fully single threaded.
+- Create channels between debugger and process and for process to send to debugger for listening
 
 Classes
 -------
