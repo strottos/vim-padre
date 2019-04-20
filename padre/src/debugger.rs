@@ -127,7 +127,7 @@ impl Future for PadreProcess {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         println!("Process polled");
-        //self.process.start();
+        self.process.lock().unwrap().start();
         Ok(Async::Ready(()))
     }
 }
@@ -153,18 +153,20 @@ pub fn get_debugger(debugger_cmd: Option<&str>,
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };
 
+    let padre_debugger = PadreDebugger::new(Arc::clone(&notifier), debugger);
+
     let debugger_arg = match debugger_cmd {
         Some(s) => s,
         None => "lldb",
     }.clone().to_string();
 
-    let process = match debugger_type.to_ascii_lowercase().as_ref() {
+    let padre_process = match debugger_type.to_ascii_lowercase().as_ref() {
         "lldb" => {
             PadreProcess::new(
                 Arc::new(
                     Mutex::new(
                         lldb::ImplProcess::new(
-                            Arc::clone(&notifier),
+                            notifier,
                             debugger_arg,
                             run_cmd,
                         )
@@ -175,7 +177,7 @@ pub fn get_debugger(debugger_cmd: Option<&str>,
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };
 
-    (PadreDebugger::new(notifier, debugger), process)
+    (padre_debugger, padre_process)
 }
 
 pub fn get_debugger_type(cmd: &str) -> Option<String> {

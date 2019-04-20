@@ -1,23 +1,21 @@
-use std::io;
-use std::net::SocketAddr;
-use std::process::exit;
-use std::sync::{Arc, Mutex};
-use std::thread;
 
-#[macro_use]
 extern crate lazy_static;
 extern crate regex;
 extern crate clap;
 extern crate signal_hook;
-extern crate tokio;
 #[macro_use]
 extern crate futures;
 extern crate bytes;
+extern crate tokio;
+extern crate tokio_process;
+
+use std::io;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
 use tokio::runtime::current_thread::Runtime;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener};
 use tokio::prelude::*;
-use futures::future::{self, Either};
 use clap::{Arg, App, ArgMatches};
 use signal_hook::iterator::Signals;
 
