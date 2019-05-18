@@ -13,7 +13,7 @@ pub enum LogLevel {
     ERROR,
     WARN,
     INFO,
-    DEBUG
+    DEBUG,
 }
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ impl Notifier {
 
     pub fn add_listener(&mut self, writer: WriteHalf<TcpStream>, addr: SocketAddr) {
         println!("Adding listener: {:?}", addr);
-        self.listeners.push(Listener{
+        self.listeners.push(Listener {
             writer,
             addr,
             has_started: false,
@@ -52,7 +52,7 @@ impl Notifier {
                     Ok(_) => (),
                     Err(error) => {
                         println!("Can't send to socket: {}", error);
-                    },
+                    }
                 }
                 listener.has_started = true;
             }
@@ -60,34 +60,45 @@ impl Notifier {
     }
 
     pub fn signal_exited(&mut self, pid: u32, exit_code: u8) {
-        let msg = format!("[\"call\",\"padre#debugger#ProcessExited\",[{},{}]]",
-                          exit_code, pid);
+        let msg = format!(
+            "[\"call\",\"padre#debugger#ProcessExited\",[{},{}]]",
+            exit_code, pid
+        );
         self.send_msg(msg);
     }
 
     pub fn log_msg(&mut self, level: LogLevel, msg: String) {
-        let msg = format!("[\"call\",\"padre#debugger#Log\",[{},{}]]",
-                          level as i32, json::stringify(msg));
+        let msg = format!(
+            "[\"call\",\"padre#debugger#Log\",[{},{}]]",
+            level as i32,
+            json::stringify(msg)
+        );
         self.send_msg(msg);
     }
 
     pub fn jump_to_position(&mut self, file: String, line: u32) {
-        let msg = format!("[\"call\",\"padre#debugger#JumpToPosition\",[{},{}]]",
-                          json::stringify(file), line);
+        let msg = format!(
+            "[\"call\",\"padre#debugger#JumpToPosition\",[{},{}]]",
+            json::stringify(file),
+            line
+        );
         self.send_msg(msg);
     }
 
     pub fn breakpoint_set(&mut self, file: String, line: u32) {
-        let msg = format!("[\"call\",\"padre#debugger#BreakpointSet\",[{},{}]]",
-                          json::stringify(file), line);
+        let msg = format!(
+            "[\"call\",\"padre#debugger#BreakpointSet\",[{},{}]]",
+            json::stringify(file),
+            line
+        );
         self.send_msg(msg);
     }
 
-//    pub fn breakpoint_unset(&self, file: String, line: u32) {
-//        let msg = format!("[\"call\",\"padre#debugger#BreakpointUnset\",[{},{}]]",
-//                          json::stringify(file), line);
-//        self.send_msg(msg);
-//    }
+    //    pub fn breakpoint_unset(&self, file: String, line: u32) {
+    //        let msg = format!("[\"call\",\"padre#debugger#BreakpointUnset\",[{},{}]]",
+    //                          json::stringify(file), line);
+    //        self.send_msg(msg);
+    //    }
 
     pub fn remove_listener(&mut self, addr: &SocketAddr) {
         println!("Listeners: {:?}", &self.listeners);
@@ -101,7 +112,7 @@ impl Notifier {
                 Ok(_) => (),
                 Err(error) => {
                     println!("Notifier can't send to socket: {}", error);
-                },
+                }
             }
         }
     }

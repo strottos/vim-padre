@@ -2,9 +2,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::request::{RequestError, Response};
 use crate::debugger::DebuggerTrait;
 use crate::notifier::{LogLevel, Notifier};
+use crate::request::{RequestError, Response};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
@@ -28,7 +28,11 @@ impl DebuggerTrait for ImplDebugger {
         Ok(Response::OK(ret))
     }
 
-    fn breakpoint(&mut self, file: String, line_num: u32) -> Result<Response<json::object::Object>, RequestError> {
+    fn breakpoint(
+        &mut self,
+        file: String,
+        line_num: u32,
+    ) -> Result<Response<json::object::Object>, RequestError> {
         let mut ret = json::object::Object::new();
 
         Ok(Response::OK(ret))
