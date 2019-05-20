@@ -2,9 +2,10 @@
 
 extern crate nix;
 
+use std::cell::RefCell;
 use std::ffi::CString;
 use std::fs::File;
-use std::io::Write;
+use std::io::{self, BufReader, Read, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::path::Path;
 use std::process::exit;
@@ -14,11 +15,16 @@ use std::thread;
 use crate::debugger::ProcessTrait;
 use crate::notifier::{LogLevel, Notifier};
 
+use bytes::BytesMut;
+use mio;
 use nix::fcntl::{open, OFlag};
 use nix::libc::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO};
 use nix::pty::{grantpt, posix_openpt, unlockpt, PtyMaster};
 use nix::sys::stat;
 use nix::unistd::{dup, dup2, execvp, fork, setsid, ForkResult};
+use tokio;
+use tokio::prelude::*;
+use tokio_reactor::{Handle, PollEvented};
 
 // Code based on https://github.com/philippkeller/rexpect/blob/master/src/process.rs
 #[cfg(target_os = "linux")]
@@ -32,7 +38,7 @@ fn ptsname_r(fd: &PtyMaster) -> nix::Result<String> {
     use nix::libc::{ioctl, TIOCPTYGNAME};
     use std::ffi::CStr;
 
-    /// the buffer size on OSX is 128, defined by sys/ttycom.h
+    // the buffer size on OSX is 128, defined by sys/ttycom.h
     let buf: [i8; 128] = [0; 128];
 
     unsafe {
@@ -42,6 +48,127 @@ fn ptsname_r(fd: &PtyMaster) -> nix::Result<String> {
                 Ok(res)
             }
             _ => Err(nix::Error::last()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TtyFile {
+    inner: File,
+    fd: i32,
+    evented: RefCell<Option<mio::Registration>>,
+}
+
+impl TtyFile {
+    pub fn new(pty_master: PtyMaster) -> Self {
+        let fd = dup(pty_master.as_raw_fd()).unwrap();
+
+        // Set non blocking
+        unsafe {
+            let previous = libc::fcntl(fd, libc::F_GETFL);
+            let new = previous | libc::O_NONBLOCK;
+            if new != previous {
+                libc::fcntl(fd, libc::F_SETFL, new);
+            }
+        }
+
+        let inner = unsafe { File::from_raw_fd(fd) };
+
+        TtyFile {
+            inner: inner,
+            fd: fd,
+            evented: Default::default(),
+        }
+    }
+
+    pub fn into_io(self) -> io::Result<PollEvented<Self>> {
+        PollEvented::new_with_handle(self, &tokio::reactor::Handle::current())
+    }
+}
+
+impl mio::Evented for TtyFile {
+    fn register(
+        &self,
+        poll: &mio::Poll,
+        token: mio::Token,
+        interest: mio::Ready,
+        opts: mio::PollOpt,
+    ) -> io::Result<()> {
+        mio::unix::EventedFd(&self.fd).register(poll, token, interest, opts)
+    }
+
+    fn reregister(
+        &self,
+        poll: &mio::Poll,
+        token: mio::Token,
+        interest: mio::Ready,
+        opts: mio::PollOpt,
+    ) -> io::Result<()> {
+        match &*self.evented.borrow() {
+            &None => mio::unix::EventedFd(&self.fd).reregister(poll, token, interest, opts),
+            &Some(ref r) => r.reregister(poll, token, interest, opts),
+        }
+    }
+
+    fn deregister(&self, poll: &mio::Poll) -> io::Result<()> {
+        match &*self.evented.borrow() {
+            &None => mio::unix::EventedFd(&self.fd).deregister(poll),
+            &Some(ref r) => mio::Evented::deregister(r, poll),
+        }
+    }
+}
+
+impl Read for TtyFile {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl Write for TtyFile {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+pub struct TtyFileStdoutStream {
+    io: PollEvented<TtyFile>,
+}
+
+impl TtyFileStdoutStream {
+    pub fn new(tty: TtyFile) -> Self {
+        TtyFileStdoutStream {
+            io: tty.into_io().expect("Unable to read TTY"),
+        }
+    }
+}
+
+impl Stream for TtyFileStdoutStream {
+    type Item = BytesMut;
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        match self.io.poll_read_ready(mio::Ready::readable()) {
+            Ok(Async::Ready(_)) => {
+                let mut buffer: [u8; 512] = [0; 512];
+                match self.io.read(&mut buffer) {
+                    Ok(_) => Ok(Async::Ready(Some(BytesMut::from(&buffer[..])))),
+                    Err(err) => {
+                        if err.kind() == io::ErrorKind::WouldBlock {
+                            return Ok(Async::NotReady);
+                        }
+                        Err(err)
+                    }
+                }
+            }
+            Ok(Async::NotReady) => {
+                println!("Not ready");
+                Ok(Async::NotReady)
+            }
+            Err(err) => Err(err),
         }
     }
 }
@@ -121,11 +248,21 @@ impl ProcessTrait for ImplProcess {
                 exit(-1);
             }
             ForkResult::Parent { child: _child_pid } => {
-                let fd = dup(master_fd.as_raw_fd()).unwrap();
-                let mut process_stdio = unsafe { File::from_raw_fd(fd) };
-                let mut process_out = process_stdio.try_clone().unwrap();
+                let tty = TtyFile::new(master_fd);
 
                 let notifier_err = self.notifier.clone();
+
+                let mut out = io::stdout();
+
+                tokio::spawn(
+                    TtyFileStdoutStream::new(tty)
+                        .for_each(move |chunk| {
+                            println!("Chunk: `{:?}`", chunk);
+                            // TODO: Analyse chunk
+                            out.write_all(&chunk)
+                        })
+                        .map_err(|e| println!("error reading stdout; error = {:?}", e)),
+                );
 
                 //                let (tx, rx) = mpsc::channel();
                 //
@@ -406,6 +543,7 @@ impl ProcessTrait for ImplProcess {
 //                let notifier_err = self.notifier.clone();
 //                let listener = self.listener.clone();
 //
+//                // Write to LLDB stdin
 //                thread::spawn(move || {
 //                    loop {
 //                        match process_stdio.write(receiver.recv().unwrap().as_bytes()) {
@@ -424,6 +562,7 @@ impl ProcessTrait for ImplProcess {
 //
 //                let notifier_err = self.notifier.clone();
 //
+//                // Read from stdout
 //                thread::spawn(move || {
 //                    loop {
 //                        let mut buffer: [u8; 512] = [0; 512];

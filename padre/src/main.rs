@@ -7,17 +7,16 @@ extern crate signal_hook;
 extern crate futures;
 extern crate bytes;
 extern crate tokio;
-extern crate tokio_process;
 
 use std::io;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use clap::{App, Arg, ArgMatches};
-use signal_hook::iterator::Signals;
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
+//use signal_hook::iterator::Signals;
 
 mod debugger;
 mod notifier;
