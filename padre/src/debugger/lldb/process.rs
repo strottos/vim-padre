@@ -15,7 +15,7 @@ use std::thread;
 use crate::debugger::ProcessTrait;
 use crate::notifier::{LogLevel, Notifier};
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use mio;
 use nix::fcntl::{open, OFlag};
 use nix::libc::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO};
@@ -156,9 +156,9 @@ impl Stream for TtyFileStdioStream {
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         match self.rx.poll().unwrap() {
             Async::Ready(Some(v)) => {
-                println!("HERE: {:?}", v);
+                self.io.write(Bytes::from(&v[..]).as_ref()).unwrap();
             }
-            _ => {}
+            _ => {} // TODO: Erroring?
         }
 
         match self.io.poll_read_ready(mio::Ready::readable()) {

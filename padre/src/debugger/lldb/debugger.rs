@@ -25,9 +25,50 @@ impl ImplDebugger {
     }
 }
 
+impl ImplDebugger {
+//    fn check_response(&self, msg: String, timeout: u64) -> (LLDBStatus, Vec<String>) {
+//        // Reset the current status
+//        let &(ref lock, ref cvar) = &*self.listener;
+//        let mut started = lock.lock().unwrap();
+//        *started = (LLDBStatus::None, vec!());
+//
+//        let cmd = format!("{}\n", msg);
+//
+//        // Send the request
+//        self.sender.clone().unwrap().send(cmd).expect("Can't communicate with LLDB");
+//
+//        // Check for the status change
+//        let result = cvar.wait_timeout(started, Duration::from_millis(timeout)).unwrap();
+//        started = result.0;
+//
+//        match started.0 {
+//            LLDBStatus::None => {
+//                self.notifier
+//                    .lock()
+//                    .unwrap()
+//                    .log_msg(LogLevel::CRITICAL,
+//                             format!("Timed out waiting for condition: {}", &msg));
+//                return (LLDBStatus::None, vec!());
+//            },
+//            _ => {},
+//        };
+//
+//        let status = started.0.clone();
+//        let args = started.1.clone();
+//
+//        (status, args)
+//    }
+}
+
 impl DebuggerTrait for ImplDebugger {
     fn run(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+        println!("RUNNING");
         let mut ret = json::object::Object::new();
+
+        self.stdin_tx.try_send("break set --name main\n".to_string()).unwrap();
+        self.stdin_tx.try_send("process launch\n".to_string()).unwrap();
+
+        ret.insert("pid", json::from("0".to_string()));
 
         Ok(Response::OK(ret))
     }
