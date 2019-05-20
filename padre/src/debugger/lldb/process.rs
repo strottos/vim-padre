@@ -24,6 +24,7 @@ use nix::sys::stat;
 use nix::unistd::{dup, dup2, execvp, fork, setsid, ForkResult};
 use tokio;
 use tokio::prelude::*;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_reactor::{Handle, PollEvented};
 
 // Code based on https://github.com/philippkeller/rexpect/blob/master/src/process.rs
@@ -134,23 +135,32 @@ impl Write for TtyFile {
     }
 }
 
-pub struct TtyFileStdoutStream {
+pub struct TtyFileStdioStream {
     io: PollEvented<TtyFile>,
+    rx: Receiver<String>,
 }
 
-impl TtyFileStdoutStream {
-    pub fn new(tty: TtyFile) -> Self {
-        TtyFileStdoutStream {
+impl TtyFileStdioStream {
+    pub fn new(tty: TtyFile, rx: Receiver<String>) -> Self {
+        TtyFileStdioStream {
             io: tty.into_io().expect("Unable to read TTY"),
+            rx,
         }
     }
 }
 
-impl Stream for TtyFileStdoutStream {
+impl Stream for TtyFileStdioStream {
     type Item = BytesMut;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        match self.rx.poll().unwrap() {
+            Async::Ready(Some(v)) => {
+                println!("HERE: {:?}", v);
+            }
+            _ => {}
+        }
+
         match self.io.poll_read_ready(mio::Ready::readable()) {
             Ok(Async::Ready(_)) => {
                 let mut buffer: [u8; 512] = [0; 512];
@@ -179,6 +189,8 @@ pub struct ImplProcess {
     debugger_command: String,
     run_command: Vec<String>,
     has_started: bool,
+    rx: Option<Receiver<String>>,
+    tx: Sender<String>,
 }
 
 impl ImplProcess {
@@ -186,12 +198,16 @@ impl ImplProcess {
         notifier: Arc<Mutex<Notifier>>,
         debugger_command: String,
         run_command: Vec<String>,
+        rx: Receiver<String>,
+        tx: Sender<String>,
     ) -> ImplProcess {
         ImplProcess {
             notifier,
             debugger_command,
             run_command,
             has_started: false,
+            rx: Some(rx),
+            tx: tx,
         }
     }
 }
@@ -247,15 +263,16 @@ impl ProcessTrait for ImplProcess {
 
                 exit(-1);
             }
+
             ForkResult::Parent { child: _child_pid } => {
                 let tty = TtyFile::new(master_fd);
 
-                let notifier_err = self.notifier.clone();
-
                 let mut out = io::stdout();
 
+                let rx = self.rx.take().unwrap();
+
                 tokio::spawn(
-                    TtyFileStdoutStream::new(tty)
+                    TtyFileStdioStream::new(tty, rx)
                         .for_each(move |chunk| {
                             println!("Chunk: `{:?}`", chunk);
                             // TODO: Analyse chunk
@@ -285,32 +302,6 @@ impl ProcessTrait for ImplProcess {
                 //                let notifier = self.notifier.clone();
                 //                let notifier_err = self.notifier.clone();
                 //                let listener = self.listener.clone();
-                //
-                //                thread::spawn(move || {
-                //                    loop {
-                //                        let mut buffer: [u8; 512] = [0; 512];
-                //                        match process_out.read(&mut buffer) {
-                //                            Err(err) => {
-                //                                notifier_err.lock()
-                //                                            .unwrap()
-                //                                            .log_msg(LogLevel::CRITICAL,
-                //                                                     format!("Can't read from LLDB: {}", err));
-                //                                println!("Can't read from LLDB: {}", err);
-                //                                exit(1);
-                //                            },
-                //                            _ => {},
-                //                        };
-                //                        let data = String::from_utf8_lossy(&buffer[..]);
-                //                        let data = data.trim_matches(char::from(0));
-                //
-                //                        print!("{}", &data);
-                //
-                //                        analyse_stdout(&data, &notifier, &listener);
-                //                        analyse_stderr(&data, &notifier, &listener);
-                //
-                //                        io::stdout().flush().unwrap();
-                //                    }
-                //                });
 
                 self.notifier.lock().unwrap().signal_started();
             }
@@ -410,6 +401,7 @@ impl ProcessTrait for ImplProcess {
         self.has_started
     }
 
+    // TODO
     fn stop(&self) {}
 }
 

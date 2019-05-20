@@ -13,6 +13,7 @@ use crate::notifier::{LogLevel, Notifier};
 use crate::request::{RequestError, Response};
 
 use tokio::prelude::*;
+use tokio::sync::mpsc;
 
 #[cfg(test)]
 mod tests {
@@ -164,8 +165,13 @@ pub fn get_debugger(
         },
     };
 
+    let (tx, rx) = mpsc::channel(1);
+
     let debugger = match debugger_type.to_ascii_lowercase().as_ref() {
-        "lldb" => Arc::new(Mutex::new(lldb::ImplDebugger::new(Arc::clone(&notifier)))),
+        "lldb" => Arc::new(Mutex::new(lldb::ImplDebugger::new(
+            Arc::clone(&notifier),
+            tx.clone(),
+        ))),
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };
 
@@ -183,6 +189,8 @@ pub fn get_debugger(
             notifier,
             debugger_arg,
             run_cmd,
+            rx,
+            tx,
         )))),
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };

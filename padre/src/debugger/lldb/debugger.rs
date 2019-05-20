@@ -6,16 +6,20 @@ use crate::debugger::DebuggerTrait;
 use crate::notifier::{LogLevel, Notifier};
 use crate::request::{RequestError, Response};
 
+use tokio::sync::mpsc::Sender;
+
 #[derive(Debug)]
 pub struct ImplDebugger {
     notifier: Arc<Mutex<Notifier>>,
+    stdin_tx: Sender<String>,
     started: bool,
 }
 
 impl ImplDebugger {
-    pub fn new(notifier: Arc<Mutex<Notifier>>) -> ImplDebugger {
+    pub fn new(notifier: Arc<Mutex<Notifier>>, stdin_tx: Sender<String>) -> ImplDebugger {
         ImplDebugger {
-            notifier: notifier,
+            notifier,
+            stdin_tx,
             started: false,
         }
     }
