@@ -137,30 +137,52 @@ impl Write for TtyFile {
 
 pub struct TtyFileStdioStream {
     io: PollEvented<TtyFile>,
-    rx: Receiver<String>,
+    stdin_rx: Receiver<String>,
 }
 
 impl TtyFileStdioStream {
-    pub fn new(tty: TtyFile, rx: Receiver<String>) -> Self {
+    pub fn new(tty: TtyFile, stdin_rx: Receiver<String>) -> Self {
         TtyFileStdioStream {
             io: tty.into_io().expect("Unable to read TTY"),
-            rx,
+            stdin_rx,
         }
     }
 }
 
+// TODO: May not work correctly having stdin and stdout in one stream like this, but let's see what
+// happens... Might be OK as we don't tend to do stdin while stdout is happening, could be wrong.
 impl Stream for TtyFileStdioStream {
     type Item = BytesMut;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        match self.rx.poll().unwrap() {
+        match self.stdin_rx.poll().unwrap() {
             Async::Ready(Some(v)) => {
-                self.io.write(Bytes::from(&v[..]).as_ref()).unwrap();
+                match self.io.poll_write_ready() {
+                    Ok(Async::Ready(_)) => {
+                        match self.io.write(Bytes::from(&v[..]).as_ref()) {
+                            Ok(_) => (),
+                            Err(err) => {
+                                if err.kind() == io::ErrorKind::WouldBlock {
+                                    return Ok(Async::NotReady);
+                                }
+                                return Err(err)
+                            }
+                        };
+                    }
+                    Ok(Async::NotReady) => {
+                        println!("Not ready write");
+                        return Ok(Async::NotReady);
+                    }
+                    Err(err) => {
+                        return Err(err);
+                    }
+                };
             }
-            _ => {} // TODO: Erroring?
+            _ => {}
         }
 
+        // TODO: Loop? I think so but need something bigger than 512 bytes to clarify
         match self.io.poll_read_ready(mio::Ready::readable()) {
             Ok(Async::Ready(_)) => {
                 let mut buffer: [u8; 512] = [0; 512];
@@ -175,7 +197,7 @@ impl Stream for TtyFileStdioStream {
                 }
             }
             Ok(Async::NotReady) => {
-                println!("Not ready");
+                println!("Not ready read");
                 Ok(Async::NotReady)
             }
             Err(err) => Err(err),
@@ -189,8 +211,8 @@ pub struct ImplProcess {
     debugger_command: String,
     run_command: Vec<String>,
     has_started: bool,
-    rx: Option<Receiver<String>>,
-    tx: Sender<String>,
+    stdin_rx: Option<Receiver<String>>,
+    stdin_tx: Sender<String>,
 }
 
 impl ImplProcess {
@@ -198,16 +220,16 @@ impl ImplProcess {
         notifier: Arc<Mutex<Notifier>>,
         debugger_command: String,
         run_command: Vec<String>,
-        rx: Receiver<String>,
-        tx: Sender<String>,
+        stdin_rx: Receiver<String>,
+        stdin_tx: Sender<String>,
     ) -> ImplProcess {
         ImplProcess {
             notifier,
             debugger_command,
             run_command,
             has_started: false,
-            rx: Some(rx),
-            tx: tx,
+            stdin_rx: Some(stdin_rx),
+            stdin_tx,
         }
     }
 }
@@ -269,12 +291,12 @@ impl ProcessTrait for ImplProcess {
 
                 let mut out = io::stdout();
 
-                let rx = self.rx.take().unwrap();
+                let stdin_rx = self.stdin_rx.take().unwrap();
 
                 tokio::spawn(
-                    TtyFileStdioStream::new(tty, rx)
+                    TtyFileStdioStream::new(tty, stdin_rx)
                         .for_each(move |chunk| {
-                            println!("Chunk: `{:?}`", chunk);
+                            //println!("Chunk: `{:?}`", chunk);
                             // TODO: Analyse chunk
                             out.write_all(&chunk)
                         })
@@ -390,6 +412,16 @@ impl ProcessTrait for ImplProcess {
         //            .map_err(|e| {
         //                println!("Errored with: {:?}", e);
         //            });
+
+        self.stdin_tx
+            .try_send("settings set stop-line-count-after 0\n".to_string())
+            .unwrap();
+        self.stdin_tx
+            .try_send("settings set stop-line-count-before 0\n".to_string())
+            .unwrap();
+        self.stdin_tx
+            .try_send("settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string())
+            .unwrap();
 
         // TODO: Should be triggered by analysing stdout
         self.has_started = true;

@@ -212,10 +212,10 @@ impl fmt::Display for PadreRequest {
 }
 
 impl Future for PadreRequest {
-    type Item = ();
+    type Item = Response<json::object::Object>;
     type Error = io::Error;
 
-    fn poll(&mut self) -> Poll<(), io::Error> {
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         println!("HERE Running Padre Request Future");
 
         let response = match self.cmd.as_str() {
@@ -323,7 +323,7 @@ impl Future for PadreRequest {
 
         println!("Response: {:?}", response);
 
-        Ok(Async::Ready(()))
+        Ok(Async::Ready(response.unwrap())) // TODO: Error handle response
     }
 }
 
@@ -509,14 +509,11 @@ impl Stream for PadreConnection {
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         let sock_closed = self.fill_read_buf()?.is_ready();
-        println!("sock_closed {:?}", sock_closed);
 
         let padre_request = self.decode();
-        println!("padre_request {:?}", padre_request);
         match padre_request {
             Ok(s) => match s {
                 Some(mut t) => {
-                    println!("PadreRequest {:?}", t);
                     match t.poll() {
                         Ok(u) => {
                             println!("Polling Padre Request Future OK: {:?}", u);
@@ -534,10 +531,8 @@ impl Stream for PadreConnection {
         };
 
         if sock_closed {
-            println!("Socket closed");
             Ok(Async::Ready(None))
         } else {
-            println!("Not ready");
             Ok(Async::NotReady)
         }
     }

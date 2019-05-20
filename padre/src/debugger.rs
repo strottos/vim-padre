@@ -165,12 +165,12 @@ pub fn get_debugger(
         },
     };
 
-    let (tx, rx) = mpsc::channel(1);
+    let (stdin_tx, stdin_rx) = mpsc::channel(32);
 
     let debugger = match debugger_type.to_ascii_lowercase().as_ref() {
         "lldb" => Arc::new(Mutex::new(lldb::ImplDebugger::new(
             Arc::clone(&notifier),
-            tx.clone(),
+            stdin_tx.clone(),
         ))),
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };
@@ -189,8 +189,8 @@ pub fn get_debugger(
             notifier,
             debugger_arg,
             run_cmd,
-            rx,
-            tx,
+            stdin_rx,
+            stdin_tx,
         )))),
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };

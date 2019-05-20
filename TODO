@@ -1,11 +1,16 @@
 Improvements:
 
 - Padre command
+  - Tokio (Precursor to everything now):
+    - Ability to read outcomes after commands sent
+    - Forward stdin
+    - Change to Serde Json
+
   - (CRITICAL) Proper termination
   - (CRITICAL) Fix all tests
-  - (CRITICAL) Queueing of requests
-  - (CRITICAL) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
-  - (CRITICAL) run arguments
+  - (HIGH) Queueing of requests
+  - (HIGH) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
+  - (HIGH) run arguments
   - (HIGH) Make things more configurable
   - (HIGH) Auto step ins till we find code (configurable?)
   - (HIGH) Remove breakpoints
