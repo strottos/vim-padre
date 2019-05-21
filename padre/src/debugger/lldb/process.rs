@@ -137,14 +137,14 @@ impl Write for TtyFile {
 
 pub struct TtyFileStdioStream {
     io: PollEvented<TtyFile>,
-    stdin_rx: Receiver<String>,
+    process_rx: Receiver<String>,
 }
 
 impl TtyFileStdioStream {
-    pub fn new(tty: TtyFile, stdin_rx: Receiver<String>) -> Self {
+    pub fn new(tty: TtyFile, process_rx: Receiver<String>) -> Self {
         TtyFileStdioStream {
             io: tty.into_io().expect("Unable to read TTY"),
-            stdin_rx,
+            process_rx,
         }
     }
 }
@@ -156,7 +156,7 @@ impl Stream for TtyFileStdioStream {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        match self.stdin_rx.poll().unwrap() {
+        match self.process_rx.poll().unwrap() {
             Async::Ready(Some(v)) => {
                 match self.io.poll_write_ready() {
                     Ok(Async::Ready(_)) => {
@@ -166,7 +166,7 @@ impl Stream for TtyFileStdioStream {
                                 if err.kind() == io::ErrorKind::WouldBlock {
                                     return Ok(Async::NotReady);
                                 }
-                                return Err(err)
+                                return Err(err);
                             }
                         };
                     }
@@ -211,8 +211,9 @@ pub struct ImplProcess {
     debugger_command: String,
     run_command: Vec<String>,
     has_started: bool,
-    stdin_rx: Option<Receiver<String>>,
-    stdin_tx: Sender<String>,
+    process_rx: Option<Receiver<String>>,
+    process_tx: Sender<String>,
+    debugger_tx: Option<Sender<Bytes>>,
 }
 
 impl ImplProcess {
@@ -220,16 +221,18 @@ impl ImplProcess {
         notifier: Arc<Mutex<Notifier>>,
         debugger_command: String,
         run_command: Vec<String>,
-        stdin_rx: Receiver<String>,
-        stdin_tx: Sender<String>,
+        process_rx: Receiver<String>,
+        process_tx: Sender<String>,
+        debugger_tx: Sender<Bytes>,
     ) -> ImplProcess {
         ImplProcess {
             notifier,
             debugger_command,
             run_command,
             has_started: false,
-            stdin_rx: Some(stdin_rx),
-            stdin_tx,
+            process_rx: Some(process_rx),
+            process_tx,
+            debugger_tx: Some(debugger_tx),
         }
     }
 }
@@ -291,40 +294,34 @@ impl ProcessTrait for ImplProcess {
 
                 let mut out = io::stdout();
 
-                let stdin_rx = self.stdin_rx.take().unwrap();
+                let process_rx = self.process_rx.take().unwrap();
+
+                let mut debugger_tx = self.debugger_tx.take().unwrap();
 
                 tokio::spawn(
-                    TtyFileStdioStream::new(tty, stdin_rx)
+                    TtyFileStdioStream::new(tty, process_rx)
                         .for_each(move |chunk| {
                             //println!("Chunk: `{:?}`", chunk);
-                            // TODO: Analyse chunk
+                            let send = chunk.clone().freeze();
+                            debugger_tx.try_send(send).unwrap(); // TODO: Error handling and retrying?
                             out.write_all(&chunk)
                         })
                         .map_err(|e| println!("error reading stdout; error = {:?}", e)),
                 );
 
-                //                let (tx, rx) = mpsc::channel();
-                //
-                //                thread::spawn(move || {
-                //                    loop {
-                //                        match process_stdio.write(rx.recv().unwrap().as_bytes()) {
-                //                            Err(err) => {
-                //                                notifier_err.lock()
-                //                                            .unwrap()
-                //                                            .log_msg(LogLevel::CRITICAL,
-                //                                                     format!("Can't write to LLDB stdin: {}", err));
-                //                                println!("Can't write to LLDB stdin: {}", err);
-                //                                exit(1);
-                //                            },
-                //                            _ => {}
-                //                        };
-                //                    }
-                //                });
-                //
-                //                let notifier = self.notifier.clone();
-                //                let notifier_err = self.notifier.clone();
-                //                let listener = self.listener.clone();
+                // TODO: Move these to be ran once the debugger is seen to be up fully.
+                self.process_tx
+                    .try_send("settings set stop-line-count-after 0\n".to_string())
+                    .unwrap();
+                self.process_tx
+                    .try_send("settings set stop-line-count-before 0\n".to_string())
+                    .unwrap();
+                self.process_tx
+                    .try_send("settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string())
+                    .unwrap();
 
+                // TODO: Remove notifier from process, as we're sending everything to debugger that
+                // should be responsible for working out what's happening here.
                 self.notifier.lock().unwrap().signal_started();
             }
         };
@@ -412,16 +409,6 @@ impl ProcessTrait for ImplProcess {
         //            .map_err(|e| {
         //                println!("Errored with: {:?}", e);
         //            });
-
-        self.stdin_tx
-            .try_send("settings set stop-line-count-after 0\n".to_string())
-            .unwrap();
-        self.stdin_tx
-            .try_send("settings set stop-line-count-before 0\n".to_string())
-            .unwrap();
-        self.stdin_tx
-            .try_send("settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string())
-            .unwrap();
 
         // TODO: Should be triggered by analysing stdout
         self.has_started = true;

@@ -2,9 +2,12 @@ Improvements:
 
 - Padre command
   - Tokio (Precursor to everything now):
-    - Ability to read outcomes after commands sent
+    - Ability to read outcomes after commands sent. Debugger needs to be able to say to the process, here's something to forward to so it can listen on run and print (blocking is OK here so some kind of condvar to be used?), and the process can send messages to the debugger to say it's changed state.
     - Forward stdin
     - Change to Serde Json
+    - Make different states for debugger to be in maybe? So running and paused for example, and when running we can pause, print and when paused we can step, continue, etc.
+    - Need to be able to read output for run and print, others can return immediately but change state of the debugger.
+    - Add in signal processing
 
   - (CRITICAL) Proper termination
   - (CRITICAL) Fix all tests

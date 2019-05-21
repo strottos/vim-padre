@@ -6,58 +6,65 @@ use crate::debugger::DebuggerTrait;
 use crate::notifier::{LogLevel, Notifier};
 use crate::request::{RequestError, Response};
 
-use tokio::sync::mpsc::Sender;
+use bytes::Bytes;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
     notifier: Arc<Mutex<Notifier>>,
-    stdin_tx: Sender<String>,
+    process_tx: Sender<String>,
+    debugger_rx: Receiver<Bytes>,
     started: bool,
 }
 
 impl ImplDebugger {
-    pub fn new(notifier: Arc<Mutex<Notifier>>, stdin_tx: Sender<String>) -> ImplDebugger {
+    pub fn new(
+        notifier: Arc<Mutex<Notifier>>,
+        process_tx: Sender<String>,
+        debugger_rx: Receiver<Bytes>,
+    ) -> ImplDebugger {
         ImplDebugger {
             notifier,
-            stdin_tx,
+            process_tx,
+            debugger_rx,
             started: false,
         }
     }
 }
 
 impl ImplDebugger {
-//    fn check_response(&self, msg: String, timeout: u64) -> (LLDBStatus, Vec<String>) {
-//        // Reset the current status
-//        let &(ref lock, ref cvar) = &*self.listener;
-//        let mut started = lock.lock().unwrap();
-//        *started = (LLDBStatus::None, vec!());
-//
-//        let cmd = format!("{}\n", msg);
-//
-//        // Send the request
-//        self.sender.clone().unwrap().send(cmd).expect("Can't communicate with LLDB");
-//
-//        // Check for the status change
-//        let result = cvar.wait_timeout(started, Duration::from_millis(timeout)).unwrap();
-//        started = result.0;
-//
-//        match started.0 {
-//            LLDBStatus::None => {
-//                self.notifier
-//                    .lock()
-//                    .unwrap()
-//                    .log_msg(LogLevel::CRITICAL,
-//                             format!("Timed out waiting for condition: {}", &msg));
-//                return (LLDBStatus::None, vec!());
-//            },
-//            _ => {},
-//        };
-//
-//        let status = started.0.clone();
-//        let args = started.1.clone();
-//
-//        (status, args)
-//    }
+    //    fn check_response(&self, msg: String, timeout: u64) -> (LLDBStatus, Vec<String>) {
+    //        // Reset the current status
+    //        let &(ref lock, ref cvar) = &*self.listener;
+    //        let mut started = lock.lock().unwrap();
+    //        *started = (LLDBStatus::None, vec!());
+    //
+    //        let cmd = format!("{}\n", msg);
+    //
+    //        // Send the request
+    //        self.sender.clone().unwrap().send(cmd).expect("Can't communicate with LLDB");
+    //
+    //        // Check for the status change
+    //        let result = cvar.wait_timeout(started, Duration::from_millis(timeout)).unwrap();
+    //        started = result.0;
+    //
+    //        match started.0 {
+    //            LLDBStatus::None => {
+    //                self.notifier
+    //                    .lock()
+    //                    .unwrap()
+    //                    .log_msg(LogLevel::CRITICAL,
+    //                             format!("Timed out waiting for condition: {}", &msg));
+    //                return (LLDBStatus::None, vec!());
+    //            },
+    //            _ => {},
+    //        };
+    //
+    //        let status = started.0.clone();
+    //        let args = started.1.clone();
+    //
+    //        (status, args)
+    //    }
 }
 
 impl DebuggerTrait for ImplDebugger {
@@ -65,8 +72,12 @@ impl DebuggerTrait for ImplDebugger {
         println!("RUNNING");
         let mut ret = json::object::Object::new();
 
-        self.stdin_tx.try_send("break set --name main\n".to_string()).unwrap();
-        self.stdin_tx.try_send("process launch\n".to_string()).unwrap();
+        self.process_tx
+            .try_send("break set --name main\n".to_string())
+            .unwrap();
+        self.process_tx
+            .try_send("process launch\n".to_string())
+            .unwrap();
 
         ret.insert("pid", json::from("0".to_string()));
 
