@@ -18,126 +18,6 @@ use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
 
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    fn check_error(err: super::RequestError, msg: &str, debug: &str) {
-        assert_eq!(format!("{}", err), msg.to_string());
-        assert_eq!(err.get_debug_info(), debug.to_string());
-    }
-
-    #[test]
-    fn check_json_good_request_handled() {
-        let ret = super::handle_json("[1,{\"cmd\",\"ping\"}]");
-        assert_eq!(ret.is_ok(), true);
-        assert_eq!(ret.unwrap(), (1, "ping".to_string()));
-    }
-
-    #[test]
-    fn check_json_nonsense_handled() {
-        let ret = super::handle_json("nonsense");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Must be valid JSON",
-            "Can't read JSON character o in line 1 at column 2: nonsense",
-        );
-    }
-
-    #[test]
-    fn check_json_no_end_handled() {
-        let ret = super::handle_json("[1,\"no end\"");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Must be valid JSON",
-            "Can't read JSON: [1,\"no end\"",
-        );
-    }
-
-    #[test]
-    fn check_json_bad_id_handled() {
-        let ret = super::handle_json("[\"a\",\"b\"]");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Can't read id",
-            "Can't read id: [\"a\",\"b\"]",
-        );
-    }
-
-    #[test]
-    fn check_json_bad_cmd_handled() {
-        let ret = super::handle_json("[1,{}]");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Can't read command",
-            "Can't read command: [1,2]",
-        );
-    }
-
-    #[test]
-    fn check_cmd_single_cmd_handled() {
-        let ret = super::interpret_cmd("stepIn");
-        let expected_args = HashMap::new();
-        assert_eq!(ret.is_ok(), true);
-        assert_eq!(ret.unwrap(), ("stepIn".to_string(), expected_args));
-    }
-
-    #[test]
-    fn check_cmd_cmd_with_args_handled() {
-        let ret = super::interpret_cmd("breakpoint file=test.c line=1");
-        let mut expected_args = HashMap::new();
-        expected_args.insert("file".to_string(), "test.c".to_string());
-        expected_args.insert("line".to_string(), "1".to_string());
-        assert_eq!(ret.is_ok(), true);
-        assert_eq!(ret.unwrap(), ("breakpoint".to_string(), expected_args));
-    }
-
-    #[test]
-    fn check_cmd_no_cmd_handled() {
-        let ret = super::interpret_cmd("");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Can't find command",
-            "Can't find command: \"\"",
-        );
-    }
-
-    #[test]
-    fn check_cmd_cmd_with_bad_arg_handled() {
-        let ret = super::interpret_cmd("breakpoint test");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Can't understand arguments",
-            "Can't understand arguments: [\"test\"]",
-        );
-
-        let ret = super::interpret_cmd("breakpoint test=test=test");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Can't understand arguments",
-            "Can't understand arguments: [\"test=test=test\"]",
-        );
-    }
-
-    #[test]
-    fn check_cmd_cmd_with_bad_args_handled() {
-        let ret = super::interpret_cmd("breakpoint test 1");
-        assert_eq!(ret.is_err(), true);
-        check_error(
-            ret.err().unwrap(),
-            "Can't understand arguments",
-            "Can't understand arguments: [\"test\",\"1\"]",
-        );
-    }
-}
-
 #[derive(Debug)]
 pub enum Response<T> {
     OK(T),
@@ -222,14 +102,7 @@ impl Future for PadreRequest {
             // TODO: Find better method than unwrap()
             "ping" => self.padre_server.lock().unwrap().ping(),
             "pings" => self.padre_server.lock().unwrap().pings(),
-            "run" => self
-                .padre_server
-                .lock()
-                .unwrap()
-                .debugger
-                .lock()
-                .unwrap()
-                .run(),
+            "run" => self.padre_server.lock().unwrap().run(),
             //            "breakpoint" => {
             //                let bad_args = get_bad_args(&args, vec!("file", "line"));
             //
@@ -269,30 +142,30 @@ impl Future for PadreRequest {
             //                            .unwrap()
             //                            .breakpoint(file, line)
             //            },
-            "stepIn" => self
-                .padre_server
-                .lock()
-                .unwrap()
-                .debugger
-                .lock()
-                .unwrap()
-                .step_in(),
-            "stepOver" => self
-                .padre_server
-                .lock()
-                .unwrap()
-                .debugger
-                .lock()
-                .unwrap()
-                .step_over(),
-            "continue" => self
-                .padre_server
-                .lock()
-                .unwrap()
-                .debugger
-                .lock()
-                .unwrap()
-                .continue_on(),
+//            "stepIn" => self
+//                .padre_server
+//                .lock()
+//                .unwrap()
+//                .debugger
+//                .lock()
+//                .unwrap()
+//                .step_in(),
+//            "stepOver" => self
+//                .padre_server
+//                .lock()
+//                .unwrap()
+//                .debugger
+//                .lock()
+//                .unwrap()
+//                .step_over(),
+//            "continue" => self
+//                .padre_server
+//                .lock()
+//                .unwrap()
+//                .debugger
+//                .lock()
+//                .unwrap()
+//                .continue_on(),
             //            "print" => {
             //                let bad_args = get_bad_args(&args, vec!("variable"));
             //
@@ -624,115 +497,115 @@ fn handle_cmd(
         // TODO: Find better method than unwrap()
         "ping" => padre_server.lock().unwrap().ping(),
         "pings" => padre_server.lock().unwrap().pings(),
-        "run" => padre_server.lock().unwrap().debugger.lock().unwrap().run(),
-        "breakpoint" => {
-            let bad_args = get_bad_args(&args, vec!["file", "line"]);
-
-            if bad_args.len() != 0 {
-                return Err(RequestError::new(
-                    "Bad arguments for breakpoint".to_string(),
-                    format!(
-                        "Bad arguments for breakpoint: {}",
-                        json::stringify(bad_args)
-                    ),
-                ));
-            }
-
-            let file = match args.get("file") {
-                Some(s) => s.to_string(),
-                None => {
-                    return Err(RequestError::new(
-                        "Can't read file for breakpoint".to_string(),
-                        "Can't read file for breakpoint".to_string(),
-                    ))
-                }
-            };
-
-            let line = match args.get("line") {
-                Some(s) => s.to_string(),
-                None => {
-                    return Err(RequestError::new(
-                        "Can't read line for breakpoint".to_string(),
-                        "Can't read line for breakpoint".to_string(),
-                    ))
-                }
-            };
-
-            let line = match line.parse::<u32>() {
-                Ok(s) => s,
-                Err(err) => {
-                    return Err(RequestError::new(
-                        "Can't parse line number".to_string(),
-                        format!("Can't parse line number: {}", err),
-                    ))
-                }
-            };
-
-            notifier.lock().unwrap().log_msg(
-                LogLevel::INFO,
-                format!(
-                    "Setting breakpoint in file {} at line number {}",
-                    file, line
-                ),
-            );
-
-            padre_server
-                .lock()
-                .unwrap()
-                .debugger
-                .lock()
-                .unwrap()
-                .breakpoint(file, line)
-        }
-        "stepIn" => padre_server
-            .lock()
-            .unwrap()
-            .debugger
-            .lock()
-            .unwrap()
-            .step_in(),
-        "stepOver" => padre_server
-            .lock()
-            .unwrap()
-            .debugger
-            .lock()
-            .unwrap()
-            .step_over(),
-        "continue" => padre_server
-            .lock()
-            .unwrap()
-            .debugger
-            .lock()
-            .unwrap()
-            .continue_on(),
-        "print" => {
-            let bad_args = get_bad_args(&args, vec!["variable"]);
-
-            if bad_args.len() != 0 {
-                return Err(RequestError::new(
-                    "Bad arguments for print".to_string(),
-                    format!("Bad arguments for print: {}", json::stringify(bad_args)),
-                ));
-            }
-
-            let variable = match args.get("variable") {
-                Some(s) => s.to_string(),
-                None => {
-                    return Err(RequestError::new(
-                        "Can't read variable for print".to_string(),
-                        "Can't read variable for print".to_string(),
-                    ))
-                }
-            };
-
-            padre_server
-                .lock()
-                .unwrap()
-                .debugger
-                .lock()
-                .unwrap()
-                .print(variable)
-        }
+//        "run" => padre_server.lock().unwrap().debugger.lock().unwrap().run(),
+//        "breakpoint" => {
+//            let bad_args = get_bad_args(&args, vec!["file", "line"]);
+//
+//            if bad_args.len() != 0 {
+//                return Err(RequestError::new(
+//                    "Bad arguments for breakpoint".to_string(),
+//                    format!(
+//                        "Bad arguments for breakpoint: {}",
+//                        json::stringify(bad_args)
+//                    ),
+//                ));
+//            }
+//
+//            let file = match args.get("file") {
+//                Some(s) => s.to_string(),
+//                None => {
+//                    return Err(RequestError::new(
+//                        "Can't read file for breakpoint".to_string(),
+//                        "Can't read file for breakpoint".to_string(),
+//                    ))
+//                }
+//            };
+//
+//            let line = match args.get("line") {
+//                Some(s) => s.to_string(),
+//                None => {
+//                    return Err(RequestError::new(
+//                        "Can't read line for breakpoint".to_string(),
+//                        "Can't read line for breakpoint".to_string(),
+//                    ))
+//                }
+//            };
+//
+//            let line = match line.parse::<u32>() {
+//                Ok(s) => s,
+//                Err(err) => {
+//                    return Err(RequestError::new(
+//                        "Can't parse line number".to_string(),
+//                        format!("Can't parse line number: {}", err),
+//                    ))
+//                }
+//            };
+//
+//            notifier.lock().unwrap().log_msg(
+//                LogLevel::INFO,
+//                format!(
+//                    "Setting breakpoint in file {} at line number {}",
+//                    file, line
+//                ),
+//            );
+//
+//            padre_server
+//                .lock()
+//                .unwrap()
+//                .debugger
+//                .lock()
+//                .unwrap()
+//                .breakpoint(file, line)
+//        }
+//        "stepIn" => padre_server
+//            .lock()
+//            .unwrap()
+//            .debugger
+//            .lock()
+//            .unwrap()
+//            .step_in(),
+//        "stepOver" => padre_server
+//            .lock()
+//            .unwrap()
+//            .debugger
+//            .lock()
+//            .unwrap()
+//            .step_over(),
+//        "continue" => padre_server
+//            .lock()
+//            .unwrap()
+//            .debugger
+//            .lock()
+//            .unwrap()
+//            .continue_on(),
+//        "print" => {
+//            let bad_args = get_bad_args(&args, vec!["variable"]);
+//
+//            if bad_args.len() != 0 {
+//                return Err(RequestError::new(
+//                    "Bad arguments for print".to_string(),
+//                    format!("Bad arguments for print: {}", json::stringify(bad_args)),
+//                ));
+//            }
+//
+//            let variable = match args.get("variable") {
+//                Some(s) => s.to_string(),
+//                None => {
+//                    return Err(RequestError::new(
+//                        "Can't read variable for print".to_string(),
+//                        "Can't read variable for print".to_string(),
+//                    ))
+//                }
+//            };
+//
+//            padre_server
+//                .lock()
+//                .unwrap()
+//                .debugger
+//                .lock()
+//                .unwrap()
+//                .print(variable)
+//        }
         _ => Err(RequestError::new(
             "Can't understand request".to_string(),
             format!("Can't understand request: {}", data),
@@ -882,5 +755,125 @@ fn handle_error(notifier: &Arc<Mutex<Notifier>>, err: RequestError) {
             .lock()
             .unwrap()
             .log_msg(LogLevel::DEBUG, debug_info);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    fn check_error(err: super::RequestError, msg: &str, debug: &str) {
+        assert_eq!(format!("{}", err), msg.to_string());
+        assert_eq!(err.get_debug_info(), debug.to_string());
+    }
+
+    #[test]
+    fn check_json_good_request_handled() {
+        let ret = super::handle_json("[1,{\"cmd\",\"ping\"}]");
+        assert_eq!(ret.is_ok(), true);
+        assert_eq!(ret.unwrap(), (1, "ping".to_string()));
+    }
+
+    #[test]
+    fn check_json_nonsense_handled() {
+        let ret = super::handle_json("nonsense");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Must be valid JSON",
+            "Can't read JSON character o in line 1 at column 2: nonsense",
+        );
+    }
+
+    #[test]
+    fn check_json_no_end_handled() {
+        let ret = super::handle_json("[1,\"no end\"");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Must be valid JSON",
+            "Can't read JSON: [1,\"no end\"",
+        );
+    }
+
+    #[test]
+    fn check_json_bad_id_handled() {
+        let ret = super::handle_json("[\"a\",\"b\"]");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Can't read id",
+            "Can't read id: [\"a\",\"b\"]",
+        );
+    }
+
+    #[test]
+    fn check_json_bad_cmd_handled() {
+        let ret = super::handle_json("[1,{}]");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Can't read command",
+            "Can't read command: [1,2]",
+        );
+    }
+
+    #[test]
+    fn check_cmd_single_cmd_handled() {
+        let ret = super::interpret_cmd("stepIn");
+        let expected_args = HashMap::new();
+        assert_eq!(ret.is_ok(), true);
+        assert_eq!(ret.unwrap(), ("stepIn".to_string(), expected_args));
+    }
+
+    #[test]
+    fn check_cmd_cmd_with_args_handled() {
+        let ret = super::interpret_cmd("breakpoint file=test.c line=1");
+        let mut expected_args = HashMap::new();
+        expected_args.insert("file".to_string(), "test.c".to_string());
+        expected_args.insert("line".to_string(), "1".to_string());
+        assert_eq!(ret.is_ok(), true);
+        assert_eq!(ret.unwrap(), ("breakpoint".to_string(), expected_args));
+    }
+
+    #[test]
+    fn check_cmd_no_cmd_handled() {
+        let ret = super::interpret_cmd("");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Can't find command",
+            "Can't find command: \"\"",
+        );
+    }
+
+    #[test]
+    fn check_cmd_cmd_with_bad_arg_handled() {
+        let ret = super::interpret_cmd("breakpoint test");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Can't understand arguments",
+            "Can't understand arguments: [\"test\"]",
+        );
+
+        let ret = super::interpret_cmd("breakpoint test=test=test");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Can't understand arguments",
+            "Can't understand arguments: [\"test=test=test\"]",
+        );
+    }
+
+    #[test]
+    fn check_cmd_cmd_with_bad_args_handled() {
+        let ret = super::interpret_cmd("breakpoint test 1");
+        assert_eq!(ret.is_err(), true);
+        check_error(
+            ret.err().unwrap(),
+            "Can't understand arguments",
+            "Can't understand arguments: [\"test\",\"1\"]",
+        );
     }
 }

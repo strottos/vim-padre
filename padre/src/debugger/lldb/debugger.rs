@@ -1,38 +1,43 @@
 //! lldb client debugger
 
+use std::io;
 use std::sync::{Arc, Mutex};
 
-use crate::debugger::DebuggerTrait;
+use crate::debugger::{DebuggerInstruction, DebuggerState};
 use crate::notifier::{LogLevel, Notifier};
 use crate::request::{RequestError, Response};
 
 use bytes::Bytes;
+use tokio::prelude::*;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
     notifier: Arc<Mutex<Notifier>>,
-    process_tx: Sender<String>,
-    debugger_rx: Receiver<Bytes>,
+    process_tx: Sender<Bytes>,
+    debugger_rx: Option<Receiver<DebuggerInstruction>>,
+    debugger_tx: Sender<DebuggerInstruction>,
     started: bool,
+    state: DebuggerState,
 }
 
 impl ImplDebugger {
     pub fn new(
         notifier: Arc<Mutex<Notifier>>,
-        process_tx: Sender<String>,
-        debugger_rx: Receiver<Bytes>,
+        process_tx: Sender<Bytes>,
+        debugger_rx: Receiver<DebuggerInstruction>,
+        debugger_tx: Sender<DebuggerInstruction>,
     ) -> ImplDebugger {
         ImplDebugger {
             notifier,
             process_tx,
-            debugger_rx,
+            debugger_rx: Some(debugger_rx),
+            debugger_tx,
             started: false,
+            state: DebuggerState::Stopped,
         }
     }
-}
 
-impl ImplDebugger {
     //    fn check_response(&self, msg: String, timeout: u64) -> (LLDBStatus, Vec<String>) {
     //        // Reset the current status
     //        let &(ref lock, ref cvar) = &*self.listener;
@@ -65,57 +70,93 @@ impl ImplDebugger {
     //
     //        (status, args)
     //    }
+
+//    fn run(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+//        println!("RUNNING");
+//        let mut ret = json::object::Object::new();
+//
+//        self.process_tx
+//            .try_send(Bytes::from(&b"break set --name main\n"[..]))
+//            .unwrap();
+//        self.process_tx
+//            .try_send(Bytes::from(&b"process launch\n"[..]))
+//            .unwrap();
+//
+//        ret.insert("pid", json::from("0".to_string()));
+//
+//        Ok(Response::OK(ret))
+//    }
+//
+//    fn breakpoint(
+//        &mut self,
+//        file: String,
+//        line_num: u32,
+//    ) -> Result<Response<json::object::Object>, RequestError> {
+//        let mut ret = json::object::Object::new();
+//
+//        Ok(Response::OK(ret))
+//    }
+//
+//    fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+//        let mut ret = json::object::Object::new();
+//
+//        Ok(Response::OK(ret))
+//    }
+//
+//    fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+//        let mut ret = json::object::Object::new();
+//
+//        Ok(Response::OK(ret))
+//    }
+//
+//    fn continue_on(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+//        let mut ret = json::object::Object::new();
+//
+//        Ok(Response::OK(ret))
+//    }
+//
+//    fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError> {
+//        let mut ret = json::object::Object::new();
+//
+//        Ok(Response::OK(ret))
+//    }
 }
 
-impl DebuggerTrait for ImplDebugger {
-    fn run(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        println!("RUNNING");
-        let mut ret = json::object::Object::new();
+impl Future for ImplDebugger {
+    type Item = ();
+    type Error = ();
 
-        self.process_tx
-            .try_send("break set --name main\n".to_string())
-            .unwrap();
-        self.process_tx
-            .try_send("process launch\n".to_string())
-            .unwrap();
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let debugger_rx = self.debugger_rx.take().unwrap();
 
-        ret.insert("pid", json::from("0".to_string()));
+        let debugger = LLDBDebugger{};
 
-        Ok(Response::OK(ret))
+        println!("TESTING DEBUGGER FUTURE");
+
+        tokio::spawn(
+            debugger_rx.for_each(move |instruction| {
+                debugger.handle(instruction);
+                Ok(())
+            }).map_err(|e| {
+                println!("debugger receiver = {:?}", e);
+            })
+        );
+
+        Ok(Async::NotReady)
+    }
+}
+
+pub struct LLDBDebugger {
+
+}
+
+impl LLDBDebugger {
+    fn handle(&self, instruction: DebuggerInstruction) {
+        println!("TESTING TESTY MCTESTFACE: {:?}", instruction);
+        self.run();
     }
 
-    fn breakpoint(
-        &mut self,
-        file: String,
-        line_num: u32,
-    ) -> Result<Response<json::object::Object>, RequestError> {
-        let mut ret = json::object::Object::new();
-
-        Ok(Response::OK(ret))
-    }
-
-    fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        let mut ret = json::object::Object::new();
-
-        Ok(Response::OK(ret))
-    }
-
-    fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        let mut ret = json::object::Object::new();
-
-        Ok(Response::OK(ret))
-    }
-
-    fn continue_on(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-        let mut ret = json::object::Object::new();
-
-        Ok(Response::OK(ret))
-    }
-
-    fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError> {
-        let mut ret = json::object::Object::new();
-
-        Ok(Response::OK(ret))
+    fn run(&self) {
     }
 }
 

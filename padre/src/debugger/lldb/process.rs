@@ -12,7 +12,7 @@ use std::process::exit;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-use crate::debugger::ProcessTrait;
+use crate::debugger::{DebuggerInstruction, ProcessTrait};
 use crate::notifier::{LogLevel, Notifier};
 
 use bytes::{Bytes, BytesMut};
@@ -137,11 +137,11 @@ impl Write for TtyFile {
 
 pub struct TtyFileStdioStream {
     io: PollEvented<TtyFile>,
-    process_rx: Receiver<String>,
+    process_rx: Receiver<Bytes>,
 }
 
 impl TtyFileStdioStream {
-    pub fn new(tty: TtyFile, process_rx: Receiver<String>) -> Self {
+    pub fn new(tty: TtyFile, process_rx: Receiver<Bytes>) -> Self {
         TtyFileStdioStream {
             io: tty.into_io().expect("Unable to read TTY"),
             process_rx,
@@ -211,9 +211,9 @@ pub struct ImplProcess {
     debugger_command: String,
     run_command: Vec<String>,
     has_started: bool,
-    process_rx: Option<Receiver<String>>,
-    process_tx: Sender<String>,
-    debugger_tx: Option<Sender<Bytes>>,
+    process_rx: Option<Receiver<Bytes>>,
+    process_tx: Sender<Bytes>,
+    debugger_tx: Sender<DebuggerInstruction>,
 }
 
 impl ImplProcess {
@@ -221,9 +221,9 @@ impl ImplProcess {
         notifier: Arc<Mutex<Notifier>>,
         debugger_command: String,
         run_command: Vec<String>,
-        process_rx: Receiver<String>,
-        process_tx: Sender<String>,
-        debugger_tx: Sender<Bytes>,
+        process_rx: Receiver<Bytes>,
+        process_tx: Sender<Bytes>,
+        debugger_tx: Sender<DebuggerInstruction>,
     ) -> ImplProcess {
         ImplProcess {
             notifier,
@@ -232,7 +232,7 @@ impl ImplProcess {
             has_started: false,
             process_rx: Some(process_rx),
             process_tx,
-            debugger_tx: Some(debugger_tx),
+            debugger_tx,
         }
     }
 }
@@ -296,14 +296,12 @@ impl ProcessTrait for ImplProcess {
 
                 let process_rx = self.process_rx.take().unwrap();
 
-                let mut debugger_tx = self.debugger_tx.take().unwrap();
-
                 tokio::spawn(
                     TtyFileStdioStream::new(tty, process_rx)
                         .for_each(move |chunk| {
                             //println!("Chunk: `{:?}`", chunk);
-                            let send = chunk.clone().freeze();
-                            debugger_tx.try_send(send).unwrap(); // TODO: Error handling and retrying?
+                            //let send = chunk.clone().freeze();
+                            //debugger_tx.try_send(send).unwrap(); // TODO: Error handling and retrying?
                             out.write_all(&chunk)
                         })
                         .map_err(|e| println!("error reading stdout; error = {:?}", e)),
@@ -311,13 +309,13 @@ impl ProcessTrait for ImplProcess {
 
                 // TODO: Move these to be ran once the debugger is seen to be up fully.
                 self.process_tx
-                    .try_send("settings set stop-line-count-after 0\n".to_string())
+                    .try_send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
                     .unwrap();
                 self.process_tx
-                    .try_send("settings set stop-line-count-before 0\n".to_string())
+                    .try_send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
                     .unwrap();
                 self.process_tx
-                    .try_send("settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n".to_string())
+                    .try_send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
                     .unwrap();
 
                 // TODO: Remove notifier from process, as we're sending everything to debugger that

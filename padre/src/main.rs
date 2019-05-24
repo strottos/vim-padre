@@ -92,70 +92,78 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
 //    });
 //}
 
+struct Runner{}
+
+impl Future for Runner {
+    type Item = ();
+    type Error = ();
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let args = get_config();
+
+        let connection_string = get_connection(&args);
+        let listener = TcpListener::bind(&connection_string)
+            .expect(&format!("Can't open TCP listener on {}", connection_string));
+
+        println!("Listening on {}", connection_string);
+
+        let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
+
+        let debug_cmd: Vec<String> = args
+            .values_of("debug_cmd")
+            .expect("Can't find program to debug, please rerun with correct parameters")
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+
+        let padre_server = debugger::get_debugger(
+            args.value_of("debugger"),
+            args.value_of("type"),
+            debug_cmd,
+            Arc::clone(&notifier_rc),
+        );
+
+        //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
+        //    install_signals(signals, Arc::clone(&padre_server_rc));
+
+        let padre_server_rc = Arc::new(Mutex::new(padre_server));
+
+        let request_notifier = Arc::clone(&notifier_rc);
+        let request_debugger = Arc::clone(&padre_server_rc);
+
+        tokio::spawn(
+            listener
+                .incoming()
+                .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
+                .for_each(move |socket| {
+                    let padre_connection = request::PadreConnection::new(
+                        socket,
+                        Arc::clone(&request_notifier),
+                        Arc::clone(&request_debugger),
+                    );
+
+                    tokio::spawn(
+                        padre_connection
+                            .for_each(|a| {
+                                println!("Main foreach a: {:?}", a);
+                                Ok(())
+                            })
+                            .map_err(|e| {
+                                println!("connection error = {:?}", e);
+                            }),
+                    );
+
+                    Ok(())
+                }),
+        );
+
+        Ok(Async::NotReady)
+    }
+}
+
 fn main() -> io::Result<()> {
-    let args = get_config();
-
-    let connection_string = get_connection(&args);
-    let listener = TcpListener::bind(&connection_string)
-        .expect(&format!("Can't open TCP listener on {}", connection_string));
-
-    println!("Listening on {}", connection_string);
-
-    let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
-
-    let debug_cmd: Vec<String> = args
-        .values_of("debug_cmd")
-        .expect("Can't find program to debug, please rerun with correct parameters")
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>();
-
-    let (padre_server, padre_process) = debugger::get_debugger(
-        args.value_of("debugger"),
-        args.value_of("type"),
-        debug_cmd,
-        Arc::clone(&notifier_rc),
-    );
-
-    let padre_server_rc = Arc::new(Mutex::new(padre_server));
-
-    //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
-    //    install_signals(signals, Arc::clone(&padre_server_rc));
-
     let mut runtime = Runtime::new().unwrap();
 
-    let request_debugger = Arc::clone(&padre_server_rc);
-    let request_notifier = Arc::clone(&notifier_rc);
-
-    runtime.spawn(
-        listener
-            .incoming()
-            .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
-            .for_each(move |socket| {
-                let padre_connection = request::PadreConnection::new(
-                    socket,
-                    Arc::clone(&request_notifier),
-                    Arc::clone(&request_debugger),
-                );
-
-                tokio::spawn(
-                    padre_connection
-                        .for_each(|a| {
-                            println!("Main foreach a: {:?}", a);
-                            Ok(())
-                        })
-                        .map_err(|e| {
-                            println!("connection error = {:?}", e);
-                        }),
-                );
-
-                Ok(())
-            }),
-    );
-
-    // TODO: Spawn debugger process as future
-    runtime.spawn(padre_process.map_err(|e| {
-        println!("connection error = {:?}", e);
-    }));
+    runtime.spawn(Runner{});
 
     runtime.run().unwrap();
 
