@@ -11,12 +11,11 @@ use std::sync::{Arc, Mutex};
 use crate::debugger::PadreDebugger;
 use crate::notifier::{LogLevel, Notifier};
 
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use futures::sync::mpsc;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
-use tokio::runtime::current_thread::Runtime;
 
 #[derive(Debug)]
 pub enum Response<T> {
@@ -61,7 +60,6 @@ pub struct PadreRequest {
     cmd: String,
     args: HashMap<String, String>,
     padre_server: Arc<Mutex<PadreDebugger>>,
-    response: Option<json::object::Object>,
 }
 
 impl PadreRequest {
@@ -76,7 +74,6 @@ impl PadreRequest {
             cmd,
             args,
             padre_server,
-            response: None,
         }
     }
 }
@@ -410,6 +407,8 @@ impl Stream for PadreConnection {
         }
     }
 }
+
+///////////////// Old stuff ////////////////////
 
 // TODO: Work out how to handle networking errors
 pub fn handle_connection(

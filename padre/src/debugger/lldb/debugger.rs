@@ -129,7 +129,7 @@ impl Future for ImplDebugger {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let debugger_rx = self.debugger_rx.take().unwrap();
 
-        let debugger = LLDBDebugger{};
+        let mut debugger = LLDBDebugger::new(self.process_tx.clone());
 
         println!("TESTING DEBUGGER FUTURE");
 
@@ -147,16 +147,37 @@ impl Future for ImplDebugger {
 }
 
 pub struct LLDBDebugger {
-
+    process_tx: Sender<Bytes>,
 }
 
 impl LLDBDebugger {
-    fn handle(&self, instruction: DebuggerInstruction) {
+    pub fn new(
+        process_tx: Sender<Bytes>,
+    ) -> LLDBDebugger {
+        LLDBDebugger {
+            process_tx
+        }
+    }
+
+    fn handle(&mut self, instruction: DebuggerInstruction) {
         println!("TESTING TESTY MCTESTFACE: {:?}", instruction);
         self.run();
     }
 
-    fn run(&self) {
+    fn run(&mut self) {
+        println!("RUNNING");
+//        let mut ret = json::object::Object::new();
+
+        self.process_tx
+            .try_send(Bytes::from(&b"break set --name main\n"[..]))
+            .unwrap();
+        self.process_tx
+            .try_send(Bytes::from(&b"process launch\n"[..]))
+            .unwrap();
+
+//        ret.insert("pid", json::from("0".to_string()));
+//
+//        Ok(Response::OK(ret))
     }
 }
 
