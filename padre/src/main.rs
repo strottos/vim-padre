@@ -18,9 +18,9 @@ use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
 //use signal_hook::iterator::Signals;
 
-mod debugger;
-mod notifier;
+//mod notifier;
 mod request;
+mod server;
 
 fn get_config<'a>() -> ArgMatches<'a> {
     let app = App::new("VIM Padre")
@@ -92,7 +92,7 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
 //    });
 //}
 
-struct Runner{}
+struct Runner {}
 
 impl Future for Runner {
     type Item = ();
@@ -107,38 +107,36 @@ impl Future for Runner {
 
         println!("Listening on {}", connection_string);
 
-        let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
-
-        let debug_cmd: Vec<String> = args
-            .values_of("debug_cmd")
-            .expect("Can't find program to debug, please rerun with correct parameters")
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>();
-
-        let padre_server = debugger::get_debugger(
-            args.value_of("debugger"),
-            args.value_of("type"),
-            debug_cmd,
-            Arc::clone(&notifier_rc),
-        );
-
-        //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
-        //    install_signals(signals, Arc::clone(&padre_server_rc));
-
-        let padre_server_rc = Arc::new(Mutex::new(padre_server));
-
-        let request_notifier = Arc::clone(&notifier_rc);
-        let request_debugger = Arc::clone(&padre_server_rc);
+//        let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
+//
+//        let debug_cmd: Vec<String> = args
+//            .values_of("debug_cmd")
+//            .expect("Can't find program to debug, please rerun with correct parameters")
+//            .map(|x| x.to_string())
+//            .collect::<Vec<String>>();
+//
+//        let debugger = Arc::new(Mutex::new(debugger::get_debugger(
+//            args.value_of("debugger"),
+//            args.value_of("type"),
+//            debug_cmd,
+//            Arc::clone(&notifier_rc),
+//        )));
+//
+//        //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
+//        //    install_signals(signals, Arc::clone(&padre_server_rc));
+//
+//        let request_notifier = Arc::clone(&notifier_rc);
+//        let request_debugger = Arc::clone(&debugger);
 
         tokio::spawn(
             listener
                 .incoming()
                 .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
                 .for_each(move |socket| {
-                    let padre_connection = request::PadreConnection::new(
+                    let padre_connection = server::PadreConnection::new(
                         socket,
-                        Arc::clone(&request_notifier),
-                        Arc::clone(&request_debugger),
+//                        Arc::clone(&request_notifier),
+//                        Arc::clone(&request_debugger),
                     );
 
                     tokio::spawn(
@@ -153,17 +151,17 @@ impl Future for Runner {
                     );
 
                     Ok(())
-                }),
+                })
         );
 
-        Ok(Async::NotReady)
+        Ok(Async::Ready(()))
     }
 }
 
 fn main() -> io::Result<()> {
     let mut runtime = Runtime::new().unwrap();
 
-    runtime.spawn(Runner{});
+    runtime.spawn(Runner {});
 
     runtime.run().unwrap();
 

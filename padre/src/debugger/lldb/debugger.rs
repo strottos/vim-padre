@@ -71,55 +71,55 @@ impl ImplDebugger {
     //        (status, args)
     //    }
 
-//    fn run(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-//        println!("RUNNING");
-//        let mut ret = json::object::Object::new();
-//
-//        self.process_tx
-//            .try_send(Bytes::from(&b"break set --name main\n"[..]))
-//            .unwrap();
-//        self.process_tx
-//            .try_send(Bytes::from(&b"process launch\n"[..]))
-//            .unwrap();
-//
-//        ret.insert("pid", json::from("0".to_string()));
-//
-//        Ok(Response::OK(ret))
-//    }
-//
-//    fn breakpoint(
-//        &mut self,
-//        file: String,
-//        line_num: u32,
-//    ) -> Result<Response<json::object::Object>, RequestError> {
-//        let mut ret = json::object::Object::new();
-//
-//        Ok(Response::OK(ret))
-//    }
-//
-//    fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-//        let mut ret = json::object::Object::new();
-//
-//        Ok(Response::OK(ret))
-//    }
-//
-//    fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-//        let mut ret = json::object::Object::new();
-//
-//        Ok(Response::OK(ret))
-//    }
-//
-//    fn continue_on(&mut self) -> Result<Response<json::object::Object>, RequestError> {
-//        let mut ret = json::object::Object::new();
-//
-//        Ok(Response::OK(ret))
-//    }
-//
-//    fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError> {
-//        let mut ret = json::object::Object::new();
-//
-//        Ok(Response::OK(ret))
-//    }
+    //    fn run(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+    //        println!("RUNNING");
+    //        let mut ret = json::object::Object::new();
+    //
+    //        self.process_tx
+    //            .try_send(Bytes::from(&b"break set --name main\n"[..]))
+    //            .unwrap();
+    //        self.process_tx
+    //            .try_send(Bytes::from(&b"process launch\n"[..]))
+    //            .unwrap();
+    //
+    //        ret.insert("pid", json::from("0".to_string()));
+    //
+    //        Ok(Response::OK(ret))
+    //    }
+    //
+    //    fn breakpoint(
+    //        &mut self,
+    //        file: String,
+    //        line_num: u32,
+    //    ) -> Result<Response<json::object::Object>, RequestError> {
+    //        let mut ret = json::object::Object::new();
+    //
+    //        Ok(Response::OK(ret))
+    //    }
+    //
+    //    fn step_in(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+    //        let mut ret = json::object::Object::new();
+    //
+    //        Ok(Response::OK(ret))
+    //    }
+    //
+    //    fn step_over(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+    //        let mut ret = json::object::Object::new();
+    //
+    //        Ok(Response::OK(ret))
+    //    }
+    //
+    //    fn continue_on(&mut self) -> Result<Response<json::object::Object>, RequestError> {
+    //        let mut ret = json::object::Object::new();
+    //
+    //        Ok(Response::OK(ret))
+    //    }
+    //
+    //    fn print(&mut self, variable: String) -> Result<Response<json::object::Object>, RequestError> {
+    //        let mut ret = json::object::Object::new();
+    //
+    //        Ok(Response::OK(ret))
+    //    }
 }
 
 impl Future for ImplDebugger {
@@ -134,12 +134,14 @@ impl Future for ImplDebugger {
         println!("TESTING DEBUGGER FUTURE");
 
         tokio::spawn(
-            debugger_rx.for_each(move |instruction| {
-                debugger.handle(instruction);
-                Ok(())
-            }).map_err(|e| {
-                println!("debugger receiver = {:?}", e);
-            })
+            debugger_rx
+                .for_each(move |instruction| {
+                    debugger.handle(instruction);
+                    Ok(())
+                })
+                .map_err(|e| {
+                    println!("debugger receiver = {:?}", e);
+                }),
         );
 
         Ok(Async::NotReady)
@@ -151,12 +153,8 @@ pub struct LLDBDebugger {
 }
 
 impl LLDBDebugger {
-    pub fn new(
-        process_tx: Sender<Bytes>,
-    ) -> LLDBDebugger {
-        LLDBDebugger {
-            process_tx
-        }
+    pub fn new(process_tx: Sender<Bytes>) -> LLDBDebugger {
+        LLDBDebugger { process_tx }
     }
 
     fn handle(&mut self, instruction: DebuggerInstruction) {
@@ -166,7 +164,7 @@ impl LLDBDebugger {
 
     fn run(&mut self) {
         println!("RUNNING");
-//        let mut ret = json::object::Object::new();
+        //        let mut ret = json::object::Object::new();
 
         self.process_tx
             .try_send(Bytes::from(&b"break set --name main\n"[..]))
@@ -175,9 +173,9 @@ impl LLDBDebugger {
             .try_send(Bytes::from(&b"process launch\n"[..]))
             .unwrap();
 
-//        ret.insert("pid", json::from("0".to_string()));
-//
-//        Ok(Response::OK(ret))
+        //        ret.insert("pid", json::from("0".to_string()));
+        //
+        //        Ok(Response::OK(ret))
     }
 }
 

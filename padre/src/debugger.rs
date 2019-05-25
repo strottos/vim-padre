@@ -61,7 +61,10 @@ impl PadreDebugger {
         notifier: Arc<Mutex<Notifier>>,
         debugger_tx: Sender<DebuggerInstruction>,
     ) -> PadreDebugger {
-        PadreDebugger { notifier, debugger_tx }
+        PadreDebugger {
+            notifier,
+            debugger_tx,
+        }
     }
 
     pub fn ping(&self) -> Result<Response<json::object::Object>, RequestError> {
