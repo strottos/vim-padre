@@ -1,12 +1,9 @@
 #[macro_use]
 extern crate lazy_static;
-extern crate clap;
-extern crate regex;
-extern crate signal_hook;
+#[macro_use]
+extern crate serde_derive;
 #[macro_use]
 extern crate futures;
-extern crate bytes;
-extern crate tokio;
 
 use std::io;
 use std::net::SocketAddr;
@@ -133,22 +130,7 @@ impl Future for Runner {
                 .incoming()
                 .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
                 .for_each(move |socket| {
-                    let padre_connection = server::PadreConnection::new(
-                        socket,
-//                        Arc::clone(&request_notifier),
-//                        Arc::clone(&request_debugger),
-                    );
-
-                    tokio::spawn(
-                        padre_connection
-                            .for_each(|a| {
-                                println!("Main foreach a: {:?}", a);
-                                Ok(())
-                            })
-                            .map_err(|e| {
-                                println!("connection error = {:?}", e);
-                            }),
-                    );
+                    server::process_connection(socket);
 
                     Ok(())
                 })

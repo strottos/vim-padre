@@ -1,4 +1,5 @@
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -39,15 +40,33 @@ impl RequestError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct PadreRequest {
+    id: u32,
+    cmd: String,
+//    args: HashMap<String, String>,
 }
 
 impl PadreRequest {
     pub fn new(
+        id: u32,
+        cmd: String,
+//        args: HashMap<String, String>,
     ) -> Self {
         PadreRequest {
+            id,
+            cmd,
+//            args,
         }
+    }
+
+    // TODO: Automatically generate somehow?
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn cmd(&self) -> &str {
+        &self.cmd
     }
 }
 
