@@ -39,7 +39,7 @@ impl RequestError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Deserialize, Debug, PartialEq)]
 pub struct PadreRequest {
     id: u32,
     cmd: String,
@@ -68,27 +68,10 @@ impl PadreRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct PadreResponse {
-    id: u32,
-    json: serde_json::Value,
-}
-
-impl PadreResponse {
-    pub fn new(id: u32, json: serde_json::Value) -> Self {
-        PadreResponse {
-            id,
-            json,
-        }
-    }
-
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    pub fn json(&self) -> &serde_json::Value {
-        &self.json
-    }
+#[derive(Serialize, Debug, PartialEq)]
+pub enum PadreResponse {
+    Response(u32, serde_json::Value),
+    Notify(String, Vec<String>),
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use crate::request::{RequestError, Response};
+use crate::request::RequestError;
 
 #[derive(Debug)]
 pub enum DebuggerInstruction {
@@ -28,6 +28,11 @@ impl PadreDebugger {
 
     pub fn ping(&self) -> Result<serde_json::Value, RequestError> {
         let pong = serde_json::json!({"ping":"pong"});
+        Ok(pong)
+    }
+
+    pub fn pongs(&self) -> Result<serde_json::Value, RequestError> {
+        let pong = serde_json::json!({"pong":"pongs"});
         Ok(pong)
     }
 }

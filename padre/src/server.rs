@@ -37,7 +37,7 @@ fn respond(req: PadreRequest, debugger: Arc<Mutex<PadreDebugger>>) -> Box<dyn Fu
         };
 
         match json_response {
-            Ok(resp) => Ok(PadreResponse::new(req.id(), resp)),
+            Ok(resp) => Ok(PadreResponse::Response(req.id(), resp)),
             Err(_) => {
                 println!("TODO - implement");
                 unreachable!();
@@ -157,9 +157,12 @@ impl Encoder for PadreCodec {
     type Error = io::Error;
 
     fn encode(&mut self, resp: PadreResponse, buf: &mut BytesMut) -> Result<(), io::Error> {
-        let id = resp.id();
-
-        let response = serde_json::to_string(&(id, &resp.json())).unwrap();
+        let response = match resp {
+            PadreResponse::Response(id, json) => serde_json::to_string(&(id, json)).unwrap(),
+            PadreResponse::Notify(cmd, args) => {
+                serde_json::to_string(&("call".to_string(), cmd, args)).unwrap()
+            },
+        };
 
         buf.reserve(response.len());
         buf.put(&response[..]);
@@ -179,7 +182,7 @@ mod tests {
         let mut codec = super::PadreCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(19);
-        buf.put("[123,{\"cmd\":\"run\"}]");
+        buf.put(r#"[123,{"cmd":"run"}]"#);
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -191,14 +194,14 @@ mod tests {
         let mut codec = super::PadreCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(19);
-        buf.put("[123,{\"cmd\":\"run\"}]");
+        buf.put(r#"[123,{"cmd":"run"}]"#);
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
 
         buf.reserve(19);
-        buf.put("[124,{\"cmd\":\"run\"}]");
+        buf.put(r#"[124,{"cmd":"run"}]"#);
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -210,14 +213,14 @@ mod tests {
         let mut codec = super::PadreCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(16);
-        buf.put("[123,{\"cmd\":\"run");
+        buf.put(r#"[123,{"cmd":"run"#);
 
         let padre_request = codec.decode(&mut buf).unwrap();
 
         assert_eq!(None, padre_request);
 
         buf.reserve(3);
-        buf.put("\"}]");
+        buf.put(r#""}]"#);
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -229,30 +232,44 @@ mod tests {
         let mut codec = super::PadreCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(16);
-        buf.put("[123,{\"cmd\":\"run");
+        buf.put(r#"[123,{"cmd":"run"#);
 
         let padre_request = codec.decode(&mut buf).unwrap();
 
         assert_eq!(None, padre_request);
 
         buf.reserve(19);
-        buf.put("[123,{\"cmd\":\"run\"}]");
+        buf.put(r#"[124,{"cmd":"run"}]"#);
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
+        assert_eq!(PadreRequest::new(124, "run".to_string()), padre_request);
     }
 
     #[test]
-    fn check_json_encoding() {
+    fn check_json_encoding_response() {
         let mut codec = super::PadreCodec::new();
-        let resp = PadreResponse::new(123, serde_json::json!({"ping":"pong"}));
+        let resp = PadreResponse::Response(123, serde_json::json!({"ping":"pong"}));
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf);
 
         let mut expected = BytesMut::new();
         expected.reserve(21);
-        expected.put("[123,{\"ping\":\"pong\"}]");
+        expected.put(r#"[123,{"ping":"pong"}]"#);
+
+        assert_eq!(expected, buf);
+    }
+
+    #[test]
+    fn check_json_encoding_notify() {
+        let mut codec = super::PadreCodec::new();
+        let resp = PadreResponse::Notify("cmd_test".to_string(), vec!("test".to_string(),"1".to_string()));
+        let mut buf = BytesMut::new();
+        codec.encode(resp, &mut buf);
+
+        let mut expected = BytesMut::new();
+        expected.reserve(32);
+        expected.put(r#"["call","cmd_test",["test","1"]]"#);
 
         assert_eq!(expected, buf);
     }
