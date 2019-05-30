@@ -8,13 +8,12 @@ use crate::request::PadreRequest;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::sync::mpsc::{self, UnboundedReceiver};
 use tokio::codec::{Decoder, Encoder, Framed};
-use tokio::io::ReadHalf;
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::prelude::stream::{SplitSink, SplitStream};
 
 pub fn process_connection(socket: TcpStream) {
-    let (tx, rx) = PadreCodec{}.framed(socket).split();
+    let (tx, rx) = PadreCodec::new().framed(socket).split();
 
     tokio::spawn(
         rx.for_each(|request| {
@@ -37,7 +36,7 @@ impl PadreConnection {
     pub fn new(socket: TcpStream) -> Self {
         let (writer_tx, writer_rx) = mpsc::unbounded();
 
-        let (writer, reader) = PadreCodec{}.framed(socket).split();
+        let (writer, reader) = PadreCodec::new().framed(socket).split();
 
         PadreConnection {
             reader,
@@ -75,18 +74,56 @@ impl Stream for PadreConnection {
 }
 
 #[derive(Debug)]
-struct PadreCodec {}
+struct PadreCodec {
+    // Track a list of places we should try from in case one of the sends cut off
+    try_from: Vec<usize>,
+}
+
+impl PadreCodec {
+    fn new() -> Self {
+        let try_from = vec![0];
+        PadreCodec{try_from}
+    }
+}
 
 impl Decoder for PadreCodec {
     type Item = PadreRequest;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        println!("Decoding: {:?}", src);
-        let mut v: serde_json::Value = serde_json::from_slice(&src).unwrap();
+        let mut v: serde_json::Value = serde_json::json!(null);
+
+        // If we match a full json entry from any point we assume we're good
+        for from in self.try_from.iter() {
+            v = match serde_json::from_slice(&src[*from..]) {
+                Ok(s) => s,
+                Err(err) => {
+                    if err.is_eof() || err.is_syntax() {
+                        serde_json::json!(null)
+                    } else {
+                        println!("TODO - Handle error: {:?}", err);
+                        println!("Stream: {:?}", src);
+                        unreachable!();
+                    }
+                },
+            };
+
+            if !v.is_null() {
+                break;
+            }
+        }
+
+        if v.is_null() {
+            self.try_from.push(src.len());
+            return Ok(None);
+        }
+
         let id: u32 = serde_json::from_value(v[0].take()).unwrap();
         let cmd: String = serde_json::from_value(v[1]["cmd"].take()).unwrap();
         let padre_request: PadreRequest = PadreRequest::new(id, cmd);
+
+        src.split_to(src.len());
+        self.try_from = vec![0];
 
         Ok(Some(padre_request))
     }
@@ -120,7 +157,7 @@ mod tests {
 
     #[test]
     fn check_single_json_decoding() {
-        let mut codec = super::PadreCodec{};
+        let mut codec = super::PadreCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(19);
         buf.put("[123,{\"cmd\":\"run\"}]");
@@ -131,8 +168,65 @@ mod tests {
     }
 
     #[test]
+    fn check_two_json_decodings() {
+        let mut codec = super::PadreCodec::new();
+        let mut buf = BytesMut::new();
+        buf.reserve(19);
+        buf.put("[123,{\"cmd\":\"run\"}]");
+
+        let padre_request = codec.decode(&mut buf).unwrap().unwrap();
+
+        assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
+
+        buf.reserve(19);
+        buf.put("[124,{\"cmd\":\"run\"}]");
+
+        let padre_request = codec.decode(&mut buf).unwrap().unwrap();
+
+        assert_eq!(PadreRequest::new(124, "run".to_string()), padre_request);
+    }
+
+    #[test]
+    fn check_two_buffers_json_decodings() {
+        let mut codec = super::PadreCodec::new();
+        let mut buf = BytesMut::new();
+        buf.reserve(16);
+        buf.put("[123,{\"cmd\":\"run");
+
+        let padre_request = codec.decode(&mut buf).unwrap();
+
+        assert_eq!(None, padre_request);
+
+        buf.reserve(3);
+        buf.put("\"}]");
+
+        let padre_request = codec.decode(&mut buf).unwrap().unwrap();
+
+        assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
+    }
+
+    #[test]
+    fn check_bad_then_good_json_decodings() {
+        let mut codec = super::PadreCodec::new();
+        let mut buf = BytesMut::new();
+        buf.reserve(16);
+        buf.put("[123,{\"cmd\":\"run");
+
+        let padre_request = codec.decode(&mut buf).unwrap();
+
+        assert_eq!(None, padre_request);
+
+        buf.reserve(19);
+        buf.put("[123,{\"cmd\":\"run\"}]");
+
+        let padre_request = codec.decode(&mut buf).unwrap().unwrap();
+
+        assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
+    }
+
+    #[test]
     fn check_json_encoding() {
-        let mut codec = super::PadreCodec{};
+        let mut codec = super::PadreCodec::new();
         let padre_cmd = PadreRequest::new(123, "run".to_string());
         let mut buf = BytesMut::new();
         codec.encode(padre_cmd, &mut buf);
