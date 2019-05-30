@@ -37,6 +37,9 @@ Improvements:
 
 
 - Padre command
+  - New:
+    - Timeouts
+
   - Tokio (Precursor to everything now):
     - Ability to read outcomes after commands sent. Debugger needs to be able to say to the process, here's something to forward to so it can listen on run and print (blocking is OK here so some kind of condvar to be used?), and the process can send messages to the debugger to say it's changed state.
     - Can't spawn tasks and thus listen on debugger generally, therefore we need to have the ability to register a listener from the debugger to the process. Also we should have the process be able to change the state of the debugger.

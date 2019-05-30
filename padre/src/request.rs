@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -44,23 +43,22 @@ impl RequestError {
 pub struct PadreRequest {
     id: u32,
     cmd: String,
-//    args: HashMap<String, String>,
+    //    args: HashMap<String, String>,
 }
 
 impl PadreRequest {
     pub fn new(
         id: u32,
         cmd: String,
-//        args: HashMap<String, String>,
+        //        args: HashMap<String, String>,
     ) -> Self {
         PadreRequest {
             id,
             cmd,
-//            args,
+            //            args,
         }
     }
 
-    // TODO: Automatically generate somehow?
     pub fn id(&self) -> u32 {
         self.id
     }
@@ -70,6 +68,28 @@ impl PadreRequest {
     }
 }
 
-#[cfg(test)]
-mod tests {
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct PadreResponse {
+    id: u32,
+    json: serde_json::Value,
 }
+
+impl PadreResponse {
+    pub fn new(id: u32, json: serde_json::Value) -> Self {
+        PadreResponse {
+            id,
+            json,
+        }
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn json(&self) -> &serde_json::Value {
+        &self.json
+    }
+}
+
+#[cfg(test)]
+mod tests {}

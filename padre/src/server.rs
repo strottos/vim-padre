@@ -2,27 +2,50 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::sync::{Arc, Mutex};
 
-use crate::request::PadreRequest;
+use crate::request::{PadreRequest, PadreResponse};
+use crate::debugger::PadreDebugger;
 
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::sync::mpsc::{self, UnboundedReceiver};
 use tokio::codec::{Decoder, Encoder, Framed};
 use tokio::net::TcpStream;
-use tokio::prelude::*;
 use tokio::prelude::stream::{SplitSink, SplitStream};
+use tokio::prelude::*;
 
-pub fn process_connection(socket: TcpStream) {
+pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<PadreDebugger>>) {
     let (tx, rx) = PadreCodec::new().framed(socket).split();
 
-    tokio::spawn(
-        rx.for_each(|request| {
-            println!("Request: {:?}", request);
-            Ok(())
-        }).map_err(|e| {
-            println!("connection error = {:?}", e);
-        })
-    );
+    tokio::spawn(tx.send_all(rx.and_then(move |req| {
+        let debugger = debugger.clone();
+        respond(req, debugger)
+    })).then(|res| {
+        if let Err(e) = res {
+            println!("failed to process connection; error = {:?}", e);
+        }
+
+        Ok(())
+    }));
+}
+
+fn respond(req: PadreRequest, debugger: Arc<Mutex<PadreDebugger>>) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
+    let f = future::lazy(move || {
+        let json_response = match req.cmd() {
+            "ping" => debugger.lock().unwrap().ping(),
+            _ => unreachable!()
+        };
+
+        match json_response {
+            Ok(resp) => Ok(PadreResponse::new(req.id(), resp)),
+            Err(_) => {
+                println!("TODO - implement");
+                unreachable!();
+            }
+        }
+    });
+
+    Box::new(f)
 }
 
 #[derive(Debug)]
@@ -44,18 +67,18 @@ impl PadreConnection {
             rd: BytesMut::new(),
         }
     }
-//
-//    fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
-//        loop {
-//            self.rd.reserve(1024);
-//
-//            let n = try_ready!(self.reader.read_buf(&mut self.rd));
-//
-//            if n == 0 {
-//                return Ok(Async::Ready(()));
-//            }
-//        }
-//    }
+    //
+    //    fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
+    //        loop {
+    //            self.rd.reserve(1024);
+    //
+    //            let n = try_ready!(self.reader.read_buf(&mut self.rd));
+    //
+    //            if n == 0 {
+    //                return Ok(Async::Ready(()));
+    //            }
+    //        }
+    //    }
 }
 
 impl Stream for PadreConnection {
@@ -63,13 +86,13 @@ impl Stream for PadreConnection {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-//        let sock_closed = self.fill_read_buf()?.is_ready();
-//
-//        if sock_closed {
-//            Ok(Async::Ready(None))
-//        } else {
-            Ok(Async::NotReady)
-//        }
+        //        let sock_closed = self.fill_read_buf()?.is_ready();
+        //
+        //        if sock_closed {
+        //            Ok(Async::Ready(None))
+        //        } else {
+        Ok(Async::NotReady)
+        //        }
     }
 }
 
@@ -82,7 +105,7 @@ struct PadreCodec {
 impl PadreCodec {
     fn new() -> Self {
         let try_from = vec![0];
-        PadreCodec{try_from}
+        PadreCodec { try_from }
     }
 }
 
@@ -105,7 +128,7 @@ impl Decoder for PadreCodec {
                         println!("Stream: {:?}", src);
                         unreachable!();
                     }
-                },
+                }
             };
 
             if !v.is_null() {
@@ -130,17 +153,13 @@ impl Decoder for PadreCodec {
 }
 
 impl Encoder for PadreCodec {
-    type Item = PadreRequest;
+    type Item = PadreResponse;
     type Error = io::Error;
 
-    fn encode(&mut self, padre_cmd: PadreRequest, buf: &mut BytesMut) -> Result<(), io::Error> {
-        println!("Encoding");
-        let id = padre_cmd.id();
+    fn encode(&mut self, resp: PadreResponse, buf: &mut BytesMut) -> Result<(), io::Error> {
+        let id = resp.id();
 
-        let mut args: HashMap<String, String> = HashMap::new();
-        args.insert("cmd".to_string(), padre_cmd.cmd().clone().to_string());
-
-        let response = serde_json::to_string(&(id, args)).unwrap();
+        let response = serde_json::to_string(&(id, &resp.json())).unwrap();
 
         buf.reserve(response.len());
         buf.put(&response[..]);
@@ -151,7 +170,7 @@ impl Encoder for PadreCodec {
 
 #[cfg(test)]
 mod tests {
-    use crate::request::PadreRequest;
+    use crate::request::{PadreRequest, PadreResponse};
     use bytes::{BufMut, Bytes, BytesMut};
     use tokio::codec::{Decoder, Encoder};
 
@@ -227,13 +246,13 @@ mod tests {
     #[test]
     fn check_json_encoding() {
         let mut codec = super::PadreCodec::new();
-        let padre_cmd = PadreRequest::new(123, "run".to_string());
+        let resp = PadreResponse::new(123, serde_json::json!({"ping":"pong"}));
         let mut buf = BytesMut::new();
-        codec.encode(padre_cmd, &mut buf);
+        codec.encode(resp, &mut buf);
 
         let mut expected = BytesMut::new();
-        expected.reserve(19);
-        expected.put("[123,{\"cmd\":\"run\"}]");
+        expected.reserve(21);
+        expected.put("[123,{\"ping\":\"pong\"}]");
 
         assert_eq!(expected, buf);
     }
