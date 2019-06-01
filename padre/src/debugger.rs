@@ -1,5 +1,6 @@
 mod lldb;
 mod node;
+mod tty_process;
 
 use std::env;
 use std::fmt::Debug;
@@ -40,11 +41,18 @@ pub fn get_debugger(
         },
     };
 
+    let debugger_cmd = match debugger_cmd {
+        Some(s) => s.to_string(),
+        None => debugger_type.clone(),
+    };
+
     let debugger: Box<dyn Debugger + Send> = match debugger_type.to_ascii_lowercase().as_ref() {
-        "lldb" => Box::new(lldb::ImplDebugger::new(notifier.clone(), run_cmd)),
-        "node" => Box::new(node::ImplDebugger::new(notifier.clone(), run_cmd)),
+        "lldb" => Box::new(lldb::ImplDebugger::new(notifier.clone(), debugger_cmd, run_cmd)),
+        "node" => Box::new(node::ImplDebugger::new(notifier.clone(), debugger_cmd, run_cmd)),
         _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
     };
+
+    debugger.setup();
 
     PadreDebugger::new(notifier, debugger)
 }
@@ -102,7 +110,7 @@ fn is_lldb(cmd: &str) -> bool {
 }
 
 pub trait Debugger: Debug {
-    fn setup(self);
+    fn setup(&self);
 }
 
 #[derive(Debug)]
@@ -146,10 +154,19 @@ mod tests {
     use tokio::prelude::*;
     use tokio::sync::mpsc;
 
+    fn get_lldb_debugger() -> super::PadreDebugger {
+        let notifier = Arc::new(Mutex::new(super::Notifier::new()));
+        super::get_debugger(
+            Some("lldb"),
+            Some("lldb"),
+            vec!["padre".to_string(), "--".to_string(), "arg1".to_string()],
+            notifier,
+        )
+    }
+
     #[test]
     fn basic_ping() {
-        let notifier = Arc::new(Mutex::new(super::Notifier::new()));
-        let debugger = super::PadreDebugger::new(notifier);
+        let debugger = get_lldb_debugger();
         let ret = debugger.ping().unwrap();
         assert_eq!(ret, serde_json::json!({"ping":"pong"}));
     }
@@ -228,15 +245,4 @@ mod tests {
     //        let v = vec!["./test_files/test_node.js"];
     //        assert_eq!(super::get_debugger_type(v), Some(String::from("node")));
     //    }
-
-    #[test]
-    fn get_debugger_lldb() {
-        let notifier = Arc::new(Mutex::new(super::Notifier::new()));
-        let debugger = super::get_debugger(
-            Some("lldb"),
-            Some("lldb"),
-            vec!["padre".to_string(), "--".to_string(), "arg1".to_string()],
-            notifier,
-        );
-    }
 }

@@ -10,17 +10,18 @@ use tokio::prelude::*;
 #[derive(Debug)]
 pub struct ImplDebugger {
     notifier: Arc<Mutex<Notifier>>,
+    debugger_cmd: String,
     run_cmd: Vec<String>,
 }
 
 impl ImplDebugger {
-    pub fn new(notifier: Arc<Mutex<Notifier>>, run_cmd: Vec<String>) -> ImplDebugger {
-        ImplDebugger { notifier, run_cmd }
+    pub fn new(notifier: Arc<Mutex<Notifier>>, debugger_cmd: String, run_cmd: Vec<String>) -> ImplDebugger {
+        ImplDebugger { notifier, debugger_cmd, run_cmd }
     }
 }
 
 impl Debugger for ImplDebugger {
-    fn setup(self) {
+    fn setup(&self) {
     }
 }
 
