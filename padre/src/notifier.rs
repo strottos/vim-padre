@@ -2,12 +2,15 @@
 
 // The notifier is responsible for communicating with everything connected to PADRE
 
-use std::io::Write;
+use std::fmt;
 use std::net::SocketAddr;
 
-use tokio::io::WriteHalf;
-use tokio::net::TcpStream;
+use crate::request::PadreResponse;
 
+use tokio::prelude::*;
+use tokio::sync::mpsc::Sender;
+
+#[derive(Debug)]
 pub enum LogLevel {
     CRITICAL = 1,
     ERROR,
@@ -16,9 +19,15 @@ pub enum LogLevel {
     DEBUG,
 }
 
+impl fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Debug)]
 struct Listener {
-    writer: WriteHalf<TcpStream>,
+    sender: Sender<PadreResponse>,
     addr: SocketAddr,
     has_started: bool,
 }
@@ -35,85 +44,75 @@ impl Notifier {
         }
     }
 
-    pub fn add_listener(&mut self, writer: WriteHalf<TcpStream>, addr: SocketAddr) {
-        println!("Adding listener: {:?}", addr);
+    pub fn add_listener(&mut self, sender: Sender<PadreResponse>, addr: SocketAddr) {
         self.listeners.push(Listener {
-            writer,
+            sender,
             addr,
             has_started: false,
         });
     }
 
-    pub fn signal_started(&mut self) {
-        let msg = format!("[\"call\",\"padre#debugger#SignalPADREStarted\",[]]");
-        for mut listener in self.listeners.iter_mut() {
-            if !listener.has_started {
-                match listener.writer.write(msg.as_bytes()) {
-                    Ok(_) => (),
-                    Err(error) => {
-                        println!("Can't send to socket: {}", error);
-                    }
-                }
-                listener.has_started = true;
-            }
-        }
-    }
-
-    pub fn signal_exited(&mut self, pid: u32, exit_code: u8) {
-        let msg = format!(
-            "[\"call\",\"padre#debugger#ProcessExited\",[{},{}]]",
-            exit_code, pid
-        );
-        self.send_msg(msg);
+    pub fn remove_listener(&mut self, addr: &SocketAddr) {
+        self.listeners.retain(|listener| listener.addr != *addr);
     }
 
     pub fn log_msg(&mut self, level: LogLevel, msg: String) {
-        let msg = format!(
-            "[\"call\",\"padre#debugger#Log\",[{},{}]]",
-            level as i32,
-            json::stringify(msg)
-        );
+        let msg = PadreResponse::Notify("padre#debugger#Log".to_string(), vec!(format!("{}", level), msg));
         self.send_msg(msg);
     }
 
-    pub fn jump_to_position(&mut self, file: String, line: u32) {
-        let msg = format!(
-            "[\"call\",\"padre#debugger#JumpToPosition\",[{},{}]]",
-            json::stringify(file),
-            line
-        );
-        self.send_msg(msg);
-    }
-
-    pub fn breakpoint_set(&mut self, file: String, line: u32) {
-        let msg = format!(
-            "[\"call\",\"padre#debugger#BreakpointSet\",[{},{}]]",
-            json::stringify(file),
-            line
-        );
-        self.send_msg(msg);
-    }
-
-    //    pub fn breakpoint_unset(&self, file: String, line: u32) {
-    //        let msg = format!("[\"call\",\"padre#debugger#BreakpointUnset\",[{},{}]]",
-    //                          json::stringify(file), line);
-    //        self.send_msg(msg);
-    //    }
-
-    pub fn remove_listener(&mut self, addr: &SocketAddr) {
-        println!("Listeners: {:?}", &self.listeners);
-        self.listeners.retain(|listener| listener.addr != *addr);
-        println!("Listeners: {:?}", &self.listeners);
-    }
-
-    fn send_msg(&mut self, msg: String) {
+    fn send_msg(&mut self, msg: PadreResponse) {
         for listener in self.listeners.iter_mut() {
-            match listener.writer.write(msg.as_bytes()) {
-                Ok(_) => (),
-                Err(error) => {
-                    println!("Notifier can't send to socket: {}", error);
-                }
-            }
+            let sender = listener.sender.clone();
+            tokio::spawn(
+                sender
+                    .send(msg.clone())
+                    .map(|_| ())
+                    .map_err(|e| eprintln!("Notifier can't send to socket: {}", e)),
+            );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::request::PadreResponse;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use tokio::sync::mpsc;
+
+    fn create_notifier_with_listeners() -> super::Notifier {
+        let mut notifier = super::Notifier::new();
+
+        let (sender, _) = mpsc::channel(1);
+        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+
+        notifier.add_listener(sender, socket_addr);
+
+        let (sender, _) = mpsc::channel(1);
+        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+
+        notifier.add_listener(sender, socket_addr);
+
+        notifier
+    }
+
+    #[test]
+    fn check_can_add_listeners() {
+        let mut notifier = create_notifier_with_listeners();
+
+        assert_eq!(notifier.listeners.len(), 2);
+    }
+
+    #[test]
+    fn check_can_remove_listener() {
+        let mut notifier = create_notifier_with_listeners();
+
+        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        notifier.remove_listener(&socket_addr);
+
+        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        notifier.remove_listener(&socket_addr);
+
+        assert_eq!(notifier.listeners.len(), 0);
     }
 }

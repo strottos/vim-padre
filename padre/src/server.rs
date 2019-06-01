@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::io;
 use std::sync::{Arc, Mutex};
 
-use crate::request::{PadreRequest, PadreResponse};
 use crate::debugger::PadreDebugger;
+use crate::notifier::Notifier;
+use crate::request::{PadreRequest, PadreResponse};
 
 use bytes::{BufMut, Bytes, BytesMut};
 //use futures::sync::mpsc::{self, UnboundedReceiver};
@@ -15,42 +16,50 @@ use tokio::prelude::stream::{SplitSink, SplitStream};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<PadreDebugger>>) {
+pub fn process_connection(
+    socket: TcpStream,
+    debugger: Arc<Mutex<PadreDebugger>>,
+    notifier: Arc<Mutex<Notifier>>,
+) {
     let (tx, rx) = PadreCodec::new().framed(socket).split();
 
     let (mut send_tx, send_rx) = mpsc::channel(32);
 
     tokio::spawn(
-        tx.send_all(
-            send_rx.map_err(|e| {
-                eprintln!("failed to retrieve message to send: {}", e);
-                io::Error::new(io::ErrorKind::Other, e)
-            })
-        ).then(|res| {;
+        tx.send_all(send_rx.map_err(|e| {
+            eprintln!("failed to retrieve message to send: {}", e);
+            io::Error::new(io::ErrorKind::Other, e)
+        }))
+        .then(|res| {
             if let Err(e) = res {
                 eprintln!("failed to send data to socket; error = {:?}", e);
             }
 
             Ok(())
-        })
+        }),
     );
 
     tokio::spawn(
         rx.and_then(move |req| {
             let debugger = debugger.clone();
             respond(req, debugger)
-        }).for_each(move |resp| {
+        })
+        .for_each(move |resp| {
             send_tx.try_send(resp).unwrap();
             Ok(())
-        }).map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
+        })
+        .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e)),
     );
 }
 
-fn respond(req: PadreRequest, debugger: Arc<Mutex<PadreDebugger>>) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
+fn respond(
+    req: PadreRequest,
+    debugger: Arc<Mutex<PadreDebugger>>,
+) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
     let f = future::lazy(move || {
         let json_response = match req.cmd() {
             "ping" => debugger.lock().unwrap().ping(),
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         match json_response {
@@ -178,7 +187,7 @@ impl Encoder for PadreCodec {
             PadreResponse::Response(id, json) => serde_json::to_string(&(id, json)).unwrap(),
             PadreResponse::Notify(cmd, args) => {
                 serde_json::to_string(&("call".to_string(), cmd, args)).unwrap()
-            },
+            }
         };
 
         buf.reserve(response.len());
@@ -280,7 +289,10 @@ mod tests {
     #[test]
     fn check_json_encoding_notify() {
         let mut codec = super::PadreCodec::new();
-        let resp = PadreResponse::Notify("cmd_test".to_string(), vec!("test".to_string(),"1".to_string()));
+        let resp = PadreResponse::Notify(
+            "cmd_test".to_string(),
+            vec!["test".to_string(), "1".to_string()],
+        );
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf);
 

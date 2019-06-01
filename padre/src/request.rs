@@ -68,11 +68,8 @@ impl PadreRequest {
     }
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum PadreResponse {
     Response(u32, serde_json::Value),
     Notify(String, Vec<String>),
 }
-
-#[cfg(test)]
-mod tests {}

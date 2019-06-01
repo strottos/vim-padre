@@ -1,3 +1,6 @@
+use std::sync::{Arc, Mutex};
+
+use crate::notifier::Notifier;
 use crate::request::RequestError;
 
 #[derive(Debug)]
@@ -17,12 +20,14 @@ enum DebuggerState {
 #[derive(Debug)]
 pub struct PadreDebugger {
     state: DebuggerState,
+    notifier: Arc<Mutex<Notifier>>,
 }
 
 impl PadreDebugger {
-    pub fn new() -> PadreDebugger {
+    pub fn new(notifier: Arc<Mutex<Notifier>>) -> PadreDebugger {
         PadreDebugger {
             state: DebuggerState::Stopped,
+            notifier,
         }
     }
 

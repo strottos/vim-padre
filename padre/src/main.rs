@@ -16,7 +16,7 @@ use tokio::runtime::current_thread::Runtime;
 //use signal_hook::iterator::Signals;
 
 mod debugger;
-//mod notifier;
+mod notifier;
 mod request;
 mod server;
 
@@ -105,10 +105,9 @@ impl Future for Runner {
 
         println!("Listening on {}", connection_string);
 
-        let debugger = Arc::new(Mutex::new(debugger::PadreDebugger::new()));
+        let notifier = Arc::new(Mutex::new(notifier::Notifier::new()));
+        let debugger = Arc::new(Mutex::new(debugger::PadreDebugger::new(notifier.clone())));
 
-        //        let notifier_rc = Arc::new(Mutex::new(notifier::Notifier::new()));
-        //
         //        let debug_cmd: Vec<String> = args
         //            .values_of("debug_cmd")
         //            .expect("Can't find program to debug, please rerun with correct parameters")
@@ -124,9 +123,6 @@ impl Future for Runner {
         //
         //        //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
         //        //    install_signals(signals, Arc::clone(&padre_server_rc));
-        //
-        //        let request_notifier = Arc::clone(&notifier_rc);
-        //        let request_debugger = Arc::clone(&debugger);
 
         tokio::spawn(
             listener
@@ -134,7 +130,8 @@ impl Future for Runner {
                 .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
                 .for_each(move |socket| {
                     let debugger = debugger.clone();
-                    server::process_connection(socket, debugger);
+                    let notifier = notifier.clone();
+                    server::process_connection(socket, debugger, notifier);
 
                     Ok(())
                 }),
