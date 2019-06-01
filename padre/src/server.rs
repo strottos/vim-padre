@@ -18,7 +18,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<PadreDebugger>>) {
     let (tx, rx) = PadreCodec::new().framed(socket).split();
 
-    let (send_tx, send_rx): (Sender<PadreResponse>, Receiver<PadreResponse>) = mpsc::channel(32);
+    let (mut send_tx, send_rx) = mpsc::channel(32);
 
     tokio::spawn(
         tx.send_all(
@@ -36,11 +36,11 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<PadreDebugger>>
     );
 
     tokio::spawn(
-        rx.and_then(|req| {
+        rx.and_then(move |req| {
             let debugger = debugger.clone();
             respond(req, debugger)
-        }).for_each(|resp| {
-            send_tx.try_send(resp);
+        }).for_each(move |resp| {
+            send_tx.try_send(resp).unwrap();
             Ok(())
         }).map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
     );
