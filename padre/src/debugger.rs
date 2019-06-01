@@ -1,7 +1,16 @@
+mod lldb;
+mod node;
+
+use std::env;
+use std::fmt::Debug;
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 
-use crate::notifier::Notifier;
+use crate::notifier::{LogLevel, Notifier};
 use crate::request::RequestError;
+
+use tokio::prelude::*;
 
 #[derive(Debug)]
 pub enum DebuggerInstruction {
@@ -17,17 +26,98 @@ enum DebuggerState {
     Error,
 }
 
+pub fn get_debugger(
+    debugger_cmd: Option<&str>,
+    debugger_type: Option<&str>,
+    run_cmd: Vec<String>,
+    notifier: Arc<Mutex<Notifier>>,
+) -> PadreDebugger {
+    let debugger_type = match debugger_type {
+        Some(s) => s.to_string(),
+        None => match debugger_cmd {
+            Some(s) => get_debugger_type(s).expect("Can't find debugger type, bailing"),
+            None => panic!("Couldn't find debugger, try specifying with -t or -d"),
+        },
+    };
+
+    let debugger: Box<dyn Debugger + Send> = match debugger_type.to_ascii_lowercase().as_ref() {
+        "lldb" => Box::new(lldb::ImplDebugger::new(notifier.clone(), run_cmd)),
+        "node" => Box::new(node::ImplDebugger::new(notifier.clone(), run_cmd)),
+        _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
+    };
+
+    PadreDebugger::new(notifier, debugger)
+}
+
+pub fn get_debugger_type(cmd: &str) -> Option<String> {
+    //    if is_node(cmd[0]) {
+    //        Some(String::from("node"))
+    //    } else
+    if is_lldb(&cmd) {
+        Some(String::from("lldb"))
+    } else {
+        None
+    }
+}
+
+fn find_cmd_full_path(cmd: &str) -> String {
+    let cmd_full_path_buf = env::var_os("PATH")
+        .and_then(|paths| {
+            env::split_paths(&paths)
+                .filter_map(|dir| {
+                    let cmd_full_path = dir.join(&cmd);
+                    if cmd_full_path.is_file() {
+                        Some(cmd_full_path)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+        })
+        .unwrap_or(PathBuf::from(cmd));
+    String::from(cmd_full_path_buf.as_path().to_str().unwrap())
+}
+
+fn find_file_type(cmd: &str) -> String {
+    let cmd_full_path = find_cmd_full_path(cmd);
+
+    let output = Command::new("file")
+        .arg("-L") // Follow symlinks
+        .arg(&cmd_full_path)
+        .output()
+        .ok()
+        .expect(&format!("Can't run file on {} to find file type", cmd));
+
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+fn is_lldb(cmd: &str) -> bool {
+    let cmd_file_type = find_file_type(cmd);
+
+    if cmd_file_type.contains("ELF") || cmd.contains("lldb") {
+        return true;
+    }
+
+    false
+}
+
+pub trait Debugger: Debug {
+    fn setup(self);
+}
+
 #[derive(Debug)]
 pub struct PadreDebugger {
     state: DebuggerState,
     notifier: Arc<Mutex<Notifier>>,
+    debugger: Box<dyn Debugger + Send>
 }
 
 impl PadreDebugger {
-    pub fn new(notifier: Arc<Mutex<Notifier>>) -> PadreDebugger {
+    pub fn new(notifier: Arc<Mutex<Notifier>>, debugger: Box<dyn Debugger + Send>) -> PadreDebugger {
         PadreDebugger {
             state: DebuggerState::Stopped,
             notifier,
+            debugger,
         }
     }
 
@@ -36,8 +126,117 @@ impl PadreDebugger {
         Ok(pong)
     }
 
-    pub fn pongs(&self) -> Result<serde_json::Value, RequestError> {
-        let pong = serde_json::json!({"pong":"pongs"});
-        Ok(pong)
+    pub fn pings(&self) -> Result<serde_json::Value, RequestError> {
+        let pongs = serde_json::json!({"pings":"pongs"});
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::INFO, "pong".to_string());
+        Ok(pongs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::path::Path;
+    use std::sync::{Arc, Mutex};
+
+    use tokio::prelude::*;
+    use tokio::sync::mpsc;
+
+    #[test]
+    fn basic_ping() {
+        let notifier = Arc::new(Mutex::new(super::Notifier::new()));
+        let debugger = super::PadreDebugger::new(notifier);
+        let ret = debugger.ping().unwrap();
+        assert_eq!(ret, serde_json::json!({"ping":"pong"}));
+    }
+
+    // TODO: What about tokio executor?
+    //    #[test]
+    //    fn basic_pings() {
+    //        let mut notifier = super::Notifier::new();
+    //
+    //        let (sender, receiver) = mpsc::channel(1);
+    //        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    //
+    //        notifier.add_listener(sender, socket_addr);
+    //
+    //        let debugger = super::PadreDebugger::new(Arc::new(Mutex::new(notifier)));
+    //        let ret = debugger.pings().unwrap();
+    //        assert_eq!(ret, serde_json::json!({"pings":"pongs"}));
+    //        println!("{:?}", receiver.collect().wait());
+    //    }
+
+    fn set_path() {
+        let test_files_path_raw = String::from("./test_files/");
+        let test_files_path = Path::new(&test_files_path_raw)
+            .canonicalize()
+            .expect("Cannot find test_files directory");
+        let path_var = format!(
+            "/bin:{}:/usr/bin",
+            test_files_path.as_path().to_str().unwrap()
+        );
+        env::set_var("PATH", &path_var);
+    }
+
+    #[test]
+    fn finds_lldb_when_specified_and_in_path() {
+        set_path();
+        assert_eq!(
+            super::get_debugger_type("lldb-server"),
+            Some(String::from("lldb"))
+        );
+    }
+
+    #[test]
+    fn finds_lldb_when_specified_and_absolute_path() {
+        assert_eq!(
+            super::get_debugger_type("./test_files/lldb-server"),
+            Some(String::from("lldb"))
+        );
+    }
+
+    #[test]
+    fn finds_lldb_when_elf_file() {
+        assert_eq!(
+            super::get_debugger_type("./test_files/hello_world"),
+            Some(String::from("lldb"))
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn errors_when_program_not_found() {
+        assert_eq!(
+            super::get_debugger_type("program-not-exists"),
+            Some(String::from("EXPECT PANIC"))
+        );
+    }
+
+    //    #[test]
+    //    fn finds_node_when_node_program() {
+    //        set_path();
+    //        let v = vec!["node", "./test_files/test_node.js"];
+    //        assert_eq!(super::get_debugger_type(v), Some(String::from("node")));
+    //    }
+    //
+    //    #[test]
+    //    fn finds_node_when_js_file() {
+    //        let v = vec!["./test_files/test_node.js"];
+    //        assert_eq!(super::get_debugger_type(v), Some(String::from("node")));
+    //    }
+
+    #[test]
+    fn get_debugger_lldb() {
+        let notifier = Arc::new(Mutex::new(super::Notifier::new()));
+        let debugger = super::get_debugger(
+            Some("lldb"),
+            Some("lldb"),
+            vec!["padre".to_string(), "--".to_string(), "arg1".to_string()],
+            notifier,
+        );
     }
 }

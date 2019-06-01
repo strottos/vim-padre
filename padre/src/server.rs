@@ -21,9 +21,13 @@ pub fn process_connection(
     debugger: Arc<Mutex<PadreDebugger>>,
     notifier: Arc<Mutex<Notifier>>,
 ) {
+    let addr = socket.peer_addr().unwrap();
+
     let (tx, rx) = PadreCodec::new().framed(socket).split();
 
     let (mut send_tx, send_rx) = mpsc::channel(32);
+
+    notifier.lock().unwrap().add_listener(send_tx.clone(), addr);
 
     tokio::spawn(
         tx.send_all(send_rx.map_err(|e| {
@@ -59,6 +63,7 @@ fn respond(
     let f = future::lazy(move || {
         let json_response = match req.cmd() {
             "ping" => debugger.lock().unwrap().ping(),
+            "pings" => debugger.lock().unwrap().pings(),
             _ => unreachable!(),
         };
 

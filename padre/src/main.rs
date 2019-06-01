@@ -106,23 +106,22 @@ impl Future for Runner {
         println!("Listening on {}", connection_string);
 
         let notifier = Arc::new(Mutex::new(notifier::Notifier::new()));
-        let debugger = Arc::new(Mutex::new(debugger::PadreDebugger::new(notifier.clone())));
 
-        //        let debug_cmd: Vec<String> = args
-        //            .values_of("debug_cmd")
-        //            .expect("Can't find program to debug, please rerun with correct parameters")
-        //            .map(|x| x.to_string())
-        //            .collect::<Vec<String>>();
-        //
-        //        let debugger = Arc::new(Mutex::new(debugger::get_debugger(
-        //            args.value_of("debugger"),
-        //            args.value_of("type"),
-        //            debug_cmd,
-        //            Arc::clone(&notifier_rc),
-        //        )));
-        //
-        //        //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
-        //        //    install_signals(signals, Arc::clone(&padre_server_rc));
+        let debug_cmd: Vec<String> = args
+            .values_of("debug_cmd")
+            .expect("Can't find program to debug, please rerun with correct parameters")
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+
+        let debugger = Arc::new(Mutex::new(debugger::get_debugger(
+            args.value_of("debugger"),
+            args.value_of("type"),
+            debug_cmd,
+            notifier.clone(),
+        )));
+
+        //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
+        //    install_signals(signals, Arc::clone(&padre_server_rc));
 
         tokio::spawn(
             listener

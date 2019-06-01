@@ -57,7 +57,10 @@ impl Notifier {
     }
 
     pub fn log_msg(&mut self, level: LogLevel, msg: String) {
-        let msg = PadreResponse::Notify("padre#debugger#Log".to_string(), vec!(format!("{}", level), msg));
+        let msg = PadreResponse::Notify(
+            "padre#debugger#Log".to_string(),
+            vec![format!("{}", level), msg],
+        );
         self.send_msg(msg);
     }
 
@@ -98,7 +101,7 @@ mod tests {
 
     #[test]
     fn check_can_add_listeners() {
-        let mut notifier = create_notifier_with_listeners();
+        let notifier = create_notifier_with_listeners();
 
         assert_eq!(notifier.listeners.len(), 2);
     }
@@ -115,4 +118,6 @@ mod tests {
 
         assert_eq!(notifier.listeners.len(), 0);
     }
+
+    // TODO: Check this doesn't handle responses
 }
