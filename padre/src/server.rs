@@ -8,25 +8,42 @@ use crate::request::{PadreRequest, PadreResponse};
 use crate::debugger::PadreDebugger;
 
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::sync::mpsc::{self, UnboundedReceiver};
+//use futures::sync::mpsc::{self, UnboundedReceiver};
 use tokio::codec::{Decoder, Encoder, Framed};
 use tokio::net::TcpStream;
 use tokio::prelude::stream::{SplitSink, SplitStream};
 use tokio::prelude::*;
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<PadreDebugger>>) {
     let (tx, rx) = PadreCodec::new().framed(socket).split();
 
-    tokio::spawn(tx.send_all(rx.and_then(move |req| {
-        let debugger = debugger.clone();
-        respond(req, debugger)
-    })).then(|res| {
-        if let Err(e) = res {
-            println!("failed to process connection; error = {:?}", e);
-        }
+    let (send_tx, send_rx): (Sender<PadreResponse>, Receiver<PadreResponse>) = mpsc::channel(32);
 
-        Ok(())
-    }));
+    tokio::spawn(
+        tx.send_all(
+            send_rx.map_err(|e| {
+                eprintln!("failed to retrieve message to send: {}", e);
+                io::Error::new(io::ErrorKind::Other, e)
+            })
+        ).then(|res| {;
+            if let Err(e) = res {
+                eprintln!("failed to send data to socket; error = {:?}", e);
+            }
+
+            Ok(())
+        })
+    );
+
+    tokio::spawn(
+        rx.and_then(|req| {
+            let debugger = debugger.clone();
+            respond(req, debugger)
+        }).for_each(|resp| {
+            send_tx.try_send(resp);
+            Ok(())
+        }).map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
+    );
 }
 
 fn respond(req: PadreRequest, debugger: Arc<Mutex<PadreDebugger>>) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
@@ -48,53 +65,53 @@ fn respond(req: PadreRequest, debugger: Arc<Mutex<PadreDebugger>>) -> Box<dyn Fu
     Box::new(f)
 }
 
-#[derive(Debug)]
-pub struct PadreConnection {
-    reader: SplitStream<Framed<TcpStream, PadreCodec>>,
-    writer_rx: UnboundedReceiver<Bytes>,
-    rd: BytesMut,
-}
-
-impl PadreConnection {
-    pub fn new(socket: TcpStream) -> Self {
-        let (writer_tx, writer_rx) = mpsc::unbounded();
-
-        let (writer, reader) = PadreCodec::new().framed(socket).split();
-
-        PadreConnection {
-            reader,
-            writer_rx,
-            rd: BytesMut::new(),
-        }
-    }
-    //
-    //    fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
-    //        loop {
-    //            self.rd.reserve(1024);
-    //
-    //            let n = try_ready!(self.reader.read_buf(&mut self.rd));
-    //
-    //            if n == 0 {
-    //                return Ok(Async::Ready(()));
-    //            }
-    //        }
-    //    }
-}
-
-impl Stream for PadreConnection {
-    type Item = PadreRequest;
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        //        let sock_closed = self.fill_read_buf()?.is_ready();
-        //
-        //        if sock_closed {
-        //            Ok(Async::Ready(None))
-        //        } else {
-        Ok(Async::NotReady)
-        //        }
-    }
-}
+//#[derive(Debug)]
+//pub struct PadreConnection {
+//    reader: SplitStream<Framed<TcpStream, PadreCodec>>,
+//    writer_rx: UnboundedReceiver<Bytes>,
+//    rd: BytesMut,
+//}
+//
+//impl PadreConnection {
+//    pub fn new(socket: TcpStream) -> Self {
+//        let (writer_tx, writer_rx) = mpsc::unbounded();
+//
+//        let (writer, reader) = PadreCodec::new().framed(socket).split();
+//
+//        PadreConnection {
+//            reader,
+//            writer_rx,
+//            rd: BytesMut::new(),
+//        }
+//    }
+//    //
+//    //    fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
+//    //        loop {
+//    //            self.rd.reserve(1024);
+//    //
+//    //            let n = try_ready!(self.reader.read_buf(&mut self.rd));
+//    //
+//    //            if n == 0 {
+//    //                return Ok(Async::Ready(()));
+//    //            }
+//    //        }
+//    //    }
+//}
+//
+//impl Stream for PadreConnection {
+//    type Item = PadreRequest;
+//    type Error = io::Error;
+//
+//    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+//        //        let sock_closed = self.fill_read_buf()?.is_ready();
+//        //
+//        //        if sock_closed {
+//        //            Ok(Async::Ready(None))
+//        //        } else {
+//        Ok(Async::NotReady)
+//        //        }
+//    }
+//}
 
 #[derive(Debug)]
 struct PadreCodec {
