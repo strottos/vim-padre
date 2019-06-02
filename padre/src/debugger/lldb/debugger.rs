@@ -9,6 +9,7 @@ use std::thread;
 use crate::debugger::tty_process::spawn_process;
 use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
+use crate::request::RequestError;
 
 use bytes::Bytes;
 use regex::Regex;
@@ -96,21 +97,6 @@ impl Debugger for ImplDebugger {
         self.send_lldb(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]));
         self.send_lldb(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]));
 
-        // This is the preferred method but doesn't seem to work with current tokio
-        // Example here states we need a separate thread: https://github.com/tokio-rs/tokio/blob/master/tokio/examples/connect.rs
-        //
-        //        let input = FramedRead::new(stdin(), LinesCodec::new());
-        //
-        //        tokio::spawn(
-        //            input
-        //                .for_each(|req| {
-        //                    println!("{:?}", req);
-        //                    Ok(())
-        //                })
-        //                .map(|_| ())
-        //                .map_err(|e| panic!("io error = {:?}", e))
-        //        );
-
         let notifier = self.notifier.clone();
 
         tokio::spawn(
@@ -137,6 +123,21 @@ impl Debugger for ImplDebugger {
             .map_err(|e| panic!("Error receiving from lldb: {}", e))
         );
 
+        // This is the preferred method but doesn't seem to work with current tokio
+        // Example here states we need a separate thread: https://github.com/tokio-rs/tokio/blob/master/tokio/examples/connect.rs
+        //
+        //        let input = FramedRead::new(stdin(), LinesCodec::new());
+        //
+        //        tokio::spawn(
+        //            input
+        //                .for_each(|req| {
+        //                    println!("{:?}", req);
+        //                    Ok(())
+        //                })
+        //                .map(|_| ())
+        //                .map_err(|e| panic!("io error = {:?}", e))
+        //        );
+
         let mut lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         thread::spawn(|| {
@@ -158,6 +159,20 @@ impl Debugger for ImplDebugger {
 
         // TODO: Send when actually started
         self.notifier.lock().unwrap().signal_started();
+    }
+
+    fn run(&mut self) -> Result<serde_json::Value, RequestError> {
+        let ret = serde_json::json!({"status":"OK"});
+        Ok(ret)
+    }
+
+    fn breakpoint(
+        &mut self,
+        file: String,
+        line_num: u32,
+    ) -> Result<serde_json::Value, RequestError> {
+        let ret = serde_json::json!({"status":"OK"});
+        Ok(ret)
     }
 }
 

@@ -69,6 +69,10 @@ fn respond(
         let json_response = match req.cmd() {
             "ping" => debugger.lock().unwrap().ping(),
             "pings" => debugger.lock().unwrap().pings(),
+            //"breakpoint" => {
+            //    req.
+            //    debugger.lock().unwrap().debugger().breakpoint()
+            //},
             _ => unreachable!(),
         };
 
@@ -179,7 +183,10 @@ impl Decoder for PadreCodec {
 
         let id: u32 = serde_json::from_value(v[0].take()).unwrap();
         let cmd: String = serde_json::from_value(v[1]["cmd"].take()).unwrap();
-        let padre_request: PadreRequest = PadreRequest::new(id, cmd);
+        println!("args: {:?}", v[1]);
+        let args: HashMap<String, String> = serde_json::from_value(v[1].take()).unwrap();
+        println!("args: {:?}", args);
+        let padre_request: PadreRequest = PadreRequest::new(id, cmd, args);
 
         src.split_to(src.len());
         self.try_from = vec![0];
@@ -209,6 +216,7 @@ impl Encoder for PadreCodec {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use crate::request::{PadreRequest, PadreResponse};
     use bytes::{BufMut, Bytes, BytesMut};
     use tokio::codec::{Decoder, Encoder};
@@ -222,7 +230,7 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
+        assert_eq!(PadreRequest::new(123, "run".to_string(), HashMap::new()), padre_request);
     }
 
     #[test]
@@ -234,14 +242,14 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
+        assert_eq!(PadreRequest::new(123, "run".to_string(), HashMap::new()), padre_request);
 
         buf.reserve(19);
         buf.put(r#"[124,{"cmd":"run"}]"#);
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(124, "run".to_string()), padre_request);
+        assert_eq!(PadreRequest::new(124, "run".to_string(), HashMap::new()), padre_request);
     }
 
     #[test]
@@ -260,7 +268,7 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(123, "run".to_string()), padre_request);
+        assert_eq!(PadreRequest::new(123, "run".to_string(), HashMap::new()), padre_request);
     }
 
     #[test]
@@ -279,7 +287,7 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(124, "run".to_string()), padre_request);
+        assert_eq!(PadreRequest::new(124, "run".to_string(), HashMap::new()), padre_request);
     }
 
     #[test]

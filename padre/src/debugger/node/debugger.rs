@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::debugger::Debugger;
 use crate::notifier::Notifier;
+use crate::request::RequestError;
 
 use tokio::prelude::*;
 
@@ -30,13 +31,18 @@ impl ImplDebugger {
 
 impl Debugger for ImplDebugger {
     fn setup(&mut self) {}
-}
 
-impl Future for ImplDebugger {
-    type Item = ();
-    type Error = ();
+    fn run(&mut self) -> Result<serde_json::Value, RequestError> {
+        let ret = serde_json::json!({"status":"OK"});
+        Ok(ret)
+    }
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        Ok(Async::NotReady)
+    fn breakpoint(
+        &mut self,
+        file: String,
+        line_num: u32,
+    ) -> Result<serde_json::Value, RequestError> {
+        let ret = serde_json::json!({"status":"OK"});
+        Ok(ret)
     }
 }

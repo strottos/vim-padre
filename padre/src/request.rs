@@ -43,19 +43,19 @@ impl RequestError {
 pub struct PadreRequest {
     id: u32,
     cmd: String,
-    //    args: HashMap<String, String>,
+    args: HashMap<String, String>,
 }
 
 impl PadreRequest {
     pub fn new(
         id: u32,
         cmd: String,
-        //        args: HashMap<String, String>,
+        args: HashMap<String, String>,
     ) -> Self {
         PadreRequest {
             id,
             cmd,
-            //            args,
+            args,
         }
     }
 

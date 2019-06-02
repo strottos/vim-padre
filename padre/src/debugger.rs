@@ -12,12 +12,6 @@ use crate::notifier::{LogLevel, Notifier};
 use crate::request::RequestError;
 
 #[derive(Debug)]
-pub enum DebuggerInstruction {
-    Run,
-    Breakpoint,
-}
-
-#[derive(Debug)]
 enum DebuggerState {
     Stopped,
     Paused(String, u32),
@@ -64,10 +58,9 @@ pub fn get_debugger(
 }
 
 pub fn get_debugger_type(cmd: &str) -> Option<String> {
-    //    if is_node(cmd[0]) {
-    //        Some(String::from("node"))
-    //    } else
-    if is_lldb(&cmd) {
+    if is_node(&cmd) {
+        Some(String::from("node"))
+    } else if is_lldb(&cmd) {
         Some(String::from("lldb"))
     } else {
         None
@@ -115,8 +108,28 @@ fn is_lldb(cmd: &str) -> bool {
     false
 }
 
+fn is_node(cmd: &str) -> bool {
+    let cmd_file_type = find_file_type(cmd);
+
+    if (cmd_file_type.contains("ASCII") || cmd_file_type.contains("UTF-8")) && cmd.ends_with(".js") {
+        return true
+    }
+
+    if cmd_file_type.contains("ELF") && cmd == "node" {
+        return true
+    }
+
+    false
+}
+
 pub trait Debugger: Debug {
     fn setup(&mut self);
+    fn run(&mut self) -> Result<serde_json::Value, RequestError>;
+    fn breakpoint(
+        &mut self,
+        file: String,
+        line_num: u32,
+    ) -> Result<serde_json::Value, RequestError>;
 }
 
 #[derive(Debug)]
@@ -136,6 +149,10 @@ impl PadreDebugger {
             notifier,
             debugger,
         }
+    }
+
+    pub fn debugger(&self) -> &Box<dyn Debugger + Send> {
+        &self.debugger
     }
 
     pub fn ping(&self) -> Result<serde_json::Value, RequestError> {
@@ -242,16 +259,14 @@ mod tests {
         );
     }
 
-    //    #[test]
-    //    fn finds_node_when_node_program() {
-    //        set_path();
-    //        let v = vec!["node", "./test_files/test_node.js"];
-    //        assert_eq!(super::get_debugger_type(v), Some(String::from("node")));
-    //    }
-    //
-    //    #[test]
-    //    fn finds_node_when_js_file() {
-    //        let v = vec!["./test_files/test_node.js"];
-    //        assert_eq!(super::get_debugger_type(v), Some(String::from("node")));
-    //    }
+    #[test]
+    fn finds_node_when_node_program() {
+        set_path();
+        assert_eq!(super::get_debugger_type("node"), Some(String::from("node")));
+    }
+
+    #[test]
+    fn finds_node_when_js_file() {
+        assert_eq!(super::get_debugger_type("./test_files/test_node.js"), Some(String::from("node")));
+    }
 }
