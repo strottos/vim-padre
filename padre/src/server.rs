@@ -29,6 +29,11 @@ pub fn process_connection(
 
     notifier.lock().unwrap().add_listener(send_tx.clone(), addr);
 
+    // TODO:
+    //if debugger.has_started() {
+    notifier.lock().unwrap().signal_started();
+    //}
+
     tokio::spawn(
         tx.send_all(send_rx.map_err(|e| {
             eprintln!("failed to retrieve message to send: {}", e);

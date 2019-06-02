@@ -2,8 +2,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::notifier::Notifier;
 use crate::debugger::Debugger;
+use crate::notifier::Notifier;
 
 use tokio::prelude::*;
 
@@ -15,14 +15,21 @@ pub struct ImplDebugger {
 }
 
 impl ImplDebugger {
-    pub fn new(notifier: Arc<Mutex<Notifier>>, debugger_cmd: String, run_cmd: Vec<String>) -> ImplDebugger {
-        ImplDebugger { notifier, debugger_cmd, run_cmd }
+    pub fn new(
+        notifier: Arc<Mutex<Notifier>>,
+        debugger_cmd: String,
+        run_cmd: Vec<String>,
+    ) -> ImplDebugger {
+        ImplDebugger {
+            notifier,
+            debugger_cmd,
+            run_cmd,
+        }
     }
 }
 
 impl Debugger for ImplDebugger {
-    fn setup(&self) {
-    }
+    fn setup(&mut self) {}
 }
 
 impl Future for ImplDebugger {
