@@ -344,8 +344,10 @@ def padre_request(context, request, connection):
 
     e.g. [1,{"cmd":"breakpoint","file":"test_prog.c","line":16} ]
     """
-    request = json.dumps([context.padre.request_counter, request],
+    request = json.dumps([context.padre.request_counter,
+                          json.loads(request.replace('\\n', '\n'))],
                          separators=(',', ':'))
+    print("{}".format(request))
     padre_request_raw(context, request, connection)
 
 

@@ -71,7 +71,7 @@ impl TtyFile {
     }
 
     pub fn into_io(self) -> io::Result<PollEvented<Self>> {
-        PollEvented::new_with_handle(self, &tokio::reactor::Handle::current())
+        PollEvented::new_with_handle(self, &tokio::reactor::Handle::default())
     }
 }
 
@@ -178,7 +178,7 @@ impl Stream for TtyFileStdioStream {
                     let mut buffer: [u8; 512] = [0; 512];
                     match self.io.read(&mut buffer) {
                         Ok(_) => {
-                            // TODO: More efficient, this is crap
+                            // TODO: More efficient, this is crap, but works for now
                             for byte in buffer.iter() {
                                 if *byte != 0 {
                                     self.bytes_mut.reserve(1);
@@ -259,7 +259,16 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
                 TtyFileStdioStream::new(tty, stdin_rx)
                     .for_each(move |chunk| {
                         out.write_all(&chunk).unwrap();
-                        //stdout_tx.clone().send(chunk); // TODO: Error handling and retrying?
+                        tokio::spawn(
+                            stdout_tx
+                                .clone()
+                                .send(chunk)
+                                .map(|_| {})
+                                .map_err(|e| {
+                                    // TODO: Error handling?
+                                    println!("Can't send output to be analysed: {}", e)
+                                })
+                        );
                         out.flush()
                     })
                     .map_err(|e| println!("error reading stdout; error = {:?}", e)),

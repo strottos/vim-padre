@@ -68,14 +68,6 @@ impl Notifier {
         self.listeners.retain(|listener| listener.addr != *addr);
     }
 
-    pub fn log_msg(&mut self, level: LogLevel, msg: String) {
-        let msg = PadreResponse::Notify(
-            "padre#debugger#Log".to_string(),
-            vec![format!("{}", level), msg],
-        );
-        self.send_msg(msg);
-    }
-
     pub fn signal_started(&mut self) {
         let msg = PadreResponse::Notify("padre#debugger#SignalPADREStarted".to_string(), vec![]);
         for mut listener in self.listeners.iter_mut() {
@@ -90,6 +82,38 @@ impl Notifier {
                 listener.has_started = true;
             }
         }
+    }
+
+    pub fn signal_exited(&mut self, pid: u32, exit_code: u32) {
+        let msg = PadreResponse::Notify(
+            "padre#debugger#ProcessExited".to_string(),
+            vec![format!("{}", exit_code), format!("{}", pid)],
+        );
+        self.send_msg(msg);
+    }
+
+    pub fn log_msg(&mut self, level: LogLevel, msg: String) {
+        let msg = PadreResponse::Notify(
+            "padre#debugger#Log".to_string(),
+            vec![format!("{}", level), msg],
+        );
+        self.send_msg(msg);
+    }
+
+    pub fn jump_to_position(&mut self, file: String, line: u32) {
+        let msg = PadreResponse::Notify(
+            "padre#debugger#JumpToPosition".to_string(),
+            vec![file, format!("{}", line)],
+        );
+        self.send_msg(msg);
+    }
+
+    pub fn breakpoint_set(&mut self, file: String, line: u32) {
+        let msg = PadreResponse::Notify(
+            "padre#debugger#BreakpointSet".to_string(),
+            vec![file, format!("{}", line)],
+        );
+        self.send_msg(msg);
     }
 
     fn send_msg(&mut self, msg: PadreResponse) {

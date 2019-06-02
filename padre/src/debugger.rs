@@ -11,8 +11,6 @@ use std::sync::{Arc, Mutex};
 use crate::notifier::{LogLevel, Notifier};
 use crate::request::RequestError;
 
-use tokio::prelude::*;
-
 #[derive(Debug)]
 pub enum DebuggerInstruction {
     Run,
