@@ -40,7 +40,7 @@ impl Debugger for ImplDebugger {
     fn breakpoint(
         &mut self,
         file: String,
-        line_num: u32,
+        line_num: u64,
     ) -> Result<serde_json::Value, RequestError> {
         let ret = serde_json::json!({"status":"OK"});
         Ok(ret)

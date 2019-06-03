@@ -84,7 +84,7 @@ impl Notifier {
         }
     }
 
-    pub fn signal_exited(&mut self, pid: u32, exit_code: u32) {
+    pub fn signal_exited(&mut self, pid: u64, exit_code: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#ProcessExited".to_string(),
             vec![format!("{}", exit_code), format!("{}", pid)],
@@ -100,7 +100,7 @@ impl Notifier {
         self.send_msg(msg);
     }
 
-    pub fn jump_to_position(&mut self, file: String, line: u32) {
+    pub fn jump_to_position(&mut self, file: String, line: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#JumpToPosition".to_string(),
             vec![file, format!("{}", line)],
@@ -108,7 +108,7 @@ impl Notifier {
         self.send_msg(msg);
     }
 
-    pub fn breakpoint_set(&mut self, file: String, line: u32) {
+    pub fn breakpoint_set(&mut self, file: String, line: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#BreakpointSet".to_string(),
             vec![file, format!("{}", line)],

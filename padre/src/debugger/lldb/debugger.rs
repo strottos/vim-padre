@@ -22,13 +22,13 @@ pub enum LLDBStatus {
     NoProcess,
     Error,
     // (PID)
-    ProcessStarted(u32),
+    ProcessStarted(u64),
     // (PID, Exit code)
-    ProcessExited(u32, u32),
+    ProcessExited(u64, u64),
     // (File name, line number)
-    Breakpoint(String, u32),
+    Breakpoint(String, u64),
     // (File name, line number)
-    JumpToPosition(String, u32),
+    JumpToPosition(String, u64),
     UnknownPosition,
     BreakpointPending,
     StepIn,
@@ -70,7 +70,6 @@ impl ImplDebugger {
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
     }
-
 }
 
 impl Debugger for ImplDebugger {
@@ -100,27 +99,28 @@ impl Debugger for ImplDebugger {
         let notifier = self.notifier.clone();
 
         tokio::spawn(
-            lldb_out_rx.for_each(move |output| {
-                match analyse_lldb_output(output) {
-                    LLDBStatus::ProcessStarted(pid) => {
-                        println!("Process started {}", pid);
-                    },
-                    LLDBStatus::ProcessExited(pid, exit_code) => {
-                        notifier.lock().unwrap().signal_exited(pid, exit_code);
-                        println!("Process exited {}", exit_code);
-                    },
-                    LLDBStatus::Breakpoint(file, line) => {
-                        notifier.lock().unwrap().breakpoint_set(file, line);
-                    },
-                    LLDBStatus::JumpToPosition(file, line) => {
-                        notifier.lock().unwrap().jump_to_position(file, line);
-                    },
-                    LLDBStatus::None => {}
-                    _ => panic!("Uh oh"),
-                }
-                Ok(())
-            })
-            .map_err(|e| panic!("Error receiving from lldb: {}", e))
+            lldb_out_rx
+                .for_each(move |output| {
+                    match analyse_lldb_output(output) {
+                        LLDBStatus::ProcessStarted(pid) => {
+                            println!("Process started {}", pid);
+                        }
+                        LLDBStatus::ProcessExited(pid, exit_code) => {
+                            notifier.lock().unwrap().signal_exited(pid, exit_code);
+                            println!("Process exited {}", exit_code);
+                        }
+                        LLDBStatus::Breakpoint(file, line) => {
+                            notifier.lock().unwrap().breakpoint_set(file, line);
+                        }
+                        LLDBStatus::JumpToPosition(file, line) => {
+                            notifier.lock().unwrap().jump_to_position(file, line);
+                        }
+                        LLDBStatus::None => {}
+                        _ => panic!("Uh oh"),
+                    }
+                    Ok(())
+                })
+                .map_err(|e| panic!("Error receiving from lldb: {}", e)),
         );
 
         // This is the preferred method but doesn't seem to work with current tokio
@@ -169,7 +169,7 @@ impl Debugger for ImplDebugger {
     fn breakpoint(
         &mut self,
         file: String,
-        line_num: u32,
+        line_num: u64,
     ) -> Result<serde_json::Value, RequestError> {
         let ret = serde_json::json!({"status":"OK"});
         Ok(ret)
@@ -181,29 +181,40 @@ fn analyse_lldb_output(output: Bytes) -> LLDBStatus {
     let data = data.trim_matches(char::from(0));
 
     lazy_static! {
-        static ref RE_BREAKPOINT: Regex = Regex::new("Breakpoint (\\d+): where = .* at (\\S+):(\\d+), address = 0x[0-9a-f]*$").unwrap();
+        static ref RE_BREAKPOINT: Regex =
+            Regex::new("Breakpoint (\\d+): where = .* at (\\S+):(\\d+), address = 0x[0-9a-f]*$")
+                .unwrap();
         static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
-        static ref RE_JUMP_TO_POSITION: Regex = Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
-        static ref RE_PROCESS_STARTED: Regex = Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
-        static ref RE_PROCESS_EXITED: Regex = Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
+        static ref RE_JUMP_TO_POSITION: Regex =
+            Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
+        static ref RE_PROCESS_STARTED: Regex =
+            Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
+        static ref RE_PROCESS_EXITED: Regex =
+            Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
     }
 
     for line in data.split("\r\n") {
         for cap in RE_PROCESS_STARTED.captures_iter(line) {
-            return LLDBStatus::ProcessStarted(cap[1].parse::<u32>().unwrap());
+            return LLDBStatus::ProcessStarted(cap[1].parse::<u64>().unwrap());
         }
 
         for cap in RE_PROCESS_EXITED.captures_iter(line) {
-            return LLDBStatus::ProcessExited(cap[1].parse::<u32>().unwrap(), cap[2].parse::<u32>().unwrap());
+            return LLDBStatus::ProcessExited(
+                cap[1].parse::<u64>().unwrap(),
+                cap[2].parse::<u64>().unwrap(),
+            );
         }
 
         for cap in RE_BREAKPOINT.captures_iter(line) {
-            return LLDBStatus::Breakpoint(cap[2].to_string(), cap[3].parse::<u32>().unwrap());
+            return LLDBStatus::Breakpoint(cap[2].to_string(), cap[3].parse::<u64>().unwrap());
         }
 
         for _ in RE_STOPPED_AT_POSITION.captures_iter(line) {
             for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
-                return LLDBStatus::JumpToPosition(cap[1].to_string(), cap[2].parse::<u32>().unwrap());
+                return LLDBStatus::JumpToPosition(
+                    cap[1].to_string(),
+                    cap[2].parse::<u64>().unwrap(),
+                );
             }
 
             return LLDBStatus::UnknownPosition;

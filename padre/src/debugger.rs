@@ -4,17 +4,20 @@ mod tty_process;
 
 use std::env;
 use std::fmt::Debug;
+use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use crate::notifier::{LogLevel, Notifier};
-use crate::request::RequestError;
+use crate::request::{PadreRequest, PadreResponse, RequestError};
+
+use tokio::prelude::*;
 
 #[derive(Debug)]
 enum DebuggerState {
     Stopped,
-    Paused(String, u32),
+    Paused(String, u64),
     Running,
     Error,
 }
@@ -111,12 +114,13 @@ fn is_lldb(cmd: &str) -> bool {
 fn is_node(cmd: &str) -> bool {
     let cmd_file_type = find_file_type(cmd);
 
-    if (cmd_file_type.contains("ASCII") || cmd_file_type.contains("UTF-8")) && cmd.ends_with(".js") {
-        return true
+    if (cmd_file_type.contains("ASCII") || cmd_file_type.contains("UTF-8")) && cmd.ends_with(".js")
+    {
+        return true;
     }
 
     if cmd_file_type.contains("ELF") && cmd == "node" {
-        return true
+        return true;
     }
 
     false
@@ -128,7 +132,7 @@ pub trait Debugger: Debug {
     fn breakpoint(
         &mut self,
         file: String,
-        line_num: u32,
+        line_num: u64,
     ) -> Result<serde_json::Value, RequestError>;
 }
 
@@ -151,10 +155,6 @@ impl PadreDebugger {
         }
     }
 
-    pub fn debugger(&self) -> &Box<dyn Debugger + Send> {
-        &self.debugger
-    }
-
     pub fn ping(&self) -> Result<serde_json::Value, RequestError> {
         let pong = serde_json::json!({"status":"OK","ping":"pong"});
         Ok(pong)
@@ -167,6 +167,18 @@ impl PadreDebugger {
             .unwrap()
             .log_msg(LogLevel::INFO, "pong".to_string());
         Ok(pongs)
+    }
+
+    pub fn handle(
+        &self,
+        req: PadreRequest,
+    ) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(PadreResponse::Response(req.id(), resp))
+        });
+
+        Box::new(f)
     }
 }
 
@@ -267,6 +279,9 @@ mod tests {
 
     #[test]
     fn finds_node_when_js_file() {
-        assert_eq!(super::get_debugger_type("./test_files/test_node.js"), Some(String::from("node")));
+        assert_eq!(
+            super::get_debugger_type("./test_files/test_node.js"),
+            Some(String::from("node"))
+        );
     }
 }

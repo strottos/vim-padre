@@ -1,20 +1,17 @@
 //! handle server connections
 
-use std::collections::HashMap;
 use std::io;
 use std::sync::{Arc, Mutex};
 
 use crate::debugger::PadreDebugger;
 use crate::notifier::Notifier;
-use crate::request::{PadreRequest, PadreResponse};
+use crate::request::{PadreRequest, PadreRequestCmd, PadreResponse};
 
-use bytes::{BufMut, Bytes, BytesMut};
-//use futures::sync::mpsc::{self, UnboundedReceiver};
-use tokio::codec::{Decoder, Encoder, Framed};
+use bytes::{BufMut, BytesMut};
+use tokio::codec::{Decoder, Encoder};
 use tokio::net::TcpStream;
-use tokio::prelude::stream::{SplitSink, SplitStream};
 use tokio::prelude::*;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc;
 
 pub fn process_connection(
     socket: TcpStream,
@@ -23,11 +20,14 @@ pub fn process_connection(
 ) {
     let addr = socket.peer_addr().unwrap();
 
-    let (tx, rx) = PadreCodec::new().framed(socket).split();
+    let (request_tx, request_rx) = PadreCodec::new().framed(socket).split();
 
-    let (mut send_tx, send_rx) = mpsc::channel(32);
+    let (mut connection_tx, connection_rx) = mpsc::channel(1);
 
-    notifier.lock().unwrap().add_listener(send_tx.clone(), addr);
+    notifier
+        .lock()
+        .unwrap()
+        .add_listener(connection_tx.clone(), addr);
 
     // TODO:
     //if debugger.has_started() {
@@ -35,29 +35,31 @@ pub fn process_connection(
     //}
 
     tokio::spawn(
-        tx.send_all(send_rx.map_err(|e| {
-            eprintln!("failed to retrieve message to send: {}", e);
-            io::Error::new(io::ErrorKind::Other, e)
-        }))
-        .then(|res| {
-            if let Err(e) = res {
-                eprintln!("failed to send data to socket; error = {:?}", e);
-            }
+        request_tx
+            .send_all(connection_rx.map_err(|e| {
+                eprintln!("failed to retrieve message to send: {}", e);
+                io::Error::new(io::ErrorKind::Other, e)
+            }))
+            .then(|res| {
+                if let Err(e) = res {
+                    eprintln!("failed to send data to socket; error = {:?}", e);
+                }
 
-            Ok(())
-        }),
+                Ok(())
+            }),
     );
 
     tokio::spawn(
-        rx.and_then(move |req| {
-            let debugger = debugger.clone();
-            respond(req, debugger)
-        })
-        .for_each(move |resp| {
-            send_tx.try_send(resp).unwrap();
-            Ok(())
-        })
-        .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e)),
+        request_rx
+            .and_then(move |req| {
+                let debugger = debugger.clone();
+                respond(req, debugger)
+            })
+            .for_each(move |resp| {
+                connection_tx.try_send(resp).unwrap();
+                Ok(())
+            })
+            .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e)),
     );
 }
 
@@ -65,23 +67,20 @@ fn respond(
     req: PadreRequest,
     debugger: Arc<Mutex<PadreDebugger>>,
 ) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
-    let f = future::lazy(move || {
-        let json_response = match req.cmd() {
-            "ping" => debugger.lock().unwrap().ping(),
-            "pings" => debugger.lock().unwrap().pings(),
-            //"breakpoint" => {
-            //    req.
-            //    debugger.lock().unwrap().debugger().breakpoint()
-            //},
-            _ => unreachable!(),
-        };
+    let json_response = match req.cmd().as_str() {
+        "ping" => debugger.lock().unwrap().ping(),
+        "pings" => debugger.lock().unwrap().pings(),
+        _ => {
+            // TODO: Timeouts
+            return debugger.lock().unwrap().handle(req);
+        }
+    };
 
-        match json_response {
-            Ok(resp) => Ok(PadreResponse::Response(req.id(), resp)),
-            Err(_) => {
-                println!("TODO - implement");
-                unreachable!();
-            }
+    let f = future::lazy(move || match json_response {
+        Ok(resp) => Ok(PadreResponse::Response(req.id(), resp)),
+        Err(_) => {
+            println!("TODO - Implement");
+            panic!("ERROR4");
         }
     });
 
@@ -181,12 +180,51 @@ impl Decoder for PadreCodec {
             return Ok(None);
         }
 
-        let id: u32 = serde_json::from_value(v[0].take()).unwrap();
-        let cmd: String = serde_json::from_value(v[1]["cmd"].take()).unwrap();
-        println!("args: {:?}", v[1]);
-        let args: HashMap<String, String> = serde_json::from_value(v[1].take()).unwrap();
-        println!("args: {:?}", args);
-        let padre_request: PadreRequest = PadreRequest::new(id, cmd, args);
+        let id: u64 = serde_json::from_value(v[0].take()).unwrap();
+        let cmd: String = match serde_json::from_value(v[1]["cmd"].take()) {
+            Ok(s) => s,
+            Err(err) => {
+                println!("TODO - Implement: {}", err);
+                panic!("ERROR1");
+            }
+        };
+
+        let file_location: Option<(String, u64)> = match serde_json::from_value(v[1]["file"].take())
+        {
+            Ok(s) => match serde_json::from_value(v[1]["line"].take()) {
+                Ok(t) => {
+                    let t: u64 = t;
+                    Some((s, t))
+                }
+                Err(err) => {
+                    println!("TODO - Implement: {}", err);
+                    panic!("ERROR2");
+                }
+            },
+            Err(err) => {
+                println!("ERROR Not handling {:?}", err);
+                None
+            }
+        };
+
+        let variable: Option<String> = match serde_json::from_value(v[1]["variable"].take()) {
+            Ok(s) => Some(s),
+            Err(err) => {
+                println!("ERROR Not handling {:?}", err);
+                None
+            }
+        };
+
+        let cmd: PadreRequestCmd = match file_location {
+            Some(s) => PadreRequestCmd::CmdWithFileLocation(cmd, s.0, s.1),
+            None => match variable {
+                Some(s) => PadreRequestCmd::CmdWithVariable(cmd, s),
+                None => PadreRequestCmd::Cmd(cmd),
+            },
+        };
+
+        let padre_request: PadreRequest = PadreRequest::new(id, cmd);
+        // TODO: If anything left in v error
 
         src.split_to(src.len());
         self.try_from = vec![0];
@@ -216,13 +254,12 @@ impl Encoder for PadreCodec {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use crate::request::{PadreRequest, PadreResponse};
+    use crate::request::{PadreRequest, PadreRequestCmd, PadreResponse};
     use bytes::{BufMut, Bytes, BytesMut};
     use tokio::codec::{Decoder, Encoder};
 
     #[test]
-    fn check_single_json_decoding() {
+    fn check_simple_json_decoding() {
         let mut codec = super::PadreCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(19);
@@ -230,7 +267,10 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(123, "run".to_string(), HashMap::new()), padre_request);
+        assert_eq!(
+            PadreRequest::new(123, PadreRequestCmd::Cmd("run".to_string())),
+            padre_request
+        );
     }
 
     #[test]
@@ -242,14 +282,20 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(123, "run".to_string(), HashMap::new()), padre_request);
+        assert_eq!(
+            PadreRequest::new(123, PadreRequestCmd::Cmd("run".to_string())),
+            padre_request
+        );
 
         buf.reserve(19);
         buf.put(r#"[124,{"cmd":"run"}]"#);
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(124, "run".to_string(), HashMap::new()), padre_request);
+        assert_eq!(
+            PadreRequest::new(124, PadreRequestCmd::Cmd("run".to_string())),
+            padre_request
+        );
     }
 
     #[test]
@@ -268,7 +314,10 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(123, "run".to_string(), HashMap::new()), padre_request);
+        assert_eq!(
+            PadreRequest::new(123, PadreRequestCmd::Cmd("run".to_string())),
+            padre_request
+        );
     }
 
     #[test]
@@ -287,7 +336,50 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(PadreRequest::new(124, "run".to_string(), HashMap::new()), padre_request);
+        assert_eq!(
+            PadreRequest::new(124, PadreRequestCmd::Cmd("run".to_string())),
+            padre_request
+        );
+    }
+
+    #[test]
+    fn check_json_decoding_with_file_location() {
+        let mut codec = super::PadreCodec::new();
+        let mut buf = BytesMut::new();
+        buf.reserve(53);
+        buf.put(r#"[123,{"cmd":"breakpoint","file":"test.c","line":125}]"#);
+
+        let padre_request = codec.decode(&mut buf).unwrap().unwrap();
+
+        assert_eq!(
+            PadreRequest::new(
+                123,
+                PadreRequestCmd::CmdWithFileLocation(
+                    "breakpoint".to_string(),
+                    "test.c".to_string(),
+                    125
+                )
+            ),
+            padre_request
+        );
+    }
+
+    #[test]
+    fn check_json_decoding_with_variable() {
+        let mut codec = super::PadreCodec::new();
+        let mut buf = BytesMut::new();
+        buf.reserve(36);
+        buf.put(r#"[123,{"cmd":"print","variable":"a"}]"#);
+
+        let padre_request = codec.decode(&mut buf).unwrap().unwrap();
+
+        assert_eq!(
+            PadreRequest::new(
+                123,
+                PadreRequestCmd::CmdWithVariable("print".to_string(), "a".to_string())
+            ),
+            padre_request
+        );
     }
 
     #[test]

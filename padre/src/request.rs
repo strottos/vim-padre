@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -39,37 +38,53 @@ impl RequestError {
     }
 }
 
+#[derive(Clone, Deserialize, Debug, PartialEq)]
+pub enum PadreRequestCmd {
+    Cmd(String),
+    CmdWithFileLocation(String, String, u64),
+    CmdWithVariable(String, String),
+}
+
 #[derive(Deserialize, Debug, PartialEq)]
 pub struct PadreRequest {
-    id: u32,
-    cmd: String,
-    args: HashMap<String, String>,
+    id: u64,
+    cmd: PadreRequestCmd,
 }
 
 impl PadreRequest {
-    pub fn new(
-        id: u32,
-        cmd: String,
-        args: HashMap<String, String>,
-    ) -> Self {
-        PadreRequest {
-            id,
-            cmd,
-            args,
-        }
+    pub fn new(id: u64, cmd: PadreRequestCmd) -> Self {
+        PadreRequest { id, cmd }
     }
 
-    pub fn id(&self) -> u32 {
+    pub fn id(&self) -> u64 {
         self.id
     }
 
-    pub fn cmd(&self) -> &str {
-        &self.cmd
+    pub fn cmd(&self) -> String {
+        match self.cmd.clone() {
+            PadreRequestCmd::Cmd(s) => s.clone(),
+            PadreRequestCmd::CmdWithFileLocation(s, _, _) => s.clone(),
+            PadreRequestCmd::CmdWithVariable(s, _) => s.clone(),
+        }
+    }
+
+    pub fn file_location(&self) -> (String, u64) {
+        match self.cmd.clone() {
+            PadreRequestCmd::CmdWithFileLocation(_, s, t) => (s, t),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn variable(&self) -> String {
+        match self.cmd.clone() {
+            PadreRequestCmd::CmdWithVariable(_, s) => s,
+            _ => unreachable!(),
+        }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum PadreResponse {
-    Response(u32, serde_json::Value),
+    Response(u64, serde_json::Value),
     Notify(String, Vec<String>),
 }
