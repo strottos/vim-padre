@@ -15,12 +15,14 @@ use bytes::Bytes;
 use regex::Regex;
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::oneshot;
 
 #[derive(Debug, Clone)]
 pub enum LLDBStatus {
     None,
     NoProcess,
     Error,
+    LLDBStarted,
     // (PID)
     ProcessStarted(u64),
     // (PID, Exit code)
@@ -44,6 +46,7 @@ pub struct ImplDebugger {
     debugger_cmd: String,
     run_cmd: Vec<String>,
     lldb_in_tx: Option<Sender<Bytes>>,
+    started: Arc<Mutex<bool>>,
 }
 
 impl ImplDebugger {
@@ -57,18 +60,12 @@ impl ImplDebugger {
             debugger_cmd,
             run_cmd,
             lldb_in_tx: None,
+            started: Arc::new(Mutex::new(false)),
         }
     }
 
     fn send_lldb(&mut self, bytes: Bytes) {
         assert!(!self.lldb_in_tx.is_none());
-        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
-        tokio::spawn(
-            lldb_in_tx
-                .send(bytes)
-                .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
-        );
     }
 }
 
@@ -92,16 +89,44 @@ impl Debugger for ImplDebugger {
         cmd.extend(self.run_cmd.clone());
         spawn_process(cmd, lldb_in_rx, lldb_out_tx);
 
-        self.send_lldb(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]));
-        self.send_lldb(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]));
-        self.send_lldb(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]));
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
 
         let notifier = self.notifier.clone();
+        let started = self.started.clone();
 
         tokio::spawn(
             lldb_out_rx
                 .for_each(move |output| {
                     match analyse_lldb_output(output) {
+                        LLDBStatus::LLDBStarted => {
+                            *started.lock().unwrap() = true;
+                            notifier.lock().unwrap().signal_started();
+                        }
                         LLDBStatus::ProcessStarted(pid) => {
                             println!("Process started {}", pid);
                         }
@@ -156,23 +181,43 @@ impl Debugger for ImplDebugger {
                 };
             }
         });
-
-        // TODO: Send when actually started
-        self.notifier.lock().unwrap().signal_started();
     }
 
-    fn run(&mut self) -> Result<serde_json::Value, RequestError> {
-        let ret = serde_json::json!({"status":"OK"});
-        Ok(ret)
+    fn has_started(&self) -> bool {
+        *self.started.lock().unwrap()
+    }
+
+    fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
     }
 
     fn breakpoint(
         &mut self,
         file: String,
         line_num: u64,
-    ) -> Result<serde_json::Value, RequestError> {
-        let ret = serde_json::json!({"status":"OK"});
-        Ok(ret)
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        let breakpoint_set = format!("breakpoint set --file {} --line {}\r\n", file, line_num);
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&breakpoint_set[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
     }
 }
 
@@ -181,19 +226,34 @@ fn analyse_lldb_output(output: Bytes) -> LLDBStatus {
     let data = data.trim_matches(char::from(0));
 
     lazy_static! {
-        static ref RE_BREAKPOINT: Regex =
-            Regex::new("Breakpoint (\\d+): where = .* at (\\S+):(\\d+), address = 0x[0-9a-f]*$")
-                .unwrap();
-        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
-        static ref RE_JUMP_TO_POSITION: Regex =
-            Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
+        static ref RE_LLDB_STARTED: Regex =
+            Regex::new("Current executable set to '.*' \\(.*\\)\\.$").unwrap();
         static ref RE_PROCESS_STARTED: Regex =
             Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
         static ref RE_PROCESS_EXITED: Regex =
             Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
+        static ref RE_BREAKPOINT: Regex =
+            Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+):\\d+, address = 0x[0-9a-f]*$")
+                .unwrap();
+        static ref RE_BREAKPOINT_2: Regex =
+            Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+), address = 0x[0-9a-f]*$")
+                .unwrap();
+        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
+        static ref RE_JUMP_TO_POSITION: Regex =
+            Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
     }
 
     for line in data.split("\r\n") {
+        //        // TODO: Find a more efficient way of doing this, and maybe think about UTF-8
+        //        let mut line = line;
+        //        while line.len() > 7 && &line[0..7] == "(lldb) " {
+        //            line = &line[7..];
+        //        }
+
+        for _ in RE_LLDB_STARTED.captures_iter(line) {
+            return LLDBStatus::LLDBStarted;
+        }
+
         for cap in RE_PROCESS_STARTED.captures_iter(line) {
             return LLDBStatus::ProcessStarted(cap[1].parse::<u64>().unwrap());
         }
@@ -206,6 +266,10 @@ fn analyse_lldb_output(output: Bytes) -> LLDBStatus {
         }
 
         for cap in RE_BREAKPOINT.captures_iter(line) {
+            return LLDBStatus::Breakpoint(cap[2].to_string(), cap[3].parse::<u64>().unwrap());
+        }
+
+        for cap in RE_BREAKPOINT_2.captures_iter(line) {
             return LLDBStatus::Breakpoint(cap[2].to_string(), cap[3].parse::<u64>().unwrap());
         }
 

@@ -29,10 +29,9 @@ pub fn process_connection(
         .unwrap()
         .add_listener(connection_tx.clone(), addr);
 
-    // TODO:
-    //if debugger.has_started() {
-    notifier.lock().unwrap().signal_started();
-    //}
+    if debugger.lock().unwrap().has_started() {
+        notifier.lock().unwrap().signal_started();
+    }
 
     tokio::spawn(
         request_tx
@@ -67,13 +66,16 @@ fn respond(
     req: PadreRequest,
     debugger: Arc<Mutex<PadreDebugger>>,
 ) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
-    let json_response = match req.cmd().as_str() {
-        "ping" => debugger.lock().unwrap().ping(),
-        "pings" => debugger.lock().unwrap().pings(),
-        _ => {
-            // TODO: Timeouts
-            return debugger.lock().unwrap().handle(req);
+    let json_response = match req.cmd() {
+        PadreRequestCmd::Cmd(s) => {
+            let s: &str = s;
+            match s {
+                "ping" => debugger.lock().unwrap().ping(),
+                "pings" => debugger.lock().unwrap().pings(),
+                _ => return respond_debugger(req, debugger),
+            }
         }
+        _ => return respond_debugger(req, debugger),
     };
 
     let f = future::lazy(move || match json_response {
@@ -85,6 +87,22 @@ fn respond(
     });
 
     Box::new(f)
+}
+
+fn respond_debugger(
+    req: PadreRequest,
+    debugger: Arc<Mutex<PadreDebugger>>,
+) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
+    let id = req.id();
+
+    // TODO: Timeouts
+    let f = debugger
+        .lock()
+        .unwrap()
+        .handle(req)
+        .then(move |resp| Ok(PadreResponse::Response(id, resp.unwrap())));
+
+    return Box::new(f);
 }
 
 //#[derive(Debug)]

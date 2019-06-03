@@ -60,26 +60,8 @@ impl PadreRequest {
         self.id
     }
 
-    pub fn cmd(&self) -> String {
-        match self.cmd.clone() {
-            PadreRequestCmd::Cmd(s) => s.clone(),
-            PadreRequestCmd::CmdWithFileLocation(s, _, _) => s.clone(),
-            PadreRequestCmd::CmdWithVariable(s, _) => s.clone(),
-        }
-    }
-
-    pub fn file_location(&self) -> (String, u64) {
-        match self.cmd.clone() {
-            PadreRequestCmd::CmdWithFileLocation(_, s, t) => (s, t),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn variable(&self) -> String {
-        match self.cmd.clone() {
-            PadreRequestCmd::CmdWithVariable(_, s) => s,
-            _ => unreachable!(),
-        }
+    pub fn cmd(&self) -> &PadreRequestCmd {
+        &self.cmd
     }
 }
 

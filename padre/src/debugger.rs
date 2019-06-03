@@ -10,7 +10,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use crate::notifier::{LogLevel, Notifier};
-use crate::request::{PadreRequest, PadreResponse, RequestError};
+use crate::request::{PadreRequest, PadreRequestCmd, RequestError};
 
 use tokio::prelude::*;
 
@@ -128,12 +128,13 @@ fn is_node(cmd: &str) -> bool {
 
 pub trait Debugger: Debug {
     fn setup(&mut self);
-    fn run(&mut self) -> Result<serde_json::Value, RequestError>;
+    fn has_started(&self) -> bool;
+    fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn breakpoint(
         &mut self,
         file: String,
         line_num: u64,
-    ) -> Result<serde_json::Value, RequestError>;
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
 }
 
 #[derive(Debug)]
@@ -169,16 +170,40 @@ impl PadreDebugger {
         Ok(pongs)
     }
 
-    pub fn handle(
-        &self,
-        req: PadreRequest,
-    ) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(PadreResponse::Response(req.id(), resp))
-        });
+    pub fn has_started(&self) -> bool {
+        self.debugger.has_started()
+    }
 
-        Box::new(f)
+    pub fn handle(
+        &mut self,
+        req: PadreRequest,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        match req.cmd() {
+            PadreRequestCmd::Cmd(cmd) => {
+                let cmd: &str = cmd;
+                match cmd {
+                    "run" => self.debugger.run(),
+                    _ => {
+                        println!("TODO - Implement: {:?}", req.cmd());
+                        panic!("ERROR5");
+                    }
+                }
+            }
+            PadreRequestCmd::CmdWithFileLocation(cmd, file, line) => {
+                let cmd: &str = cmd;
+                match cmd {
+                    "breakpoint" => self.debugger.breakpoint(file.clone(), *line),
+                    _ => {
+                        println!("TODO - Implement: {:?}", req.cmd());
+                        panic!("ERROR6");
+                    }
+                }
+            }
+            _ => {
+                println!("TODO - Implement: {:?}", req.cmd());
+                panic!("ERROR7");
+            }
+        }
     }
 }
 

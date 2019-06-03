@@ -30,62 +30,62 @@ Feature: LLDB
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate padre
+        #Then padre is not running
+
+    Scenario Outline: Debug a basic program with LLDB using the PADRE interface
+        Given that we have a file 'test_prog.c'
+        And I have compiled the test program 'test_prog.c' with compiler '<compiler>' to program 'test_prog'
+        And that we have a test program 'test_prog' that runs with 'lldb'
+        When I debug the program with PADRE
+        Then I expect to be called with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a request to PADRE '{"cmd":"breakpoint","file":"test_prog.c","line":17}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                     | args                     |
+            | padre#debugger#Log           | [4, ".*test_prog.c.*17"] |
+            | padre#debugger#BreakpointSet | [".*test_prog.c$", 17]   |
+        When I send a request to PADRE '{"cmd":"breakpoint","file":"not_exists.c","line":17}'
+        Then I receive both a response '{"status":"PENDING"}' and I expect to be called with
+            | function           | args                     |
+            | padre#debugger#Log | [4,".*not_exists.c.*17"] |
+        When I send a request to PADRE '{"cmd":"run"}'
+        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22] |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
+        When I send a request to PADRE '{"cmd":"stepIn}"'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",8] |
+        When I send a request to PADRE '{"cmd":"stepOver"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",9] |
+        When I send a request to PADRE '{"cmd":"stepIn"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",13] |
+        When I send a request to PADRE '{"cmd":"continue"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",17] |
+        When I send a request to PADRE '{"cmd":"stepOver"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",18] |
+        When I send a request to PADRE '{"cmd":"print","variable":"a"}'
+        Then I receive a response '{"status":"OK","variable":"a","value":"1","type":"int"}'
+        When I send a request to PADRE '{"cmd":"continue"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                     | args       |
+            | padre#debugger#ProcessExited | [0,"\\d+"] |
+        When I terminate padre
         Then padre is not running
 
-        #    Scenario Outline: Debug a basic program with LLDB using the PADRE interface
-        #        Given that we have a file 'test_prog.c'
-        #        And I have compiled the test program 'test_prog.c' with compiler '<compiler>' to program 'test_prog'
-        #        And that we have a test program 'test_prog' that runs with 'lldb'
-        #        When I debug the program with PADRE
-        #        Then I expect to be called with
-        #            | function                          | args |
-        #            | padre#debugger#SignalPADREStarted | []   |
-        #        When I send a request to PADRE '{"cmd":"breakpoint","file":"test_prog.c","line":17}'
-        #        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-        #            | function                     | args                     |
-        #            | padre#debugger#Log           | [4, ".*test_prog.c.*17"] |
-        #            | padre#debugger#BreakpointSet | [".*test_prog.c$", 17]   |
-        #        When I send a request to PADRE '{"cmd":"breakpoint","file":"not_exists.c","line":17}'
-        #        Then I receive both a response '{"status":"PENDING"}' and I expect to be called with
-        #            | function           | args                     |
-        #            | padre#debugger#Log | [4,".*not_exists.c.*17"] |
-        #        When I send a request to PADRE '{"cmd":"run"}'
-        #        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
-        #            | function                      | args                  |
-        #            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22] |
-        #            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
-        #        When I send a request to PADRE '{"cmd":"stepIn}"'
-        #        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-        #            | function                      | args                 |
-        #            | padre#debugger#JumpToPosition | [".*test_prog.c$",8] |
-        #        When I send a request to PADRE '{"cmd":"stepOver"}'
-        #        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-        #            | function                      | args                 |
-        #            | padre#debugger#JumpToPosition | [".*test_prog.c$",9] |
-        #        When I send a request to PADRE '{"cmd":"stepIn"}'
-        #        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-        #            | function                      | args                  |
-        #            | padre#debugger#JumpToPosition | [".*test_prog.c$",13] |
-        #        When I send a request to PADRE '{"cmd":"continue"}'
-        #        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-        #            | function                      | args                  |
-        #            | padre#debugger#JumpToPosition | [".*test_prog.c$",17] |
-        #        When I send a request to PADRE '{"cmd":"stepOver"}'
-        #        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-        #            | function                      | args                  |
-        #            | padre#debugger#JumpToPosition | [".*test_prog.c$",18] |
-        #        When I send a request to PADRE '{"cmd":"print","variable":"a"}'
-        #        Then I receive a response '{"status":"OK","variable":"a","value":"1","type":"int"}'
-        #        When I send a request to PADRE '{"cmd":"continue"}'
-        #        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-        #            | function                     | args       |
-        #            | padre#debugger#ProcessExited | [0,"\\d+"] |
-        #        When I terminate padre
-        #        Then padre is not running
-        #
-        #        Examples:
-        #        | compiler     |
-        #        | gcc -g -O0   |
+        Examples:
+        | compiler     |
+        | gcc -g -O0   |
         #        | clang -g -O0 |
         #
         #    Scenario: Debug a basic program with LLDB using the both the LLDB command line and the PADRE connection
