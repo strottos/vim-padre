@@ -15,11 +15,9 @@ use bytes::Bytes;
 use regex::Regex;
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
-use tokio::sync::oneshot;
 
 #[derive(Debug, Clone)]
 pub enum LLDBStatus {
-    None,
     NoProcess,
     Error,
     LLDBStarted,
@@ -45,8 +43,9 @@ pub struct ImplDebugger {
     notifier: Arc<Mutex<Notifier>>,
     debugger_cmd: String,
     run_cmd: Vec<String>,
-    lldb_in_tx: Option<Sender<Bytes>>,
     started: Arc<Mutex<bool>>,
+    lldb_in_tx: Option<Sender<Bytes>>,
+    listener_tx: Arc<Mutex<Option<Sender<LLDBStatus>>>>,
 }
 
 impl ImplDebugger {
@@ -59,13 +58,10 @@ impl ImplDebugger {
             notifier,
             debugger_cmd,
             run_cmd,
-            lldb_in_tx: None,
             started: Arc::new(Mutex::new(false)),
+            lldb_in_tx: None,
+            listener_tx: Arc::new(Mutex::new(None)),
         }
-    }
-
-    fn send_lldb(&mut self, bytes: Bytes) {
-        assert!(!self.lldb_in_tx.is_none());
     }
 }
 
@@ -89,6 +85,7 @@ impl Debugger for ImplDebugger {
         cmd.extend(self.run_cmd.clone());
         spawn_process(cmd, lldb_in_rx, lldb_out_tx);
 
+        // Send messages to LLDB for setup
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         tokio::spawn(
@@ -118,31 +115,193 @@ impl Debugger for ImplDebugger {
 
         let notifier = self.notifier.clone();
         let started = self.started.clone();
+        let listener_tx = self.listener_tx.clone();
 
         tokio::spawn(
             lldb_out_rx
                 .for_each(move |output| {
-                    match analyse_lldb_output(output) {
-                        LLDBStatus::LLDBStarted => {
+                    let data = String::from_utf8_lossy(&output[..]);
+                    let data = data.trim_matches(char::from(0));
+
+                    lazy_static! {
+                        static ref RE_LLDB_STARTED: Regex =
+                            Regex::new("Current executable set to '.*' \\(.*\\)\\.$").unwrap();
+                        static ref RE_PROCESS_STARTED: Regex =
+                            Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
+                        static ref RE_PROCESS_EXITED: Regex =
+                            Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
+                        static ref RE_BREAKPOINT: Regex =
+                            Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+):\\d+, address = 0x[0-9a-f]*$")
+                                .unwrap();
+                        static ref RE_BREAKPOINT_2: Regex =
+                            Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+), address = 0x[0-9a-f]*$")
+                                .unwrap();
+                        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
+                        static ref RE_JUMP_TO_POSITION: Regex =
+                            Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
+                    }
+
+                    for line in data.split("\r\n") {
+                        //        // TODO: Find a more efficient way of doing this, and maybe think about UTF-8
+                        //        let mut line = line;
+                        //        while line.len() > 7 && &line[0..7] == "(lldb) " {
+                        //            line = &line[7..];
+                        //        }
+
+                        for _ in RE_LLDB_STARTED.captures_iter(line) {
                             *started.lock().unwrap() = true;
                             notifier.lock().unwrap().signal_started();
+                            if !listener_tx.lock().unwrap().is_none() {
+                                println!("HERE1");
+                                tokio::spawn(
+                                    listener_tx
+                                        .clone()
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap()
+                                        .send(LLDBStatus::LLDBStarted)
+                                        .map(|_| {})
+                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                );
+                            }
                         }
-                        LLDBStatus::ProcessStarted(pid) => {
+
+                        for cap in RE_PROCESS_STARTED.captures_iter(line) {
+                            let pid = cap[1].parse::<u64>().unwrap();
                             println!("Process started {}", pid);
+                            if !listener_tx.lock().unwrap().is_none() {
+                                println!("HERE2");
+                                tokio::spawn(
+                                    listener_tx
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap()
+                                        .send(LLDBStatus::ProcessStarted(pid))
+                                        .map(|_| {})
+                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                );
+                            }
                         }
-                        LLDBStatus::ProcessExited(pid, exit_code) => {
+
+                        for cap in RE_PROCESS_EXITED.captures_iter(line) {
+                            let pid = cap[1].parse::<u64>().unwrap();
+                            let exit_code = cap[2].parse::<u64>().unwrap();
                             notifier.lock().unwrap().signal_exited(pid, exit_code);
                             println!("Process exited {}", exit_code);
+                            if !listener_tx.lock().unwrap().is_none() {
+                                println!("HERE3");
+                                tokio::spawn(
+                                    listener_tx
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap()
+                                        .send(LLDBStatus::ProcessExited(pid, exit_code))
+                                        .map(|_| {})
+                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                );
+                            }
                         }
-                        LLDBStatus::Breakpoint(file, line) => {
-                            notifier.lock().unwrap().breakpoint_set(file, line);
+
+                        let mut found_breakpoint = false;
+
+                        for cap in RE_BREAKPOINT.captures_iter(line) {
+                            found_breakpoint = true;
+                            let file = cap[2].to_string();
+                            let line = cap[3].parse::<u64>().unwrap();
+                            notifier.lock().unwrap().breakpoint_set(file.clone(), line);
+                            notifier.lock().unwrap().log_msg(
+                                LogLevel::INFO,
+                                format!(
+                                    "Setting breakpoint in file {} at line number {}",
+                                    file, line
+                                ),
+                            );
+                            if !listener_tx.lock().unwrap().is_none() {
+                                println!("BREAK1");
+                                tokio::spawn(
+                                    listener_tx
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap()
+                                        .send(LLDBStatus::Breakpoint(file, line))
+                                        .map(|_| {})
+                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                );
+                            }
                         }
-                        LLDBStatus::JumpToPosition(file, line) => {
-                            notifier.lock().unwrap().jump_to_position(file, line);
+
+                        if !found_breakpoint {
+                            for cap in RE_BREAKPOINT_2.captures_iter(line) {
+                                let file = cap[2].to_string();
+                                let line = cap[3].parse::<u64>().unwrap();
+                                notifier.lock().unwrap().breakpoint_set(file.clone(), line);
+                                notifier.lock().unwrap().log_msg(
+                                    LogLevel::INFO,
+                                    format!(
+                                        "Setting breakpoint in file {} at line number {}",
+                                        file, line
+                                    ),
+                                );
+                                if !listener_tx.lock().unwrap().is_none() {
+                                    println!("BREAK1");
+                                    tokio::spawn(
+                                        listener_tx
+                                            .lock()
+                                            .unwrap()
+                                            .take()
+                                            .unwrap()
+                                            .send(LLDBStatus::Breakpoint(file, line))
+                                            .map(|_| {})
+                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                    );
+                                }
+                            }
                         }
-                        LLDBStatus::None => {}
-                        _ => panic!("Uh oh"),
+
+                        for _ in RE_STOPPED_AT_POSITION.captures_iter(line) {
+                            let mut found = false;
+                            for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
+                                found = true;
+                                let file = cap[1].to_string();
+                                let line = cap[2].parse::<u64>().unwrap();
+                                notifier.lock().unwrap().jump_to_position(file.clone(), line);
+                                if !listener_tx.lock().unwrap().is_none() {
+                                    println!("HERE4");
+                                    tokio::spawn(
+                                        listener_tx
+                                            .lock()
+                                            .unwrap()
+                                            .take()
+                                            .unwrap()
+                                            .send(LLDBStatus::JumpToPosition(file, line))
+                                            .map(|_| {})
+                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                    );
+                                }
+                            }
+
+                            if !found {
+                                if !listener_tx.lock().unwrap().is_none() {
+                                    println!("HERE3");
+                                    tokio::spawn(
+                                        listener_tx
+                                            .lock()
+                                            .unwrap()
+                                            .take()
+                                            .unwrap()
+                                            .send(LLDBStatus::UnknownPosition)
+                                            .map(|_| {})
+                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                    );
+                                }
+                            }
+                        }
                     }
+
                     Ok(())
                 })
                 .map_err(|e| panic!("Error receiving from lldb: {}", e)),
@@ -203,7 +362,10 @@ impl Debugger for ImplDebugger {
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
-        let breakpoint_set = format!("breakpoint set --file {} --line {}\r\n", file, line_num);
+        let breakpoint_set = format!("breakpoint set --file {} --line {}\n", file, line_num);
+
+        let (listener_tx, listener_rx) = mpsc::channel(1);
+        *self.listener_tx.lock().unwrap() = Some(listener_tx);
 
         tokio::spawn(
             lldb_in_tx
@@ -212,78 +374,28 @@ impl Debugger for ImplDebugger {
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
 
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
+        let f = listener_rx
+            .take(1)
+            .for_each(move |lldb_status| {
+                match lldb_status {
+                    LLDBStatus::Breakpoint(_, _) => {}
+                    _ => {
+                        panic!("WTF? {:?}", lldb_status);
+                        // TODO: Error properly
+                    }
+                };
+
+                Ok(())
+            })
+            .map(|_| {
+                let resp = serde_json::json!({"status":"OK"});
+                resp
+            })
+            .map_err(|e| {
+                println!("Error sending to LLDB: {}", e);
+                io::Error::new(io::ErrorKind::Other, e)
+            });
 
         Box::new(f)
     }
-}
-
-fn analyse_lldb_output(output: Bytes) -> LLDBStatus {
-    let data = String::from_utf8_lossy(&output[..]);
-    let data = data.trim_matches(char::from(0));
-
-    lazy_static! {
-        static ref RE_LLDB_STARTED: Regex =
-            Regex::new("Current executable set to '.*' \\(.*\\)\\.$").unwrap();
-        static ref RE_PROCESS_STARTED: Regex =
-            Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
-        static ref RE_PROCESS_EXITED: Regex =
-            Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
-        static ref RE_BREAKPOINT: Regex =
-            Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+):\\d+, address = 0x[0-9a-f]*$")
-                .unwrap();
-        static ref RE_BREAKPOINT_2: Regex =
-            Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+), address = 0x[0-9a-f]*$")
-                .unwrap();
-        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
-        static ref RE_JUMP_TO_POSITION: Regex =
-            Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
-    }
-
-    for line in data.split("\r\n") {
-        //        // TODO: Find a more efficient way of doing this, and maybe think about UTF-8
-        //        let mut line = line;
-        //        while line.len() > 7 && &line[0..7] == "(lldb) " {
-        //            line = &line[7..];
-        //        }
-
-        for _ in RE_LLDB_STARTED.captures_iter(line) {
-            return LLDBStatus::LLDBStarted;
-        }
-
-        for cap in RE_PROCESS_STARTED.captures_iter(line) {
-            return LLDBStatus::ProcessStarted(cap[1].parse::<u64>().unwrap());
-        }
-
-        for cap in RE_PROCESS_EXITED.captures_iter(line) {
-            return LLDBStatus::ProcessExited(
-                cap[1].parse::<u64>().unwrap(),
-                cap[2].parse::<u64>().unwrap(),
-            );
-        }
-
-        for cap in RE_BREAKPOINT.captures_iter(line) {
-            return LLDBStatus::Breakpoint(cap[2].to_string(), cap[3].parse::<u64>().unwrap());
-        }
-
-        for cap in RE_BREAKPOINT_2.captures_iter(line) {
-            return LLDBStatus::Breakpoint(cap[2].to_string(), cap[3].parse::<u64>().unwrap());
-        }
-
-        for _ in RE_STOPPED_AT_POSITION.captures_iter(line) {
-            for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
-                return LLDBStatus::JumpToPosition(
-                    cap[1].to_string(),
-                    cap[2].parse::<u64>().unwrap(),
-                );
-            }
-
-            return LLDBStatus::UnknownPosition;
-        }
-    }
-
-    LLDBStatus::None
 }

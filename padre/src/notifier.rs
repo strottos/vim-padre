@@ -2,7 +2,6 @@
 
 // The notifier is responsible for communicating with everything connected to PADRE
 
-use std::fmt;
 use std::net::SocketAddr;
 
 use crate::request::PadreResponse;
@@ -12,29 +11,11 @@ use tokio::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub enum LogLevel {
-    CRITICAL,
+    CRITICAL = 1,
     ERROR,
     WARN,
     INFO,
     DEBUG,
-}
-
-impl LogLevel {
-    fn level(&self) -> i32 {
-        match *self {
-            LogLevel::CRITICAL => 1,
-            LogLevel::ERROR => 2,
-            LogLevel::WARN => 3,
-            LogLevel::INFO => 4,
-            LogLevel::DEBUG => 5,
-        }
-    }
-}
-
-impl fmt::Display for LogLevel {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.level())
-    }
 }
 
 #[derive(Debug)]
@@ -87,7 +68,10 @@ impl Notifier {
     pub fn signal_exited(&mut self, pid: u64, exit_code: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#ProcessExited".to_string(),
-            vec![format!("{}", exit_code), format!("{}", pid)],
+            vec![
+                serde_json::json!(exit_code),
+                serde_json::json!(pid),
+            ],
         );
         self.send_msg(msg);
     }
@@ -95,7 +79,10 @@ impl Notifier {
     pub fn log_msg(&mut self, level: LogLevel, msg: String) {
         let msg = PadreResponse::Notify(
             "padre#debugger#Log".to_string(),
-            vec![format!("{}", level), msg],
+            vec![
+                serde_json::json!(level as u8),
+                serde_json::json!(msg),
+            ],
         );
         self.send_msg(msg);
     }
@@ -103,7 +90,10 @@ impl Notifier {
     pub fn jump_to_position(&mut self, file: String, line: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#JumpToPosition".to_string(),
-            vec![file, format!("{}", line)],
+            vec![
+                serde_json::json!(file),
+                serde_json::json!(line),
+            ],
         );
         self.send_msg(msg);
     }
@@ -111,7 +101,10 @@ impl Notifier {
     pub fn breakpoint_set(&mut self, file: String, line: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#BreakpointSet".to_string(),
-            vec![file, format!("{}", line)],
+            vec![
+                serde_json::json!(file),
+                serde_json::json!(line),
+            ],
         );
         self.send_msg(msg);
     }

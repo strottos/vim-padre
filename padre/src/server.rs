@@ -55,7 +55,13 @@ pub fn process_connection(
                 respond(req, debugger)
             })
             .for_each(move |resp| {
-                connection_tx.try_send(resp).unwrap();
+                tokio::spawn(
+                    connection_tx
+                        .clone()
+                        .send(resp)
+                        .map(|_| {})
+                        .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                );
                 Ok(())
             })
             .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e)),
@@ -419,14 +425,17 @@ mod tests {
         let mut codec = super::PadreCodec::new();
         let resp = PadreResponse::Notify(
             "cmd_test".to_string(),
-            vec!["test".to_string(), "1".to_string()],
+            vec![
+                serde_json::json!("test"),
+                serde_json::json!(1)
+            ],
         );
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf);
 
         let mut expected = BytesMut::new();
         expected.reserve(32);
-        expected.put(r#"["call","cmd_test",["test","1"]]"#);
+        expected.put(r#"["call","cmd_test",["test",1]]"#);
 
         assert_eq!(expected, buf);
     }
