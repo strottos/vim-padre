@@ -347,7 +347,6 @@ def padre_request(context, request, connection):
     request = json.dumps([context.padre.request_counter,
                           json.loads(request.replace('\\n', '\n'))],
                          separators=(',', ':'))
-    print("{}".format(request))
     padre_request_raw(context, request, connection)
 
 

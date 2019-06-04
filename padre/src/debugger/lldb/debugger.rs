@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use crate::debugger::tty_process::spawn_process;
 use crate::debugger::Debugger;
@@ -29,6 +30,7 @@ pub enum LLDBStatus {
     // (File name, line number)
     JumpToPosition(String, u64),
     UnknownPosition,
+    BreakpointMultiple,
     BreakpointPending,
     // (type, variable, value)
     PrintVariable(String, String, String),
@@ -104,6 +106,8 @@ impl Debugger for ImplDebugger {
                         static ref RE_BREAKPOINT_2: Regex =
                             Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+), address = 0x[0-9a-f]*$")
                                 .unwrap();
+                        static ref RE_BREAKPOINT_MULTIPLE: Regex =
+                            Regex::new("Breakpoint (\\d+): (\\d+) locations\\.$").unwrap();
                         static ref RE_BREAKPOINT_PENDING: Regex =
                             Regex::new("Breakpoint (\\d+): no locations \\(pending\\)\\.$")
                                 .unwrap();
@@ -261,9 +265,28 @@ impl Debugger for ImplDebugger {
                         }
 
                         if !found_breakpoint {
-                            for _ in RE_BREAKPOINT_PENDING.captures_iter(line) {
+                            for _ in RE_BREAKPOINT_MULTIPLE.captures_iter(line) {
+                                found_breakpoint = true;
                                 if !listener_tx.lock().unwrap().is_none() {
                                     println!("BREAK3");
+                                    tokio::spawn(
+                                        listener_tx
+                                            .lock()
+                                            .unwrap()
+                                            .take()
+                                            .unwrap()
+                                            .send(LLDBStatus::BreakpointMultiple)
+                                            .map(|_| {})
+                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                    );
+                                }
+                            }
+                        }
+
+                        if !found_breakpoint {
+                            for _ in RE_BREAKPOINT_PENDING.captures_iter(line) {
+                                if !listener_tx.lock().unwrap().is_none() {
+                                    println!("BREAK4");
                                     tokio::spawn(
                                         listener_tx
                                             .lock()
@@ -301,8 +324,11 @@ impl Debugger for ImplDebugger {
                             }
 
                             if !found {
+                                println!("HERE");
+                                notifier.lock().unwrap().log_msg(
+                                    LogLevel::WARN, "Stopped at unknown position".to_string());
+
                                 if !listener_tx.lock().unwrap().is_none() {
-                                    println!("HERE3");
                                     tokio::spawn(
                                         listener_tx
                                             .lock()
@@ -465,6 +491,7 @@ impl Debugger for ImplDebugger {
             lldb_in_tx
                 .clone()
                 .send(Bytes::from(&stmt[..]))
+                .timeout(Duration::new(5, 0))
                 .map(|_| {})
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
@@ -476,7 +503,7 @@ impl Debugger for ImplDebugger {
                 let lldb_status = lldb_status.0.unwrap();
 
                 match lldb_status {
-                    LLDBStatus::Breakpoint(_, _) => {}
+                    LLDBStatus::Breakpoint(_, _) | LLDBStatus::BreakpointMultiple => {}
                     _ => {
                         panic!("WTF? {:?}", lldb_status);
                         // TODO: Error properly
@@ -500,6 +527,7 @@ impl Debugger for ImplDebugger {
 
                 rx.take(1).into_future()
             })
+            .timeout(Duration::new(5, 0))
             .map(|lldb_status| {
                 let mut resp;
 
@@ -517,8 +545,8 @@ impl Debugger for ImplDebugger {
                 resp
             })
             .map_err(|e| {
-                println!("Error sending to LLDB: {}", e.0);
-                io::Error::new(io::ErrorKind::Other, e.0)
+                println!("Error sending to LLDB: {:?}", e);
+                io::Error::new(io::ErrorKind::Other, "ERROR")
             });
 
         Box::new(f)
