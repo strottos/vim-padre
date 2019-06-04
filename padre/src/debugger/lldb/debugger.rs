@@ -97,8 +97,6 @@ impl Debugger for ImplDebugger {
                     let data = data.trim_matches(char::from(0));
 
                     lazy_static! {
-                        static ref RE_LLDB_STARTED: Regex =
-                            Regex::new("Current executable set to '.*' \\(.*\\)\\.$").unwrap();
                         static ref RE_PROCESS_STARTED: Regex =
                             Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
                         static ref RE_PROCESS_EXITED: Regex =
@@ -118,56 +116,57 @@ impl Debugger for ImplDebugger {
                             Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
                     }
 
+                    // Check LLDB has started
+                    if *started.lock().unwrap() == false && data.contains("(lldb) ") {
+                        // Send messages to LLDB for setup
+                        tokio::spawn(
+                            lldb_in_tx
+                                .clone()
+                                .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
+                                .map(|_| {})
+                                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                        );
+
+                        tokio::spawn(
+                            lldb_in_tx
+                                .clone()
+                                .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
+                                .map(|_| {})
+                                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                        );
+
+                        tokio::spawn(
+                            lldb_in_tx
+                                .clone()
+                                .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
+                                .map(|_| {})
+                                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                        );
+
+                        *started.lock().unwrap() = true;
+                        notifier.lock().unwrap().signal_started();
+                        if !listener_tx.lock().unwrap().is_none() {
+                            println!("HERE1");
+                            tokio::spawn(
+                                listener_tx
+                                    .clone()
+                                    .lock()
+                                    .unwrap()
+                                    .take()
+                                    .unwrap()
+                                    .send(LLDBStatus::LLDBStarted)
+                                    .map(|_| {})
+                                    .map_err(|e| println!("Error sending to analyser: {}", e))
+                            );
+                        }
+                    }
+
                     for line in data.split("\r\n") {
                         //        // TODO: Find a more efficient way of doing this, and maybe think about UTF-8
                         //        let mut line = line;
                         //        while line.len() > 7 && &line[0..7] == "(lldb) " {
                         //            line = &line[7..];
                         //        }
-
-                        for _ in RE_LLDB_STARTED.captures_iter(line) {
-                            // Send messages to LLDB for setup
-                            tokio::spawn(
-                                lldb_in_tx
-                                    .clone()
-                                    .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
-                                    .map(|_| {})
-                                    .map_err(|e| println!("Error sending to LLDB: {}", e)),
-                            );
-
-                            tokio::spawn(
-                                lldb_in_tx
-                                    .clone()
-                                    .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
-                                    .map(|_| {})
-                                    .map_err(|e| println!("Error sending to LLDB: {}", e)),
-                            );
-
-                            tokio::spawn(
-                                lldb_in_tx
-                                    .clone()
-                                    .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
-                                    .map(|_| {})
-                                    .map_err(|e| println!("Error sending to LLDB: {}", e)),
-                            );
-
-                            *started.lock().unwrap() = true;
-                            notifier.lock().unwrap().signal_started();
-                            if !listener_tx.lock().unwrap().is_none() {
-                                println!("HERE1");
-                                tokio::spawn(
-                                    listener_tx
-                                        .clone()
-                                        .lock()
-                                        .unwrap()
-                                        .take()
-                                        .unwrap()
-                                        .send(LLDBStatus::LLDBStarted)
-                                        .map(|_| {})
-                                        .map_err(|e| println!("Error sending to analyser: {}", e))
-                                );
-                            }
-                        }
 
                         for cap in RE_PROCESS_STARTED.captures_iter(line) {
                             let pid = cap[1].parse::<u64>().unwrap();
