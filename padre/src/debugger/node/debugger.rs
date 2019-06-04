@@ -60,4 +60,33 @@ impl Debugger for ImplDebugger {
 
         Box::new(f)
     }
+
+    fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
+
+    fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
+
+    fn continue_on(
+        &mut self,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
 }

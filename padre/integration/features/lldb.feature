@@ -51,10 +51,11 @@ Feature: LLDB
             | padre#debugger#Log | [4,".*not_exists.c.*17"] |
         When I send a request to PADRE '{"cmd":"run"}'
         Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
-            | function                      | args                  |
-            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22] |
-            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
-        When I send a request to PADRE '{"cmd":"stepIn}"'
+            | function                      | args                    |
+            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22]   |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",22]   |
+            | padre#debugger#Log            | [4,"Launching process"] |
+        When I send a request to PADRE '{"cmd":"stepIn"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                 |
             | padre#debugger#JumpToPosition | [".*test_prog.c$",8] |
@@ -101,7 +102,7 @@ Feature: LLDB
         #            | function                     | args                   |
         #            | padre#debugger#BreakpointSet | [".*test_prog.c$", 17] |
         #        When I send a request to PADRE '{"cmd":"run"}'
-        #        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
+        #        Then I receive both a response '{"status":"OK","pid":\\d+}' and I expect to be called with
         #            | function                      | args                  |
         #            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22] |
         #            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
@@ -170,7 +171,7 @@ Feature: LLDB
         #            | function                          | args |
         #            | padre#debugger#SignalPADREStarted | []   |
         #        When I send a request to PADRE '{"cmd":"run"}'
-        #        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
+        #        Then I receive both a response '{"status":"OK","pid":\\d+}' and I expect to be called with
         #            | function                      | args                  |
         #            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22] |
         #            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
@@ -190,7 +191,7 @@ Feature: LLDB
         #            | function                          | args |
         #            | padre#debugger#SignalPADREStarted | []   |
         #        When I send a request to PADRE '{"cmd":"run"}'
-        #        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
+        #        Then I receive both a response '{"status":"OK","pid":\\d+}' and I expect to be called with
         #            | function           | args                              |
         #            | padre#debugger#Log | [3,"Stopped at unknown position"] |
         #        When I send a request to PADRE '{"cmd":"continue"}'

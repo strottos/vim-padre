@@ -22,7 +22,7 @@ pub enum LLDBStatus {
     Error,
     LLDBStarted,
     // (PID)
-    ProcessStarted(u64),
+    ProcessLaunched(u64),
     // (PID, Exit code)
     ProcessExited(u64, u64),
     // (File name, line number)
@@ -85,37 +85,10 @@ impl Debugger for ImplDebugger {
         cmd.extend(self.run_cmd.clone());
         spawn_process(cmd, lldb_in_rx, lldb_out_tx);
 
-        // Send messages to LLDB for setup
-        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
-
-        tokio::spawn(
-            lldb_in_tx
-                .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
-                .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
-        );
-
-        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
-
-        tokio::spawn(
-            lldb_in_tx
-                .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
-                .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
-        );
-
-        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
-
-        tokio::spawn(
-            lldb_in_tx
-                .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
-                .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
-        );
-
         let notifier = self.notifier.clone();
         let started = self.started.clone();
         let listener_tx = self.listener_tx.clone();
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         tokio::spawn(
             lldb_out_rx
@@ -153,6 +126,31 @@ impl Debugger for ImplDebugger {
                         //        }
 
                         for _ in RE_LLDB_STARTED.captures_iter(line) {
+                            // Send messages to LLDB for setup
+                            tokio::spawn(
+                                lldb_in_tx
+                                    .clone()
+                                    .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
+                                    .map(|_| {})
+                                    .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                            );
+
+                            tokio::spawn(
+                                lldb_in_tx
+                                    .clone()
+                                    .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
+                                    .map(|_| {})
+                                    .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                            );
+
+                            tokio::spawn(
+                                lldb_in_tx
+                                    .clone()
+                                    .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
+                                    .map(|_| {})
+                                    .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                            );
+
                             *started.lock().unwrap() = true;
                             notifier.lock().unwrap().signal_started();
                             if !listener_tx.lock().unwrap().is_none() {
@@ -182,7 +180,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .take()
                                         .unwrap()
-                                        .send(LLDBStatus::ProcessStarted(pid))
+                                        .send(LLDBStatus::ProcessLaunched(pid))
                                         .map(|_| {})
                                         .map_err(|e| println!("Error sending to analyser: {}", e))
                                 );
@@ -363,10 +361,79 @@ impl Debugger for ImplDebugger {
     }
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::INFO, "Launching process".to_string());
+
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        let listener_tx = self.listener_tx.clone();
+
+        let (tx, rx) = mpsc::channel(1);
+        *listener_tx.lock().unwrap() = Some(tx);
+
+        let breakpoint_set = format!("breakpoint set --name main\n");
+
+        tokio::spawn(
+            lldb_in_tx
+                .clone()
+                .send(Bytes::from(&breakpoint_set[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let f = rx
+            .take(1)
+            .into_future()
+            .and_then(move |lldb_status| {
+                let lldb_status = lldb_status.0.unwrap();
+
+                match lldb_status {
+                    LLDBStatus::Breakpoint(_, _) => {}
+                    _ => {
+                        panic!("WTF? {:?}", lldb_status);
+                        // TODO: Error properly
+                    }
+                };
+
+                Ok(())
+            })
+            .and_then(move |_| {
+                let (tx, rx) = mpsc::channel(1);
+                *listener_tx.lock().unwrap() = Some(tx);
+
+                let run = format!("process launch\n");
+
+                tokio::spawn(
+                    lldb_in_tx
+                        .send(Bytes::from(&run[..]))
+                        .map(|_| {})
+                        .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                );
+
+                rx.take(1).into_future()
+            })
+            .map(|lldb_status| {
+                let mut resp;
+
+                let lldb_status = lldb_status.0.unwrap();
+                match lldb_status {
+                    LLDBStatus::ProcessLaunched(pid) => {
+                        resp = serde_json::json!({"status":"OK","pid":format!("{}",pid)});
+                    }
+                    _ => {
+                        panic!("WTF? {:?}", lldb_status);
+                        // TODO: Error properly
+                    }
+                };
+
+                resp
+            })
+            .map_err(|e| {
+                println!("Error sending to LLDB: {}", e.0);
+                io::Error::new(io::ErrorKind::Other, e.0)
+            });
 
         Box::new(f)
     }
@@ -388,8 +455,10 @@ impl Debugger for ImplDebugger {
 
         let breakpoint_set = format!("breakpoint set --file {} --line {}\n", file, line);
 
-        let (listener_tx, listener_rx) = mpsc::channel(1);
-        *self.listener_tx.lock().unwrap() = Some(listener_tx);
+        let listener_tx = self.listener_tx.clone();
+
+        let (tx, rx) = mpsc::channel(1);
+        *listener_tx.lock().unwrap() = Some(tx);
 
         tokio::spawn(
             lldb_in_tx
@@ -398,7 +467,7 @@ impl Debugger for ImplDebugger {
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
 
-        let f = listener_rx
+        let f = rx
             .take(1)
             .into_future()
             .map(move |lldb_status| {
@@ -425,6 +494,68 @@ impl Debugger for ImplDebugger {
                 println!("Error sending to LLDB: {}", e.0);
                 io::Error::new(io::ErrorKind::Other, e.0)
             });
+
+        Box::new(f)
+    }
+
+    fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        let step_in = "thread step-in\n".to_string();
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&step_in[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
+
+    fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        let step_in = "thread step-over\n".to_string();
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&step_in[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
+
+    fn continue_on(
+        &mut self,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        let step_in = "thread continue\n".to_string();
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&step_in[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
 
         Box::new(f)
     }

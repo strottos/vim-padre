@@ -494,9 +494,9 @@ def check_response_in(results, request_number, expected_response):
     """
     I expect a response to a request of the following form in results:
 
-    [<request_number>,"<response>"]
+    [<request_number>,<response>]
 
-    e.g. [1,"OK file=test_prog.c line=16"]
+    e.g. [1,{"status":"OK","file":"test_prog.c","line":16}]
     """
     json_results = [json.loads(x) for x in results]
     responses = [x for x in json_results if x[0] == request_number]

@@ -135,6 +135,11 @@ pub trait Debugger: Debug {
         file: String,
         line_num: u64,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+    fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+    fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+    fn continue_on(
+        &mut self,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
 }
 
 #[derive(Debug)]
@@ -183,6 +188,9 @@ impl PadreDebugger {
                 let cmd: &str = cmd;
                 match cmd {
                     "run" => self.debugger.run(),
+                    "stepIn" => self.debugger.step_in(),
+                    "stepOver" => self.debugger.step_over(),
+                    "continue" => self.debugger.continue_on(),
                     _ => {
                         println!("TODO - Implement: {:?}", req.cmd());
                         panic!("ERROR5");

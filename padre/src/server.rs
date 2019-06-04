@@ -425,10 +425,7 @@ mod tests {
         let mut codec = super::PadreCodec::new();
         let resp = PadreResponse::Notify(
             "cmd_test".to_string(),
-            vec![
-                serde_json::json!("test"),
-                serde_json::json!(1)
-            ],
+            vec![serde_json::json!("test"), serde_json::json!(1)],
         );
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf);

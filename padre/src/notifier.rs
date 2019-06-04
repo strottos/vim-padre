@@ -68,10 +68,7 @@ impl Notifier {
     pub fn signal_exited(&mut self, pid: u64, exit_code: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#ProcessExited".to_string(),
-            vec![
-                serde_json::json!(exit_code),
-                serde_json::json!(pid),
-            ],
+            vec![serde_json::json!(exit_code), serde_json::json!(pid)],
         );
         self.send_msg(msg);
     }
@@ -79,10 +76,7 @@ impl Notifier {
     pub fn log_msg(&mut self, level: LogLevel, msg: String) {
         let msg = PadreResponse::Notify(
             "padre#debugger#Log".to_string(),
-            vec![
-                serde_json::json!(level as u8),
-                serde_json::json!(msg),
-            ],
+            vec![serde_json::json!(level as u8), serde_json::json!(msg)],
         );
         self.send_msg(msg);
     }
@@ -90,10 +84,7 @@ impl Notifier {
     pub fn jump_to_position(&mut self, file: String, line: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#JumpToPosition".to_string(),
-            vec![
-                serde_json::json!(file),
-                serde_json::json!(line),
-            ],
+            vec![serde_json::json!(file), serde_json::json!(line)],
         );
         self.send_msg(msg);
     }
@@ -101,10 +92,7 @@ impl Notifier {
     pub fn breakpoint_set(&mut self, file: String, line: u64) {
         let msg = PadreResponse::Notify(
             "padre#debugger#BreakpointSet".to_string(),
-            vec![
-                serde_json::json!(file),
-                serde_json::json!(line),
-            ],
+            vec![serde_json::json!(file), serde_json::json!(line)],
         );
         self.send_msg(msg);
     }
