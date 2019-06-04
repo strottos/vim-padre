@@ -4,8 +4,8 @@ use std::io;
 use std::sync::{Arc, Mutex};
 
 use crate::debugger::PadreDebugger;
-use crate::notifier::Notifier;
-use crate::request::{PadreRequest, PadreRequestCmd, PadreResponse};
+use crate::notifier::{LogLevel, Notifier};
+use crate::request::{PadreRequest, PadreRequestCmd, PadreResponse, RequestError};
 
 use bytes::{BufMut, BytesMut};
 use tokio::codec::{Decoder, Encoder};
@@ -20,7 +20,7 @@ pub fn process_connection(
 ) {
     let addr = socket.peer_addr().unwrap();
 
-    let (request_tx, request_rx) = PadreCodec::new().framed(socket).split();
+    let (request_tx, request_rx) = PadreCodec::new(notifier.clone()).framed(socket).split();
 
     let (connection_tx, connection_rx) = mpsc::channel(1);
 
@@ -114,13 +114,14 @@ fn respond_debugger(
 #[derive(Debug)]
 struct PadreCodec {
     // Track a list of places we should try from in case one of the sends cut off
+    notifier: Arc<Mutex<Notifier>>,
     try_from: Vec<usize>,
 }
 
 impl PadreCodec {
-    fn new() -> Self {
+    fn new(notifier: Arc<Mutex<Notifier>>) -> Self {
         let try_from = vec![0];
-        PadreCodec { try_from }
+        PadreCodec { notifier, try_from }
     }
 }
 
@@ -152,12 +153,81 @@ impl Decoder for PadreCodec {
         }
 
         if v.is_null() {
-            self.try_from.push(src.len());
+            println!("HERE1 {:?}", src);
+            if src.len() > 0 {
+                self.try_from.push(src.len());
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::ERROR, "Must be valid JSON".to_string());
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::DEBUG, format!("Can't read '{}'", String::from_utf8_lossy(&src[..]).trim_matches(char::from(0))));
+            }
             return Ok(None);
         }
 
-        let id: u64 = serde_json::from_value(v[0].take()).unwrap();
-        let cmd: String = match serde_json::from_value(v[1]["cmd"].take()) {
+        let req = src.clone();
+
+        src.split_to(src.len());
+        self.try_from = vec![0];
+
+        if !v.is_array() {
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::ERROR, "Can't read JSON".to_string());
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::DEBUG, format!("Can't read '{}': Must be an array", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))));
+            return Ok(None);
+        }
+
+        if v.as_array().unwrap().len() != 2 {
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::ERROR, "Can't read JSON".to_string());
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::DEBUG, format!("Can't read '{}': Array should have 2 elements", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))));
+            return Ok(None);
+        }
+
+        let id = v[0].take();
+        let id: u64 = match serde_json::from_value(id.clone()) {
+            Ok(s) => s,
+            Err(err) => {
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::ERROR, "Can't read id".to_string());
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::DEBUG, format!("Can't read '{}': {}", id, err));
+                return Ok(None);
+            }
+        };
+
+        let mut args = v[1].take();
+
+        if !args.is_object() {
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::ERROR, "Can't read JSON".to_string());
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::DEBUG, format!("Can't read '{}': 2nd element must be an object", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))));
+            return Ok(None);
+        }
+
+        let cmd: String = match serde_json::from_value(args["cmd"].take()) {
             Ok(s) => s,
             Err(err) => {
                 println!("TODO - Implement: {}", err);
@@ -165,8 +235,7 @@ impl Decoder for PadreCodec {
             }
         };
 
-        let file_location: Option<(String, u64)> = match serde_json::from_value(v[1]["file"].take())
-        {
+        let file_location: Option<(String, u64)> = match serde_json::from_value(args["file"].take()) {
             Ok(s) => match serde_json::from_value(v[1]["line"].take()) {
                 Ok(t) => {
                     let t: u64 = t;
@@ -202,9 +271,6 @@ impl Decoder for PadreCodec {
         let padre_request: PadreRequest = PadreRequest::new(id, cmd);
         // TODO: If anything left in v error
 
-        src.split_to(src.len());
-        self.try_from = vec![0];
-
         Ok(Some(padre_request))
     }
 }
@@ -214,6 +280,7 @@ impl Encoder for PadreCodec {
     type Error = io::Error;
 
     fn encode(&mut self, resp: PadreResponse, buf: &mut BytesMut) -> Result<(), io::Error> {
+        println!("HERE2");
         let response = match resp {
             PadreResponse::Response(id, json) => serde_json::to_string(&(id, json)).unwrap(),
             PadreResponse::Notify(cmd, args) => {

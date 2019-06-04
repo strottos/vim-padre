@@ -130,6 +130,8 @@ async def do_read_from_padre(future, reader, loop):
     except ValueError as exc:
         raise ValueError('%s (%r at position %d).' % (exc, line[idx:], idx))
 
+    print("Responses: {}".format(results))
+
     future.set_result(results)
 
 
@@ -319,6 +321,8 @@ def padre_request_raw(context, request, connection):
     """
     loop = asyncio.get_event_loop()
     future = loop.create_future()
+
+    print("Request: {}".format(request))
 
     loop.run_until_complete(do_send_to_padre(
         future, context.connections[int(connection)][1], request, loop))
