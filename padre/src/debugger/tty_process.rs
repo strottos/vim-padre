@@ -258,6 +258,7 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
             tokio::spawn(
                 TtyFileStdioStream::new(tty, stdin_rx)
                     .for_each(move |chunk| {
+                        println!("Chunk: {:?}", chunk);
                         out.write_all(&chunk).unwrap();
                         tokio::spawn(stdout_tx.clone().send(chunk).map(|_| {}).map_err(|e| {
                             // TODO: Error handling?

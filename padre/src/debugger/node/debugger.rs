@@ -89,4 +89,16 @@ impl Debugger for ImplDebugger {
 
         Box::new(f)
     }
+
+    fn print(
+        &mut self,
+        variable: &str,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
 }

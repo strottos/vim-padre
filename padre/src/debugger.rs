@@ -14,14 +14,6 @@ use crate::request::{PadreRequest, PadreRequestCmd, RequestError};
 
 use tokio::prelude::*;
 
-#[derive(Debug)]
-enum DebuggerState {
-    Stopped,
-    Paused(String, u64),
-    Running,
-    Error,
-}
-
 pub fn get_debugger(
     debugger_cmd: Option<&str>,
     debugger_type: Option<&str>,
@@ -140,11 +132,14 @@ pub trait Debugger: Debug {
     fn continue_on(
         &mut self,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+    fn print(
+        &mut self,
+        variable: &str,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
 }
 
 #[derive(Debug)]
 pub struct PadreDebugger {
-    state: DebuggerState,
     notifier: Arc<Mutex<Notifier>>,
     debugger: Box<dyn Debugger + Send>,
 }
@@ -155,7 +150,6 @@ impl PadreDebugger {
         debugger: Box<dyn Debugger + Send>,
     ) -> PadreDebugger {
         PadreDebugger {
-            state: DebuggerState::Stopped,
             notifier,
             debugger,
         }
@@ -207,9 +201,15 @@ impl PadreDebugger {
                     }
                 }
             }
-            _ => {
-                println!("TODO - Implement: {:?}", req.cmd());
-                panic!("ERROR7");
+            PadreRequestCmd::CmdWithVariable(cmd, variable) => {
+                let cmd: &str = cmd;
+                match cmd {
+                    "print" => self.debugger.print(variable),
+                    _ => {
+                        println!("TODO - Implement: {:?}", req.cmd());
+                        panic!("ERROR7");
+                    }
+                }
             }
         }
     }

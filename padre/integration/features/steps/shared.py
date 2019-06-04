@@ -515,8 +515,8 @@ def check_json(response, expected_response):
     """
     Recursively verify the JSON matches
     """
-    assert_that(expected_response.keys(),
-                equal_to(response.keys()),
+    assert_that(response.keys(),
+                equal_to(expected_response.keys()),
                 "Got correct keys in response")
 
     for key in response.keys():

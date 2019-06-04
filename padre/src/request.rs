@@ -2,12 +2,6 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-pub enum Response<T> {
-    OK(T),
-    PENDING(T),
-}
-
-#[derive(Debug)]
 pub struct RequestError {
     msg: String,
     debug: String,

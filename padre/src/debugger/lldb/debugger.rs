@@ -31,10 +31,8 @@ pub enum LLDBStatus {
     JumpToPosition(String, u64),
     UnknownPosition,
     BreakpointPending,
-    StepIn,
-    StepOver,
-    Continue,
-    Variable,
+    // (type, variable, value)
+    PrintVariable(String, String, String),
     VariableNotFound,
 }
 
@@ -114,6 +112,8 @@ impl Debugger for ImplDebugger {
                             Regex::new(" *frame #\\d.*$").unwrap();
                         static ref RE_JUMP_TO_POSITION: Regex =
                             Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
+                        static ref RE_PRINTED_VARIABLE: Regex =
+                            Regex::new("^\\((.*)\\) ([\\S+]*) = .*$").unwrap();
                     }
 
                     // Check LLDB has started
@@ -258,7 +258,7 @@ impl Debugger for ImplDebugger {
                         }
 
                         if !found_breakpoint {
-                            for cap in RE_BREAKPOINT_PENDING.captures_iter(line) {
+                            for _ in RE_BREAKPOINT_PENDING.captures_iter(line) {
                                 if !listener_tx.lock().unwrap().is_none() {
                                     println!("BREAK3");
                                     tokio::spawn(
@@ -311,6 +311,42 @@ impl Debugger for ImplDebugger {
                                             .map_err(|e| println!("Error sending to analyser: {}", e))
                                     );
                                 }
+                            }
+                        }
+
+                        for cap in RE_PRINTED_VARIABLE.captures_iter(line) {
+                            let variable_type = cap[1].to_string();
+                            let variable = cap[2].to_string();
+
+                            let mut start = 1;
+
+                            while &data[start..start+1] != ")" {
+                                start += 1;
+                            }
+                            while &data[start..start+1] != "=" {
+                                start += 1;
+                            }
+                            start += 2;
+                            println!("Start: {}", start);
+
+                            let end = data.len() - 9; // Strip off "\r\n(lldb) "
+
+                            if !listener_tx.lock().unwrap().is_none() {
+                                println!("HERE4");
+                                tokio::spawn(
+                                    listener_tx
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap()
+                                        .send(LLDBStatus::PrintVariable(
+                                            variable_type,
+                                            variable,
+                                            data[start..end].to_string(),
+                                        ))
+                                        .map(|_| {})
+                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                );
                             }
                         }
                     }
@@ -372,12 +408,12 @@ impl Debugger for ImplDebugger {
         let (tx, rx) = mpsc::channel(1);
         *listener_tx.lock().unwrap() = Some(tx);
 
-        let breakpoint_set = format!("breakpoint set --name main\n");
+        let stmt = format!("breakpoint set --name main\n");
 
         tokio::spawn(
             lldb_in_tx
                 .clone()
-                .send(Bytes::from(&breakpoint_set[..]))
+                .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
@@ -402,11 +438,11 @@ impl Debugger for ImplDebugger {
                 let (tx, rx) = mpsc::channel(1);
                 *listener_tx.lock().unwrap() = Some(tx);
 
-                let run = format!("process launch\n");
+                let stmt = format!("process launch\n");
 
                 tokio::spawn(
                     lldb_in_tx
-                        .send(Bytes::from(&run[..]))
+                        .send(Bytes::from(&stmt[..]))
                         .map(|_| {})
                         .map_err(|e| println!("Error sending to LLDB: {}", e)),
                 );
@@ -452,7 +488,7 @@ impl Debugger for ImplDebugger {
 
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
-        let breakpoint_set = format!("breakpoint set --file {} --line {}\n", file, line);
+        let stmt = format!("breakpoint set --file {} --line {}\n", file, line);
 
         let listener_tx = self.listener_tx.clone();
 
@@ -461,7 +497,7 @@ impl Debugger for ImplDebugger {
 
         tokio::spawn(
             lldb_in_tx
-                .send(Bytes::from(&breakpoint_set[..]))
+                .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
@@ -500,11 +536,11 @@ impl Debugger for ImplDebugger {
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
-        let step_in = "thread step-in\n".to_string();
+        let stmt = "thread step-in\n".to_string();
 
         tokio::spawn(
             lldb_in_tx
-                .send(Bytes::from(&step_in[..]))
+                .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
@@ -520,11 +556,11 @@ impl Debugger for ImplDebugger {
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
-        let step_in = "thread step-over\n".to_string();
+        let stmt = "thread step-over\n".to_string();
 
         tokio::spawn(
             lldb_in_tx
-                .send(Bytes::from(&step_in[..]))
+                .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
@@ -542,11 +578,11 @@ impl Debugger for ImplDebugger {
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
-        let step_in = "thread continue\n".to_string();
+        let stmt = "thread continue\n".to_string();
 
         tokio::spawn(
             lldb_in_tx
-                .send(Bytes::from(&step_in[..]))
+                .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
                 .map_err(|e| println!("Error sending to LLDB: {}", e)),
         );
@@ -555,6 +591,59 @@ impl Debugger for ImplDebugger {
             let resp = serde_json::json!({"status":"OK"});
             Ok(resp)
         });
+
+        Box::new(f)
+    }
+
+    fn print(
+        &mut self,
+        variable: &str,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        let stmt = format!("frame variable {}\n", variable);
+
+        let listener_tx = self.listener_tx.clone();
+
+        let (tx, rx) = mpsc::channel(1);
+        *listener_tx.lock().unwrap() = Some(tx);
+
+        tokio::spawn(
+            lldb_in_tx
+                .send(Bytes::from(&stmt[..]))
+                .map(|_| {})
+                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+        );
+
+        let f = rx
+            .take(1)
+            .into_future()
+            .map(move |lldb_status| {
+                let mut resp;
+
+                let lldb_status = lldb_status.0.unwrap();
+
+                match lldb_status {
+                    LLDBStatus::PrintVariable(variable_type, variable, value) => {
+                        resp = serde_json::json!({
+                            "status": "OK",
+                            "variable": variable,
+                            "value": value,
+                            "type": variable_type,
+                        });
+                    }
+                    _ => {
+                        panic!("WTF? {:?}", lldb_status);
+                        // TODO: Error properly
+                    }
+                };
+
+                resp
+            })
+            .map_err(|e| {
+                println!("Error sending to LLDB: {}", e.0);
+                io::Error::new(io::ErrorKind::Other, e.0)
+            });
 
         Box::new(f)
     }

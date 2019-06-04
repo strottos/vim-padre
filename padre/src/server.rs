@@ -22,7 +22,7 @@ pub fn process_connection(
 
     let (request_tx, request_rx) = PadreCodec::new().framed(socket).split();
 
-    let (mut connection_tx, connection_rx) = mpsc::channel(1);
+    let (connection_tx, connection_rx) = mpsc::channel(1);
 
     notifier
         .lock()
@@ -110,54 +110,6 @@ fn respond_debugger(
 
     return Box::new(f);
 }
-
-//#[derive(Debug)]
-//pub struct PadreConnection {
-//    reader: SplitStream<Framed<TcpStream, PadreCodec>>,
-//    writer_rx: UnboundedReceiver<Bytes>,
-//    rd: BytesMut,
-//}
-//
-//impl PadreConnection {
-//    pub fn new(socket: TcpStream) -> Self {
-//        let (writer_tx, writer_rx) = mpsc::unbounded();
-//
-//        let (writer, reader) = PadreCodec::new().framed(socket).split();
-//
-//        PadreConnection {
-//            reader,
-//            writer_rx,
-//            rd: BytesMut::new(),
-//        }
-//    }
-//    //
-//    //    fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
-//    //        loop {
-//    //            self.rd.reserve(1024);
-//    //
-//    //            let n = try_ready!(self.reader.read_buf(&mut self.rd));
-//    //
-//    //            if n == 0 {
-//    //                return Ok(Async::Ready(()));
-//    //            }
-//    //        }
-//    //    }
-//}
-//
-//impl Stream for PadreConnection {
-//    type Item = PadreRequest;
-//    type Error = io::Error;
-//
-//    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-//        //        let sock_closed = self.fill_read_buf()?.is_ready();
-//        //
-//        //        if sock_closed {
-//        //            Ok(Async::Ready(None))
-//        //        } else {
-//        Ok(Async::NotReady)
-//        //        }
-//    }
-//}
 
 #[derive(Debug)]
 struct PadreCodec {

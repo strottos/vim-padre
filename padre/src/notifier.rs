@@ -151,45 +151,5 @@ mod tests {
         assert_eq!(notifier.listeners.len(), 0);
     }
 
-    //    #[test]
-    //    fn check_can_log_msg() {
-    //        let mut runtime = Runtime::new().unwrap();
-    //
-    //        runtime.spawn(lazy(|| {
-    //            let mut notifier = super::Notifier::new();
-    //
-    //            let (sender, receiver1) = mpsc::channel(1);
-    //            let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    //
-    //            notifier.add_listener(sender, socket_addr);
-    //
-    //            let (sender, receiver2) = mpsc::channel(1);
-    //            let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-    //
-    //            notifier.add_listener(sender, socket_addr);
-    //
-    //            tokio::spawn(
-    //                receiver1.take(1).for_each(|recv| {
-    //                    assert_eq!(recv, PadreResponse::Notify("padre#debugger#Log".to_string(), vec!("1".to_string(), "TESTING".to_string())));
-    //                    Ok(())
-    //                }).map_err(|e| println!("Error: {:?}", e))
-    //            );
-    //
-    //            let values = receiver2.wait().for_each(|recv| {
-    //                println!("Recieved: {:?}", recv);
-    //            });
-    //
-    //            println!("Values: {:?}", values);
-    //
-    //            notifier.log_msg(super::LogLevel::CRITICAL, "TESTING".to_string());
-    //
-    //            drop(notifier);
-    //
-    //            Ok(())
-    //        }));
-    //
-    //        runtime.run().unwrap();
-    //    }
-
     // TODO: Check this doesn't handle responses
 }
