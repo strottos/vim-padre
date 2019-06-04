@@ -136,7 +136,11 @@ impl Debugger for ImplDebugger {
                         static ref RE_BREAKPOINT_2: Regex =
                             Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+), address = 0x[0-9a-f]*$")
                                 .unwrap();
-                        static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
+                        static ref RE_BREAKPOINT_PENDING: Regex =
+                            Regex::new("Breakpoint (\\d+): no locations \\(pending\\)\\.$")
+                                .unwrap();
+                        static ref RE_STOPPED_AT_POSITION: Regex =
+                            Regex::new(" *frame #\\d.*$").unwrap();
                         static ref RE_JUMP_TO_POSITION: Regex =
                             Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
                     }
@@ -212,13 +216,6 @@ impl Debugger for ImplDebugger {
                             let file = cap[2].to_string();
                             let line = cap[3].parse::<u64>().unwrap();
                             notifier.lock().unwrap().breakpoint_set(file.clone(), line);
-                            notifier.lock().unwrap().log_msg(
-                                LogLevel::INFO,
-                                format!(
-                                    "Setting breakpoint in file {} at line number {}",
-                                    file, line
-                                ),
-                            );
                             if !listener_tx.lock().unwrap().is_none() {
                                 println!("BREAK1");
                                 tokio::spawn(
@@ -236,6 +233,7 @@ impl Debugger for ImplDebugger {
 
                         if !found_breakpoint {
                             for cap in RE_BREAKPOINT_2.captures_iter(line) {
+                                found_breakpoint = true;
                                 let file = cap[2].to_string();
                                 let line = cap[3].parse::<u64>().unwrap();
                                 notifier.lock().unwrap().breakpoint_set(file.clone(), line);
@@ -247,7 +245,7 @@ impl Debugger for ImplDebugger {
                                     ),
                                 );
                                 if !listener_tx.lock().unwrap().is_none() {
-                                    println!("BREAK1");
+                                    println!("BREAK2");
                                     tokio::spawn(
                                         listener_tx
                                             .lock()
@@ -255,6 +253,24 @@ impl Debugger for ImplDebugger {
                                             .take()
                                             .unwrap()
                                             .send(LLDBStatus::Breakpoint(file, line))
+                                            .map(|_| {})
+                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                    );
+                                }
+                            }
+                        }
+
+                        if !found_breakpoint {
+                            for cap in RE_BREAKPOINT_PENDING.captures_iter(line) {
+                                if !listener_tx.lock().unwrap().is_none() {
+                                    println!("BREAK3");
+                                    tokio::spawn(
+                                        listener_tx
+                                            .lock()
+                                            .unwrap()
+                                            .take()
+                                            .unwrap()
+                                            .send(LLDBStatus::BreakpointPending)
                                             .map(|_| {})
                                             .map_err(|e| println!("Error sending to analyser: {}", e))
                                     );
@@ -358,11 +374,19 @@ impl Debugger for ImplDebugger {
     fn breakpoint(
         &mut self,
         file: String,
-        line_num: u64,
+        line: u64,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        self.notifier.lock().unwrap().log_msg(
+            LogLevel::INFO,
+            format!(
+                "Setting breakpoint in file {} at line number {}",
+                file, line
+            ),
+        );
+
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
-        let breakpoint_set = format!("breakpoint set --file {} --line {}\n", file, line_num);
+        let breakpoint_set = format!("breakpoint set --file {} --line {}\n", file, line);
 
         let (listener_tx, listener_rx) = mpsc::channel(1);
         *self.listener_tx.lock().unwrap() = Some(listener_tx);
@@ -376,24 +400,30 @@ impl Debugger for ImplDebugger {
 
         let f = listener_rx
             .take(1)
-            .for_each(move |lldb_status| {
+            .into_future()
+            .map(move |lldb_status| {
+                let mut resp;
+
+                let lldb_status = lldb_status.0.unwrap();
+
                 match lldb_status {
-                    LLDBStatus::Breakpoint(_, _) => {}
+                    LLDBStatus::Breakpoint(_, _) => {
+                        resp = serde_json::json!({"status":"OK"});
+                    }
+                    LLDBStatus::BreakpointPending => {
+                        resp = serde_json::json!({"status":"PENDING"});
+                    }
                     _ => {
                         panic!("WTF? {:?}", lldb_status);
                         // TODO: Error properly
                     }
                 };
 
-                Ok(())
-            })
-            .map(|_| {
-                let resp = serde_json::json!({"status":"OK"});
                 resp
             })
             .map_err(|e| {
-                println!("Error sending to LLDB: {}", e);
-                io::Error::new(io::ErrorKind::Other, e)
+                println!("Error sending to LLDB: {}", e.0);
+                io::Error::new(io::ErrorKind::Other, e.0)
             });
 
         Box::new(f)

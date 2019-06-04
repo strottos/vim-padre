@@ -13,7 +13,6 @@ Feature: LLDB
         Then I expect to be called with
             | function                     | args                     |
             | padre#debugger#BreakpointSet | [".*test_prog.c$", 22]   |
-            | padre#debugger#Log           | [4, ".*test_prog.c.*22"] |
         When I send a command 'run' using the terminal
         Then I expect to be called with
             | function                      | args                   |
