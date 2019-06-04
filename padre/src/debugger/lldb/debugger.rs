@@ -9,7 +9,6 @@ use std::thread;
 use crate::debugger::tty_process::spawn_process;
 use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
-use crate::request::RequestError;
 
 use bytes::Bytes;
 use regex::Regex;
@@ -96,9 +95,9 @@ impl Debugger for ImplDebugger {
 
                     lazy_static! {
                         static ref RE_PROCESS_STARTED: Regex =
-                            Regex::new("Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
+                            Regex::new("^Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
                         static ref RE_PROCESS_EXITED: Regex =
-                            Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
+                            Regex::new("^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$").unwrap();
                         static ref RE_BREAKPOINT: Regex =
                             Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+):\\d+, address = 0x[0-9a-f]*$")
                                 .unwrap();
@@ -114,6 +113,10 @@ impl Debugger for ImplDebugger {
                             Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
                         static ref RE_PRINTED_VARIABLE: Regex =
                             Regex::new("^\\((.*)\\) ([\\S+]*) = .*$").unwrap();
+                        static ref RE_PROCESS_NOT_RUNNING: Regex =
+                            Regex::new("error: invalid process$").unwrap();
+                        static ref RE_VARIABLE_NOT_FOUND: Regex =
+                            Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
                     }
 
                     // Check LLDB has started
@@ -329,7 +332,11 @@ impl Debugger for ImplDebugger {
                             start += 2;
                             println!("Start: {}", start);
 
-                            let end = data.len() - 9; // Strip off "\r\n(lldb) "
+                            let mut end = data.len();
+
+                            if data.contains("(lldb) ") {
+                                end -= 9; // Strip off "\r\n(lldb) "
+                            }
 
                             if !listener_tx.lock().unwrap().is_none() {
                                 println!("HERE4");
@@ -344,6 +351,50 @@ impl Debugger for ImplDebugger {
                                             variable,
                                             data[start..end].to_string(),
                                         ))
+                                        .map(|_| {})
+                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                );
+                            }
+                        }
+
+                        for _ in RE_PROCESS_NOT_RUNNING.captures_iter(line) {
+                            notifier.lock().unwrap().log_msg(
+                                LogLevel::WARN,
+                                "program not running".to_string()
+                            );
+
+                            if !listener_tx.lock().unwrap().is_none() {
+                                println!("HERE5");
+                                tokio::spawn(
+                                    listener_tx
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap()
+                                        .send(LLDBStatus::NoProcess)
+                                        .map(|_| {})
+                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                );
+                            }
+                        }
+
+                        for cap in RE_VARIABLE_NOT_FOUND.captures_iter(line) {
+                            let variable = cap[1].to_string();
+
+                            notifier.lock().unwrap().log_msg(
+                                LogLevel::WARN,
+                                format!("variable '{}' doesn't exist here", variable)
+                            );
+
+                            if !listener_tx.lock().unwrap().is_none() {
+                                println!("HERE6");
+                                tokio::spawn(
+                                    listener_tx
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap()
+                                        .send(LLDBStatus::VariableNotFound)
                                         .map(|_| {})
                                         .map_err(|e| println!("Error sending to analyser: {}", e))
                                 );
@@ -631,6 +682,9 @@ impl Debugger for ImplDebugger {
                             "value": value,
                             "type": variable_type,
                         });
+                    }
+                    LLDBStatus::NoProcess | LLDBStatus::VariableNotFound => {
+                        resp = serde_json::json!({"status":"ERROR"});
                     }
                     _ => {
                         panic!("WTF? {:?}", lldb_status);

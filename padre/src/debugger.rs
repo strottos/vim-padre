@@ -10,7 +10,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use crate::notifier::{LogLevel, Notifier};
-use crate::request::{PadreRequest, PadreRequestCmd, RequestError};
+use crate::request::{PadreRequest, PadreRequestCmd};
 
 use tokio::prelude::*;
 
@@ -149,18 +149,15 @@ impl PadreDebugger {
         notifier: Arc<Mutex<Notifier>>,
         debugger: Box<dyn Debugger + Send>,
     ) -> PadreDebugger {
-        PadreDebugger {
-            notifier,
-            debugger,
-        }
+        PadreDebugger { notifier, debugger }
     }
 
-    pub fn ping(&self) -> Result<serde_json::Value, RequestError> {
+    pub fn ping(&self) -> Result<serde_json::Value, io::Error> {
         let pong = serde_json::json!({"status":"OK","ping":"pong"});
         Ok(pong)
     }
 
-    pub fn pings(&self) -> Result<serde_json::Value, RequestError> {
+    pub fn pings(&self) -> Result<serde_json::Value, io::Error> {
         let pongs = serde_json::json!({"status":"OK"});
         self.notifier
             .lock()

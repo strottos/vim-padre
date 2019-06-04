@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::debugger::Debugger;
 use crate::notifier::Notifier;
-use crate::request::RequestError;
 
 use tokio::prelude::*;
 
