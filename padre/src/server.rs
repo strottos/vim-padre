@@ -60,11 +60,20 @@ pub fn process_connection(
                         .clone()
                         .send(resp)
                         .map(|_| {})
-                        .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                        .map_err(|e| println!("Error responding: {}", e)),
                 );
                 Ok(())
             })
-            .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e)),
+            .map_err(|e| {
+                eprintln!("failed to accept socket; error = {:?}", e);
+//                tokio::spawn(
+//                    connection_tx
+//                        .clone()
+//                        .send(resp)
+//                        .map(|_| {})
+//                        .map_err(|e| println!("Error responding: {}", e)),
+//                );
+            }),
     );
 }
 
@@ -227,7 +236,21 @@ impl Decoder for PadreCodec {
             return Ok(None);
         }
 
-        let cmd: String = match serde_json::from_value(args["cmd"].take()) {
+        let cmd = args["cmd"].take();
+
+        if cmd.is_null() {
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::ERROR, "Can't find command".to_string());
+            self.notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::DEBUG, format!("Can't find command '{}': Need a cmd in 2nd object", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))));
+            return Err(io::Error::new(io::ErrorKind::Other, "Bad Request"));
+        }
+
+        let cmd: String = match serde_json::from_value(cmd) {
             Ok(s) => s,
             Err(err) => {
                 println!("TODO - Implement: {}", err);
@@ -280,7 +303,7 @@ impl Encoder for PadreCodec {
     type Error = io::Error;
 
     fn encode(&mut self, resp: PadreResponse, buf: &mut BytesMut) -> Result<(), io::Error> {
-        println!("HERE2");
+        println!("HERE2 {:?}", resp);
         let response = match resp {
             PadreResponse::Response(id, json) => serde_json::to_string(&(id, json)).unwrap(),
             PadreResponse::Notify(cmd, args) => {

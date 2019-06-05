@@ -99,8 +99,11 @@ Feature: Basics
             | function           | args                                      |
             | padre#debugger#Log | [2,"Must be valid JSON"]                  |
             | padre#debugger#Log | [5,"Can't read 'nonsense\\[1,\"no end\""] |
-        When I send a raw request to PADRE '[1,{"cmd":"ping"}]'
-        Then I receive a raw response '[1,{"ping":"pong","status":"OK"}]'
+        When I send a raw request to PADRE '[1,{}]'
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
+            | function           | args                                                            |
+            | padre#debugger#Log | [2,"Can't find command"]                                        |
+            | padre#debugger#Log | [5,"Can't find command '\\[1,{}\\]': Need a cmd in 2nd object"] |
         When I send a raw request to PADRE '{}'
         Then I expect to be called with
             | function           | args                                    |
@@ -117,30 +120,25 @@ Feature: Basics
             | padre#debugger#Log | [2,"Can't read id"]                                                |
             | padre#debugger#Log | [5,"Can't read '\"a\"': invalid type: string \"a\", expected u64"] |
         When I send a raw request to PADRE '[1]'
-        Then I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                     |
             | padre#debugger#Log | [2,"Can't read JSON"]                                    |
             | padre#debugger#Log | [5,"Can't read '\\[1\\]': Array should have 2 elements"] |
         When I send a raw request to PADRE '[1,2]'
-        Then I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                        |
             | padre#debugger#Log | [2,"Can't read JSON"]                                       |
             | padre#debugger#Log | [5,"Can't read '\\[1,2\\]': 2nd element must be an object"] |
         When I send a raw request to PADRE '[1,{"cmd":"ping"},3]'
-        Then I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                                          |
             | padre#debugger#Log | [2,"Can't read JSON"]                                                         |
             | padre#debugger#Log | [5,"Can't read '\\[1,{\"cmd\":\"ping\"},3\\]': Array should have 2 elements"] |
-        When I send a request to PADRE 'bad_request'
+        When I send a request to PADRE '{"bad":"request"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                   |
             | padre#debugger#Log | [2,"Can't understand request"]                         |
             | padre#debugger#Log | [5,"Can't understand request: [\\d+,\"bad_request\"]"] |
-        When I send a raw request to PADRE '[1,{}]'
-        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function           | args                           |
-            | padre#debugger#Log | [2,"Can't find command"]       |
-            | padre#debugger#Log | [5,"Can't find command: \"\""] |
         When I send a raw request to PADRE '[1,{"cmd":"ping"}][2,{"cmd":"ping"}]'
         Then I receive a raw response '[1,{"status":"OK","ping":"pong"}][2,{"status":"OK","ping":"pong"}]'
         When I send a raw request to PADRE '[3,{"cmd":"ping"}]'
