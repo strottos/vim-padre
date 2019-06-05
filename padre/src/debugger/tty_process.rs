@@ -152,11 +152,11 @@ impl Stream for TtyFileStdioStream {
                     Ok(Async::Ready(_)) => {
                         match self.io.write(Bytes::from(&v[..]).as_ref()) {
                             Ok(_) => (),
-                            Err(err) => {
-                                if err.kind() == io::ErrorKind::WouldBlock {
+                            Err(e) => {
+                                if e.kind() == io::ErrorKind::WouldBlock {
                                     return Ok(Async::NotReady);
                                 }
-                                return Err(err);
+                                return Err(e);
                             }
                         };
                     }
@@ -164,8 +164,8 @@ impl Stream for TtyFileStdioStream {
                         println!("Not ready write");
                         return Ok(Async::NotReady);
                     }
-                    Err(err) => {
-                        return Err(err);
+                    Err(e) => {
+                        return Err(e);
                     }
                 };
             }
@@ -186,8 +186,8 @@ impl Stream for TtyFileStdioStream {
                                 }
                             }
                         }
-                        Err(err) => {
-                            if err.kind() == io::ErrorKind::WouldBlock {
+                        Err(e) => {
+                            if e.kind() == io::ErrorKind::WouldBlock {
                                 if self.bytes_mut.len() > 0 {
                                     let bytes = self.bytes_mut.clone().freeze();
                                     self.bytes_mut = BytesMut::new();
@@ -195,12 +195,12 @@ impl Stream for TtyFileStdioStream {
                                 }
                                 return Ok(Async::NotReady);
                             }
-                            return Err(err);
+                            return Err(e);
                         }
                     }
                 }
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(err) => return Err(err),
+                Err(e) => return Err(e),
             }
         }
     }

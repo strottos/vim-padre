@@ -77,10 +77,10 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
 //                Ok(s) => {
 //                    match s.debugger.lock() {
 //                        Ok(t) => t.stop(),
-//                        Err(err) => println!("Debugger not found: {}", err),
+//                        Err(e) => println!("Debugger not found: {}", e),
 //                    };
 //                },
-//                Err(err) => println!("Debug server not found: {}", err),
+//                Err(e) => println!("Debug server not found: {}", e),
 //            };
 //            println!("Terminated!");
 //            exit(0);

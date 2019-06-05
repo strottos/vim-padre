@@ -130,7 +130,8 @@ async def do_read_from_padre(future, reader, loop):
     except ValueError as exc:
         raise ValueError('%s (%r at position %d).' % (exc, line[idx:], idx))
 
-    print("Responses: {}".format(results))
+    if len(results):
+        print("Responses: {}".format(results))
 
     future.set_result(results)
 
@@ -195,7 +196,9 @@ def run_padre(context, timeout=20):
         async def print_stuff(context):
             while True:
                 try:
-                    print(await context.padre.process.stdout.readline())
+                    line = await context.padre.process.stdout.readline()
+                    if line != b'':
+                        print(line)
                 except AttributeError:
                     break
 
@@ -207,6 +210,7 @@ def run_padre(context, timeout=20):
 
     yield True  # Pause teardown till later
 
+    # TODO: Put a timeout on this.
     context.padre.process.terminate()
 
 
@@ -584,6 +588,14 @@ def send_terminal_command(context, command):
                                            command,
                                            future,
                                            loop))
+
+
+@when(u'I wait {seconds} seconds')
+def sleep_seconds(context, seconds):
+    """
+    Wait for specified number of seconds
+    """
+    time.sleep(int(seconds))
 
 
 @when(u'I terminate connection {connection}')

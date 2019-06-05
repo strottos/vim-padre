@@ -2,26 +2,26 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct RequestError {
+pub struct PadreError {
     msg: String,
     debug: String,
 }
 
-impl fmt::Display for RequestError {
+impl fmt::Display for PadreError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.msg)
     }
 }
 
-impl Error for RequestError {
+impl Error for PadreError {
     fn description(&self) -> &str {
         &self.msg
     }
 }
 
-impl RequestError {
-    pub fn new(msg: String, debug: String) -> RequestError {
-        RequestError {
+impl PadreError {
+    pub fn new(msg: String, debug: String) -> PadreError {
+        PadreError {
             msg: msg,
             debug: debug,
         }

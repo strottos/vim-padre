@@ -183,8 +183,10 @@ impl PadreDebugger {
                     "stepOver" => self.debugger.step_over(),
                     "continue" => self.debugger.continue_on(),
                     _ => {
-                        println!("TODO - Implement: {:?}", req.cmd());
-                        panic!("ERROR5");
+                        self.send_error_and_debug(
+                            format!("Can't understand request"),
+                            format!("Can't understand command without arguments: '{}'", cmd),
+                        )
                     }
                 }
             }
@@ -193,8 +195,10 @@ impl PadreDebugger {
                 match cmd {
                     "breakpoint" => self.debugger.breakpoint(file.clone(), *line),
                     _ => {
-                        println!("TODO - Implement: {:?}", req.cmd());
-                        panic!("ERROR6");
+                        self.send_error_and_debug(
+                            format!("Can't understand command"),
+                            format!("Can't understand command '{}' with file location", cmd),
+                        )
                     }
                 }
             }
@@ -204,11 +208,27 @@ impl PadreDebugger {
                     "print" => self.debugger.print(variable),
                     _ => {
                         println!("TODO - Implement: {:?}", req.cmd());
-                        panic!("ERROR7");
+                        panic!("ERROR2");
                     }
                 }
             }
         }
+    }
+
+    fn send_error_and_debug(
+        &self,
+        err_msg: String,
+        debug_msg: String,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        self.notifier.lock().unwrap().log_msg(LogLevel::ERROR, err_msg);
+        self.notifier.lock().unwrap().log_msg(LogLevel::DEBUG, debug_msg);
+
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"ERROR"});
+            Ok(resp)
+        });
+
+        Box::new(f)
     }
 }
 
