@@ -207,8 +207,10 @@ impl PadreDebugger {
                 match cmd {
                     "print" => self.debugger.print(variable),
                     _ => {
-                        println!("TODO - Implement: {:?}", req.cmd());
-                        panic!("ERROR2");
+                        self.send_error_and_debug(
+                            format!("Can't understand command"),
+                            format!("Can't understand command '{}' with variable", cmd),
+                        )
                     }
                 }
             }

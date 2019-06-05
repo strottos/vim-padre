@@ -197,28 +197,38 @@ Feature: Basics
             | padre#debugger#Log | [2,"Bad arguments"]                                  |
             | padre#debugger#Log | [5,"Bad arguments: \\[\"bad_arg\", \"bad_arg2\"\\]"] |
         When I send a request to PADRE '{"cmd":"bkpt","file":"test.c","line":12}'
-        Then I expect to be called with
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                                                     |
             | padre#debugger#Log | [2,"Can't understand command"]                           |
             | padre#debugger#Log | [5,"Can't understand command 'bkpt' with file location"] |
         When I terminate padre
 
-        #    Scenario: Check we can handle errors getting variables
-        #        Given that we have a file 'test_prog.c'
-        #        And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        #        And that we have a test program 'test_prog' that runs with 'lldb'
-        #        When I debug the program with PADRE
-        #        Then I expect to be called with
-        #            | function                          | args |
-        #            | padre#debugger#SignalPADREStarted | []   |
-        #        When I send a request to PADRE '{"cmd":"print"}'
-        #        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-        #            | function           | args                                |
-        #            | padre#debugger#Log | [2,"Can't read variable for print"] |
-        #            | padre#debugger#Log | [5,"Can't read variable for print"] |
-        #        When I send a request to PADRE '{"cmd":"print","variable":"a","bad_arg":1,"bad_arg2":2}'
-        #        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-        #            | function           | args                                                          |
-        #            | padre#debugger#Log | [2,"Bad arguments for print"]                                 |
-        #            | padre#debugger#Log | [5,"Bad arguments for print: \\[\"bad_arg\",\"bad_arg2\"\\]"] |
-        #        When I terminate padre
+    Scenario: Check we can handle errors getting variables
+        Given that we have a file 'test_prog.c'
+        And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
+        And that we have a test program 'test_prog' that runs with 'lldb'
+        When I debug the program with PADRE
+        Then I expect to be called with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a request to PADRE '{"cmd":"print"}'
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
+            | function           | args                                                      |
+            | padre#debugger#Log | [2,"Can't understand request"]                            |
+            | padre#debugger#Log | [5,"Can't understand command without arguments: 'print'"] |
+        When I send a request to PADRE '{"cmd":"print","variable":1}'
+        Then I expect to be called with
+            | function           | args                                     |
+            | padre#debugger#Log | [2,"Badly specified 'variable'"]         |
+            | padre#debugger#Log | [5,"Badly specified 'variable': [^ ].*"] |
+        When I send a request to PADRE '{"cmd":"print","variable":"a","bad_arg":1,"bad_arg2":2}'
+        Then I expect to be called with
+            | function           | args                                                 |
+            | padre#debugger#Log | [2,"Bad arguments"]                                  |
+            | padre#debugger#Log | [5,"Bad arguments: \\[\"bad_arg\", \"bad_arg2\"\\]"] |
+        When I send a request to PADRE '{"cmd":"prt","variable":"a"}'
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
+            | function           | args                                               |
+            | padre#debugger#Log | [2,"Can't understand command"]                     |
+            | padre#debugger#Log | [5,"Can't understand command 'prt' with variable"] |
+        When I terminate padre

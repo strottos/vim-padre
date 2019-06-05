@@ -289,7 +289,10 @@ impl Decoder for PadreCodec {
                         Some(s)
                     },
                     _ => {
-                        panic!("ERROR2");
+                        return self.send_error_and_debug(
+                            format!("Badly specified 'variable'"),
+                            format!("Badly specified 'variable': {}", s),
+                        );
                     }
                 }
             },
@@ -316,7 +319,6 @@ impl Decoder for PadreCodec {
         }
 
         let padre_request: PadreRequest = PadreRequest::new(id, cmd);
-        // TODO: If anything left in v error
 
         Ok(Some(padre_request))
     }

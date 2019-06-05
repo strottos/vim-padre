@@ -1,13 +1,7 @@
 - Padre command
-  - New:
-    - Timeouts
-
   - Tokio (Precursor to everything now):
-    - Can't spawn tasks and thus listen on debugger generally, therefore we need to have the ability to register a listener from the debugger to the process. Also we should have the process be able to change the state of the debugger.
-    - Make different states for debugger to be in maybe? So running and paused for example, and when running we can pause, print and when paused we can step, continue, etc.
-    - Need to be able to read output for run and print, others can return immediately but change state of the debugger.
     - Add in signal processing
-
+    - Timeouts
   - (CRITICAL) Proper termination
   - (CRITICAL) Fix all tests
   - (HIGH) Queueing of requests
