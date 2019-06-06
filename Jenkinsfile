@@ -39,7 +39,7 @@ pipeline {
         sh'''
           #!/bin/bash
           cd padre
-          npm test
+          cargo test -- --nocapture
         '''
       }
     }

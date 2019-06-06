@@ -131,7 +131,7 @@ impl Debugger for ImplDebugger {
                                 .clone()
                                 .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
                                 .map(|_| {})
-                                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
                         );
 
                         tokio::spawn(
@@ -139,7 +139,7 @@ impl Debugger for ImplDebugger {
                                 .clone()
                                 .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
                                 .map(|_| {})
-                                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
                         );
 
                         tokio::spawn(
@@ -147,13 +147,12 @@ impl Debugger for ImplDebugger {
                                 .clone()
                                 .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
                                 .map(|_| {})
-                                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
                         );
 
                         *started.lock().unwrap() = true;
                         notifier.lock().unwrap().signal_started();
                         if !listener_tx.lock().unwrap().is_none() {
-                            println!("HERE1");
                             tokio::spawn(
                                 listener_tx
                                     .clone()
@@ -163,7 +162,7 @@ impl Debugger for ImplDebugger {
                                     .unwrap()
                                     .send(LLDBStatus::LLDBStarted)
                                     .map(|_| {})
-                                    .map_err(|e| println!("Error sending to analyser: {}", e))
+                                    .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                             );
                         }
                     }
@@ -177,9 +176,7 @@ impl Debugger for ImplDebugger {
 
                         for cap in RE_PROCESS_STARTED.captures_iter(line) {
                             let pid = cap[1].parse::<u64>().unwrap();
-                            println!("Process started {}", pid);
                             if !listener_tx.lock().unwrap().is_none() {
-                                println!("HERE2");
                                 tokio::spawn(
                                     listener_tx
                                         .lock()
@@ -188,7 +185,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .send(LLDBStatus::ProcessLaunched(pid))
                                         .map(|_| {})
-                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                        .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
                             }
                         }
@@ -197,9 +194,7 @@ impl Debugger for ImplDebugger {
                             let pid = cap[1].parse::<u64>().unwrap();
                             let exit_code = cap[2].parse::<u64>().unwrap();
                             notifier.lock().unwrap().signal_exited(pid, exit_code);
-                            println!("Process exited {}", exit_code);
                             if !listener_tx.lock().unwrap().is_none() {
-                                println!("HERE3");
                                 tokio::spawn(
                                     listener_tx
                                         .lock()
@@ -208,7 +203,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .send(LLDBStatus::ProcessExited(pid, exit_code))
                                         .map(|_| {})
-                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                        .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
                             }
                         }
@@ -221,7 +216,6 @@ impl Debugger for ImplDebugger {
                             let line = cap[3].parse::<u64>().unwrap();
                             notifier.lock().unwrap().breakpoint_set(file.clone(), line);
                             if !listener_tx.lock().unwrap().is_none() {
-                                println!("BREAK1");
                                 tokio::spawn(
                                     listener_tx
                                         .lock()
@@ -230,7 +224,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .send(LLDBStatus::Breakpoint(file, line))
                                         .map(|_| {})
-                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                        .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
                             }
                         }
@@ -249,7 +243,6 @@ impl Debugger for ImplDebugger {
                                     ),
                                 );
                                 if !listener_tx.lock().unwrap().is_none() {
-                                    println!("BREAK2");
                                     tokio::spawn(
                                         listener_tx
                                             .lock()
@@ -258,7 +251,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .send(LLDBStatus::Breakpoint(file, line))
                                             .map(|_| {})
-                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                            .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
                                 }
                             }
@@ -268,7 +261,6 @@ impl Debugger for ImplDebugger {
                             for _ in RE_BREAKPOINT_MULTIPLE.captures_iter(line) {
                                 found_breakpoint = true;
                                 if !listener_tx.lock().unwrap().is_none() {
-                                    println!("BREAK3");
                                     tokio::spawn(
                                         listener_tx
                                             .lock()
@@ -277,7 +269,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .send(LLDBStatus::BreakpointMultiple)
                                             .map(|_| {})
-                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                            .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
                                 }
                             }
@@ -286,7 +278,6 @@ impl Debugger for ImplDebugger {
                         if !found_breakpoint {
                             for _ in RE_BREAKPOINT_PENDING.captures_iter(line) {
                                 if !listener_tx.lock().unwrap().is_none() {
-                                    println!("BREAK4");
                                     tokio::spawn(
                                         listener_tx
                                             .lock()
@@ -295,7 +286,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .send(LLDBStatus::BreakpointPending)
                                             .map(|_| {})
-                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                            .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
                                 }
                             }
@@ -309,7 +300,6 @@ impl Debugger for ImplDebugger {
                                 let line = cap[2].parse::<u64>().unwrap();
                                 notifier.lock().unwrap().jump_to_position(file.clone(), line);
                                 if !listener_tx.lock().unwrap().is_none() {
-                                    println!("HERE4");
                                     tokio::spawn(
                                         listener_tx
                                             .lock()
@@ -318,13 +308,12 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .send(LLDBStatus::JumpToPosition(file, line))
                                             .map(|_| {})
-                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                            .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
                                 }
                             }
 
                             if !found {
-                                println!("HERE");
                                 notifier.lock().unwrap().log_msg(
                                     LogLevel::WARN, "Stopped at unknown position".to_string());
 
@@ -337,7 +326,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .send(LLDBStatus::UnknownPosition)
                                             .map(|_| {})
-                                            .map_err(|e| println!("Error sending to analyser: {}", e))
+                                            .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
                                 }
                             }
@@ -356,7 +345,6 @@ impl Debugger for ImplDebugger {
                                 start += 1;
                             }
                             start += 2;
-                            println!("Start: {}", start);
 
                             let mut end = data.len();
 
@@ -365,7 +353,6 @@ impl Debugger for ImplDebugger {
                             }
 
                             if !listener_tx.lock().unwrap().is_none() {
-                                println!("HERE4");
                                 tokio::spawn(
                                     listener_tx
                                         .lock()
@@ -378,7 +365,7 @@ impl Debugger for ImplDebugger {
                                             data[start..end].to_string(),
                                         ))
                                         .map(|_| {})
-                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                        .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
                             }
                         }
@@ -390,7 +377,6 @@ impl Debugger for ImplDebugger {
                             );
 
                             if !listener_tx.lock().unwrap().is_none() {
-                                println!("HERE5");
                                 tokio::spawn(
                                     listener_tx
                                         .lock()
@@ -399,7 +385,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .send(LLDBStatus::NoProcess)
                                         .map(|_| {})
-                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                        .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
                             }
                         }
@@ -413,7 +399,6 @@ impl Debugger for ImplDebugger {
                             );
 
                             if !listener_tx.lock().unwrap().is_none() {
-                                println!("HERE6");
                                 tokio::spawn(
                                     listener_tx
                                         .lock()
@@ -422,7 +407,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .send(LLDBStatus::VariableNotFound)
                                         .map(|_| {})
-                                        .map_err(|e| println!("Error sending to analyser: {}", e))
+                                        .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
                             }
                         }
@@ -441,7 +426,6 @@ impl Debugger for ImplDebugger {
         //        tokio::spawn(
         //            input
         //                .for_each(|req| {
-        //                    println!("{:?}", req);
         //                    Ok(())
         //                })
         //                .map(|_| ())
@@ -493,7 +477,7 @@ impl Debugger for ImplDebugger {
                 .send(Bytes::from(&stmt[..]))
                 .timeout(Duration::new(5, 0))
                 .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
         let f = rx
@@ -522,7 +506,7 @@ impl Debugger for ImplDebugger {
                     lldb_in_tx
                         .send(Bytes::from(&stmt[..]))
                         .map(|_| {})
-                        .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
                 );
 
                 rx.take(1).into_future()
@@ -545,7 +529,7 @@ impl Debugger for ImplDebugger {
                 resp
             })
             .map_err(|e| {
-                println!("Error sending to LLDB: {:?}", e);
+                eprintln!("Error sending to LLDB: {:?}", e);
                 io::Error::new(io::ErrorKind::Other, "ERROR")
             });
 
@@ -578,7 +562,7 @@ impl Debugger for ImplDebugger {
             lldb_in_tx
                 .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
         let f = rx
@@ -605,7 +589,7 @@ impl Debugger for ImplDebugger {
                 resp
             })
             .map_err(|e| {
-                println!("Error sending to LLDB: {}", e.0);
+                eprintln!("Error sending to LLDB: {}", e.0);
                 io::Error::new(io::ErrorKind::Other, e.0)
             });
 
@@ -621,7 +605,7 @@ impl Debugger for ImplDebugger {
             lldb_in_tx
                 .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
         let f = future::lazy(move || {
@@ -641,7 +625,7 @@ impl Debugger for ImplDebugger {
             lldb_in_tx
                 .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
         let f = future::lazy(move || {
@@ -663,7 +647,7 @@ impl Debugger for ImplDebugger {
             lldb_in_tx
                 .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
         let f = future::lazy(move || {
@@ -691,7 +675,7 @@ impl Debugger for ImplDebugger {
             lldb_in_tx
                 .send(Bytes::from(&stmt[..]))
                 .map(|_| {})
-                .map_err(|e| println!("Error sending to LLDB: {}", e)),
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
         let f = rx
@@ -723,7 +707,7 @@ impl Debugger for ImplDebugger {
                 resp
             })
             .map_err(|e| {
-                println!("Error sending to LLDB: {}", e.0);
+                eprintln!("Error sending to LLDB: {}", e.0);
                 io::Error::new(io::ErrorKind::Other, e.0)
             });
 

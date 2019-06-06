@@ -1,9 +1,13 @@
 - Padre command
   - Tokio (Precursor to everything now):
-    - Add in signal processing
+    * - Add in signal processing
     - Timeouts
   - (CRITICAL) Proper termination
-  - (CRITICAL) Fix all tests
+  - (CRITICAL) Fix all tests and warnings
+  - (CRITICAL) Do all TODOs
+  - (CRITICAL) Performance test, seems slow
+  - (CRITICAL) Cleanup code, some long closures and functions atm.
+  - (CRITICAL) CI/CD (Azure DevOps?)
   - (HIGH) Queueing of requests
   - (HIGH) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
   - (HIGH) run arguments
@@ -11,28 +15,19 @@
   - (HIGH) Auto step ins till we find code (configurable?)
   - (HIGH) Remove breakpoints
   - (HIGH) Make it be able to take a list of files that it will stop in. Otherwise it will configurably either step in till it finds one, step over till it finds one, continue or no action (displaying something??).
-  - (LOW) Support for multi-threading/multi-processing (V2?)
-  - (LOW) V2+ stuff, backtraces, interrupts, record, step out, step back, go to fixed point??
+  - (HIGH) Interrupts
+  - (HIGH) Dummy slow LLDB to allow for better testing of edge cases
+  - (MEDIUM) Support for multi-threading/multi-processing (V2?)
+  - (MEDIUM) V2+ stuff, backtraces, interrupts, record, step out, step back, go to fixed point??
   - (LOW) Add in preprocessing possibilities like compiling before running PADRE.
+  - (LOW) Profiling CPU, mem, etc.
 - LLDB
   - (CRITICAL) Proper variable printing for rust and C++
-  - (CRITICAL) Error Handling, doesn't panic in threads
+  - (CRITICAL) Better Error Handling, doesn't panic
   - (CRITICAL) Fix printing when no variable exists
-  - (HIGH) Clean code in LLDBProcess, it's ugly.
   - (MEDIUM) If rust continue to main main on startup.
   - (LOW) Get things working for multi-threaded programs in LLDB
   - (LOW) Get things working for process spawning in LLDB
-
-
-
-
-- Node
-  - (HIGH) Asynchronous debugging in Node
-  - (HIGH) Ports randomly chosen other than 9229
-  - (HIGH) Handle Exceptions
-- Java:
-  - (CRITICAL) Request error handling
-  - (HIGH) Support method overloading
 - VIM
   - (CRITICAL) Padre can be ran multiple times without restarting vim
   - (HIGH) Why it no log immediately
@@ -41,7 +36,6 @@
   - (MEDIUM) Reorder windows properly
   - (LOW) Highlighting/Change backround colour of left column for PADRE_Main
   - (LOW) Socket closing
-  - (LOW) Full stdio data window
   - (LOW) Update the README
   - (LOW) Padre open log line bug, doesn't display till you've changed focus
 
@@ -49,8 +43,11 @@ Nice to have:
 - Support BabelJS and TypeScript compilers
 
 Epics:
+- Debugger in Node
+- Debugger in IPython
 - Debugger in Go
-- Debugger for LLDB Server
+- Debugger in Java
+- Debugger for LLDB Server?
 - Reverse Engineering a binary?
 
 

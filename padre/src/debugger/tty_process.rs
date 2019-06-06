@@ -217,8 +217,6 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
     // on Linux this is the libc function, on OSX this is our implementation of ptsname_r
     let slave_name = ptsname_r(&master_fd).unwrap();
 
-    println!("Spawning {:?}", argv);
-
     match fork().unwrap() {
         ForkResult::Child => {
             setsid().unwrap(); // create new session with child as session leader
@@ -258,15 +256,14 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
             tokio::spawn(
                 TtyFileStdioStream::new(tty, stdin_rx)
                     .for_each(move |chunk| {
-                        println!("Chunk: {:?}", chunk);
                         out.write_all(&chunk).unwrap();
                         tokio::spawn(stdout_tx.clone().send(chunk).map(|_| {}).map_err(|e| {
                             // TODO: Error handling?
-                            println!("Can't send output to be analysed: {}", e)
+                            eprintln!("Can't send output to be analysed: {}", e)
                         }));
                         out.flush()
                     })
-                    .map_err(|e| println!("error reading stdout; error = {:?}", e)),
+                    .map_err(|e| eprintln!("error reading stdout; error = {:?}", e)),
             );
         }
     };

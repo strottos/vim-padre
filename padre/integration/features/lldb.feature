@@ -187,7 +187,7 @@ Feature: LLDB
     Scenario: Printing variables in rust
         Given that we have a file 'test_print_variables.rs'
         And I have compiled the test program 'test_print_variables.rs' with compiler 'rustc -g' to program 'test_print_variables'
-        And that we have a test program 'test_print_variables' that runs with 'rust-lldb'
+        And that we have a test program 'test_print_variables' that runs with 'lldb'
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |

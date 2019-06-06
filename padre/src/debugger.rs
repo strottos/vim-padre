@@ -237,22 +237,18 @@ impl PadreDebugger {
 #[cfg(test)]
 mod tests {
     use std::env;
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
-    use tokio::prelude::*;
-    use tokio::sync::mpsc;
-
-    fn get_lldb_debugger() -> super::PadreDebugger {
-        let notifier = Arc::new(Mutex::new(super::Notifier::new()));
-        super::get_debugger(
-            Some("lldb"),
-            Some("lldb"),
-            vec!["padre".to_string(), "--".to_string(), "arg1".to_string()],
-            notifier,
-        )
-    }
+    //fn get_lldb_debugger() -> super::PadreDebugger {
+    //    let notifier = Arc::new(Mutex::new(super::Notifier::new()));
+    //    super::get_debugger(
+    //        Some("lldb"),
+    //        Some("lldb"),
+    //        vec!["padre".to_string(), "--".to_string(), "arg1".to_string()],
+    //        notifier,
+    //    )
+    //}
 
     //    #[test]
     //    fn basic_ping() {
