@@ -1,13 +1,13 @@
 - Padre command
   - Tokio (Precursor to everything now):
-    * - Add in signal processing
+    - Add in signal processing
     - Timeouts
   - (CRITICAL) Proper termination
   - (CRITICAL) Fix all tests and warnings
   - (CRITICAL) Do all TODOs
   - (CRITICAL) Performance test, seems slow
   - (CRITICAL) Cleanup code, some long closures and functions atm.
-  - (CRITICAL) CI/CD (Azure DevOps?)
+  * - (CRITICAL) CI/CD (Azure DevOps?)
   - (HIGH) Queueing of requests
   - (HIGH) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
   - (HIGH) run arguments
@@ -116,10 +116,6 @@ Done
 - Any IO that happens in the PADRE process will be forwarded directly to or from the program itself
 
 TODO on tokio update:
-- Handle error in JSON including bad arguments
-- Add error response logging
-- Get rid of Arc once we're fully single threaded.
-- Create channels between debugger and process and for process to send to debugger for listening
 
 Classes
 -------
