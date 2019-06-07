@@ -12,41 +12,41 @@ After:
 
   Restore
 
-Execute (Check padre tab and buffer):
-  let g:start_tabpagenr = tabpagenr()
-
-  PadreDebug test/progs/test_prog
-
-Then:
-  let t:padre_buf_num = bufnr('%')
-
-  " Check Padre buffer exists
-  AssertEqual 'PADRE_Main', padre#buffer#GetBufNameForBufNum(t:padre_buf_num)
-
-  " Check we have a new tab and it's the PADRE_Main buffer
-  AssertEqual g:start_tabpagenr + 1, tabpagenr()
-  AssertEqual 0, getbufvar(t:padre_buf_num, '&swapfile')
-  AssertEqual 'PADRE_Main', getbufvar(t:padre_buf_num, '&filetype')
-  AssertEqual 0, getbufvar(t:padre_buf_num, '&modifiable')
-  AssertEqual 'nofile', getbufvar(t:padre_buf_num, '&buftype')
-  AssertEqual 0, getbufvar(t:padre_buf_num, '&buflisted')
-
-  unlet t:padre_buf_num
-
-  quit
-  quit
-
-Execute (Check when we run twice the same tab is open):
-  PadreDebug test/progs/test_prog
-  PadreDebug test/progs/test_prog
-
-Then:
-  AssertEqual 1, len(padre#layout#GetTabNumbersContainingBufferName('PADRE_Main'))
-  AssertEqual 2, len(padre#layout#GetBuffersInTab())
-
-  quit
-  quit
-
+#Execute (Check padre tab and buffer):
+#  let g:start_tabpagenr = tabpagenr()
+#
+#  PadreDebug test/progs/test_prog
+#
+#Then:
+#  let t:padre_buf_num = bufnr('%')
+#
+#  " Check Padre buffer exists
+#  AssertEqual 'PADRE_Main', padre#buffer#GetBufNameForBufNum(t:padre_buf_num)
+#
+#  " Check we have a new tab and it's the PADRE_Main buffer
+#  AssertEqual g:start_tabpagenr + 1, tabpagenr()
+#  AssertEqual 0, getbufvar(t:padre_buf_num, '&swapfile')
+#  AssertEqual 'PADRE_Main', getbufvar(t:padre_buf_num, '&filetype')
+#  AssertEqual 0, getbufvar(t:padre_buf_num, '&modifiable')
+#  AssertEqual 'nofile', getbufvar(t:padre_buf_num, '&buftype')
+#  AssertEqual 0, getbufvar(t:padre_buf_num, '&buflisted')
+#
+#  unlet t:padre_buf_num
+#
+#  quit
+#  quit
+#
+#Execute (Check when we run twice the same tab is open):
+#  PadreDebug test/progs/test_prog
+#  PadreDebug test/progs/test_prog
+#
+#Then:
+#  AssertEqual 1, len(padre#layout#GetTabNumbersContainingBufferName('PADRE_Main'))
+#  AssertEqual 2, len(padre#layout#GetBuffersInTab())
+#
+#  quit
+#  quit
+#
 #Execute (Check when we run PADRE followed by the stop command we have no tab or padre process running):
 #  let g:NumTabs = tabpagenr('$')
 #  PadreDebug test/progs/test_prog
@@ -81,21 +81,21 @@ Then:
 #  AssertEqual ['Test stdout', 'Test stderr', ''], padre#buffer#ReadBuffer('PADRE_Stdio')
 #
 #  quit
-#
-#Execute (Check PADRE debugger starts and writes to the stdio buffer):
-#  tabnew
-#  execute 'buffer ' . padre#buffer#GetBufNumForBufName('PADRE_Stdio')
-#
-#  PadreDebug test/progs/test_prog
-#
-#  sleep 500ms
-#
-#Then:
-#  AssertEqual 1, padre#job#RunningJobs()
-#  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Stdio')[0], '^Listening on localhost:\d\+$'))
-#
-#  quit
-#
+
+Execute (Check PADRE debugger starts and writes to the stdio buffer):
+  tabnew
+  execute 'buffer ' . padre#buffer#GetBufNumForBufName('PADRE_Stdio')
+
+  PadreDebug test/progs/test_prog
+
+  sleep 500ms
+
+Then:
+  AssertEqual 1, padre#job#RunningJobs()
+  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Stdio')[0], '^Listening on localhost:\d\+$'))
+
+  quit
+
 #Execute (Check when we run twice only one PADRE debugger is running):
 #  PadreDebug test/progs/test_prog
 #  sleep 100ms

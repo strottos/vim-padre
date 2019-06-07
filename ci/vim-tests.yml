@@ -13,6 +13,7 @@ steps:
     displayName: Install VIM and plugins
 
   - bash: |
+      test/pythox/test_prog.py
       success=0
       fail=0
       for i in {1..100}; do
@@ -32,6 +33,8 @@ steps:
 
   - script: |
       sudo apt-get install -y lldb gcc
+      cd test/progs
+      gcc -g -o test_prog test_prog.c test_func.c
     displayName: Install lldb and build essentials
 
   - script: |
