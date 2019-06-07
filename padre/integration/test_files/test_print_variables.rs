@@ -21,13 +21,15 @@ fn main() -> io::Result<()> {
     let b = &a;
     let a = "TEST".to_string();
     let b = &a;
-    let a: Vec<String> = vec!("TEST1".to_string(),
-                              "TEST2".to_string(),
-                              "TEST3".to_string());
+    let a: Vec<String> = vec![
+        "TEST1".to_string(),
+        "TEST2".to_string(),
+        "TEST3".to_string(),
+    ];
     let a: TestStruct = TestStruct {
         a: true,
         b: 42,
-        c: vec!("TEST1".to_string()),
+        c: vec!["TEST1".to_string()],
         d: TestStructInner {
             a: "TEST_INNER".to_string(),
             b: "TESTING",

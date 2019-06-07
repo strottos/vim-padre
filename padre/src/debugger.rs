@@ -182,36 +182,30 @@ impl PadreDebugger {
                     "stepIn" => self.debugger.step_in(),
                     "stepOver" => self.debugger.step_over(),
                     "continue" => self.debugger.continue_on(),
-                    _ => {
-                        self.send_error_and_debug(
-                            format!("Can't understand request"),
-                            format!("Can't understand command without arguments: '{}'", cmd),
-                        )
-                    }
+                    _ => self.send_error_and_debug(
+                        format!("Can't understand request"),
+                        format!("Can't understand command without arguments: '{}'", cmd),
+                    ),
                 }
             }
             PadreRequestCmd::CmdWithFileLocation(cmd, file, line) => {
                 let cmd: &str = cmd;
                 match cmd {
                     "breakpoint" => self.debugger.breakpoint(file.clone(), *line),
-                    _ => {
-                        self.send_error_and_debug(
-                            format!("Can't understand command"),
-                            format!("Can't understand command '{}' with file location", cmd),
-                        )
-                    }
+                    _ => self.send_error_and_debug(
+                        format!("Can't understand command"),
+                        format!("Can't understand command '{}' with file location", cmd),
+                    ),
                 }
             }
             PadreRequestCmd::CmdWithVariable(cmd, variable) => {
                 let cmd: &str = cmd;
                 match cmd {
                     "print" => self.debugger.print(variable),
-                    _ => {
-                        self.send_error_and_debug(
-                            format!("Can't understand command"),
-                            format!("Can't understand command '{}' with variable", cmd),
-                        )
-                    }
+                    _ => self.send_error_and_debug(
+                        format!("Can't understand command"),
+                        format!("Can't understand command '{}' with variable", cmd),
+                    ),
                 }
             }
         }
@@ -222,8 +216,14 @@ impl PadreDebugger {
         err_msg: String,
         debug_msg: String,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        self.notifier.lock().unwrap().log_msg(LogLevel::ERROR, err_msg);
-        self.notifier.lock().unwrap().log_msg(LogLevel::DEBUG, debug_msg);
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::ERROR, err_msg);
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::DEBUG, debug_msg);
 
         let f = future::lazy(move || {
             let resp = serde_json::json!({"status":"ERROR"});

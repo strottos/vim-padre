@@ -129,8 +129,14 @@ impl PadreCodec {
         err_msg: String,
         debug_msg: String,
     ) -> Result<Option<PadreRequest>, io::Error> {
-        self.notifier.lock().unwrap().log_msg(LogLevel::ERROR, err_msg);
-        self.notifier.lock().unwrap().log_msg(LogLevel::DEBUG, debug_msg);
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::ERROR, err_msg);
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::DEBUG, debug_msg);
         Ok(None)
     }
 }
@@ -154,23 +160,27 @@ impl Decoder for PadreCodec {
                     match e.classify() {
                         serde_json::error::Category::Io => {
                             println!("IO: {:?}", req);
-                        },
-                        serde_json::error::Category::Syntax => {},
+                        }
+                        serde_json::error::Category::Syntax => {}
                         serde_json::error::Category::Data => {
                             println!("Data: {:?}", req);
-                        },
+                        }
                         serde_json::error::Category::Eof => {
                             return Ok(None);
-                        },
+                        }
                     };
 
                     src.split_to(src.len());
 
                     return self.send_error_and_debug(
                         "Must be valid JSON".to_string(),
-                        format!("Can't read '{}': {}", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)), e),
+                        format!(
+                            "Can't read '{}': {}",
+                            String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)),
+                            e
+                        ),
                     );
-                },
+                }
             },
             None => {
                 unreachable!("HEREEEE2");
@@ -182,14 +192,20 @@ impl Decoder for PadreCodec {
         if !v.is_array() {
             return self.send_error_and_debug(
                 "Can't read JSON".to_string(),
-                format!("Can't read '{}': Must be an array", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))),
+                format!(
+                    "Can't read '{}': Must be an array",
+                    String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))
+                ),
             );
         }
 
         if v.as_array().unwrap().len() != 2 {
             return self.send_error_and_debug(
                 "Can't read JSON".to_string(),
-                format!("Can't read '{}': Array should have 2 elements", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))),
+                format!(
+                    "Can't read '{}': Array should have 2 elements",
+                    String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))
+                ),
             );
         }
 
@@ -204,22 +220,30 @@ impl Decoder for PadreCodec {
             }
         };
 
-        let mut args: HashMap<String, serde_json::Value> = match serde_json::from_str(&v[1].take().to_string()) {
-            Ok(args) => args,
-            Err(e) => {
-                return self.send_error_and_debug(
-                    "Can't read JSON".to_string(),
-                    format!("Can't read '{}': {}", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)), e),
-                );
-            }
-        };
+        let mut args: HashMap<String, serde_json::Value> =
+            match serde_json::from_str(&v[1].take().to_string()) {
+                Ok(args) => args,
+                Err(e) => {
+                    return self.send_error_and_debug(
+                        "Can't read JSON".to_string(),
+                        format!(
+                            "Can't read '{}': {}",
+                            String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)),
+                            e
+                        ),
+                    );
+                }
+            };
 
         let cmd = match args.remove("cmd") {
             Some(s) => s,
             None => {
                 return self.send_error_and_debug(
                     "Can't find command".to_string(),
-                    format!("Can't find command '{}': Need a cmd in 2nd object", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))),
+                    format!(
+                        "Can't find command '{}': Need a cmd in 2nd object",
+                        String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))
+                    ),
                 );
             }
         };
@@ -229,76 +253,66 @@ impl Decoder for PadreCodec {
             Err(e) => {
                 return self.send_error_and_debug(
                     "Can't find command".to_string(),
-                    format!("Can't find command '{}': {}", String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)), e),
+                    format!(
+                        "Can't find command '{}': {}",
+                        String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)),
+                        e
+                    ),
                 );
             }
         };
 
         let file_location: Option<(String, u64)> = match args.remove("file") {
-            Some(s) => {
-                match s {
-                    serde_json::Value::String(s) => {
-                        match args.remove("line") {
-                            Some(t) => {
-                                match t {
-                                    serde_json::Value::Number(t) => {
-                                        let t: u64 = match t.as_u64() {
-                                            Some(t) => t,
-                                            None => {
-                                                return self.send_error_and_debug(
-                                                    format!("Badly specified 'line'"),
-                                                    format!("Badly specified 'line': {}", t),
-                                                );
-                                            }
-                                        };
-                                        Some((s, t))
-                                    }
-                                    _ => {
-                                        return self.send_error_and_debug(
-                                            "Can't read 'line' argument".to_string(),
-                                            format!("Can't understand 'line': {}", t),
-                                        );
-                                    }
+            Some(s) => match s {
+                serde_json::Value::String(s) => match args.remove("line") {
+                    Some(t) => match t {
+                        serde_json::Value::Number(t) => {
+                            let t: u64 = match t.as_u64() {
+                                Some(t) => t,
+                                None => {
+                                    return self.send_error_and_debug(
+                                        format!("Badly specified 'line'"),
+                                        format!("Badly specified 'line': {}", t),
+                                    );
                                 }
-                            }
-                            None => {
-                                return self.send_error_and_debug(
-                                    "Can't read 'line' for file location when 'file' specified".to_string(),
-                                    format!("Can't understand command with file but no line: '{}'", cmd),
-                                );
-                            }
+                            };
+                            Some((s, t))
                         }
-                    }
-                    _ => {
+                        _ => {
+                            return self.send_error_and_debug(
+                                "Can't read 'line' argument".to_string(),
+                                format!("Can't understand 'line': {}", t),
+                            );
+                        }
+                    },
+                    None => {
                         return self.send_error_and_debug(
-                            format!("Can't read 'file' argument"),
-                            format!("Can't understand 'file': {}", s),
+                            "Can't read 'line' for file location when 'file' specified".to_string(),
+                            format!("Can't understand command with file but no line: '{}'", cmd),
                         );
                     }
+                },
+                _ => {
+                    return self.send_error_and_debug(
+                        format!("Can't read 'file' argument"),
+                        format!("Can't understand 'file': {}", s),
+                    );
                 }
             },
-            None => {
-                None
-            }
+            None => None,
         };
 
         let variable: Option<String> = match args.remove("variable") {
-            Some(s) => {
-                match s {
-                    serde_json::Value::String(s) => {
-                        Some(s)
-                    },
-                    _ => {
-                        return self.send_error_and_debug(
-                            format!("Badly specified 'variable'"),
-                            format!("Badly specified 'variable': {}", s),
-                        );
-                    }
+            Some(s) => match s {
+                serde_json::Value::String(s) => Some(s),
+                _ => {
+                    return self.send_error_and_debug(
+                        format!("Badly specified 'variable'"),
+                        format!("Badly specified 'variable': {}", s),
+                    );
                 }
             },
-            None => {
-                None
-            }
+            None => None,
         };
 
         let cmd: PadreRequestCmd = match file_location {
@@ -347,8 +361,8 @@ impl Encoder for PadreCodec {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::request::{PadreRequest, PadreRequestCmd, PadreResponse};
     use crate::notifier::Notifier;
+    use crate::request::{PadreRequest, PadreRequestCmd, PadreResponse};
 
     use bytes::{BufMut, BytesMut};
     use tokio::codec::{Decoder, Encoder};
