@@ -75,6 +75,7 @@ jobs:
     displayName: Compile Padre CLI
 
   - script: |
+      vim --version
       vim '+Vader! test/unit/*.vader'
     displayName: Run VIM unit tests
 
