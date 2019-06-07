@@ -9,16 +9,7 @@ jobs:
   timeoutInMinutes: 5
 
   steps:
-  - script: |
-      set -e
-      curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
-      echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
-    displayName: Install rust
-
-  - script: |
-        rustc -Vv
-        cargo -V
-    displayName: Query rust and cargo versions
+  - template: azure-install-rust.yml
 
   - script: |
       rustup component add rustfmt
@@ -28,3 +19,25 @@ jobs:
       cd padre
       cargo fmt --all -- --check
     displayName: Check formatting
+
+- job: unit_tests
+  pool:
+    vmImage: 'ubuntu-latest'
+  timeoutInMinutes: 5
+
+  steps:
+  - template: azure-install-rust.yml
+
+  - script: |
+      cd padre
+      cargo test -- --nostdcapture
+    displayName: Run Padre CLI testing
+
+  - script: |
+      whoami
+      pwd
+      uname -a
+      add-apt-repository -y ppa:jonathonf/vim
+      apt-get update
+      apt-get install -y vim
+    displayName: Install VIM
