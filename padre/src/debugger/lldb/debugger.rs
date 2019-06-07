@@ -235,13 +235,6 @@ impl Debugger for ImplDebugger {
                                 let file = cap[2].to_string();
                                 let line = cap[3].parse::<u64>().unwrap();
                                 notifier.lock().unwrap().breakpoint_set(file.clone(), line);
-                                notifier.lock().unwrap().log_msg(
-                                    LogLevel::INFO,
-                                    format!(
-                                        "Setting breakpoint in file {} at line number {}",
-                                        file, line
-                                    ),
-                                );
                                 if !listener_tx.lock().unwrap().is_none() {
                                     tokio::spawn(
                                         listener_tx
