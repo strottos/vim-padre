@@ -19,7 +19,7 @@ steps:
     displayName: Run Padre CLI unit testing
 
   - script: |
-      sudo apt-get install -y lldb-5 gcc
+      sudo apt-get install -y lldb-5.0 gcc
     displayName: Install lldb and build essentials
 
   - script: |
