@@ -36,17 +36,17 @@ Then:
   quit
   quit
 
-#Execute (Check when we run twice the same tab is open):
-#  PadreDebug test/progs/test_prog
-#  PadreDebug test/progs/test_prog
-#
-#Then:
-#  AssertEqual 1, len(padre#layout#GetTabNumbersContainingBufferName('PADRE_Main'))
-#  AssertEqual 2, len(padre#layout#GetBuffersInTab())
-#
-#  quit
-#  quit
-#
+Execute (Check when we run twice the same tab is open):
+  PadreDebug test/progs/test_prog
+  PadreDebug test/progs/test_prog
+
+Then:
+  AssertEqual 1, len(padre#layout#GetTabNumbersContainingBufferName('PADRE_Main'))
+  AssertEqual 2, len(padre#layout#GetBuffersInTab())
+
+  quit
+  quit
+
 #Execute (Check when we run PADRE followed by the stop command we have no tab or padre process running):
 #  let g:NumTabs = tabpagenr('$')
 #  PadreDebug test/progs/test_prog
