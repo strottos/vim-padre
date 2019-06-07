@@ -3,7 +3,7 @@ trigger:
 - feature/*
 
 jobs:
-- job: A
+- job: Check Rust Formattign
   pool:
     vmImage: 'ubuntu-latest'
   timeoutInMinutes: 5
@@ -25,6 +25,8 @@ jobs:
     displayName: Install rustfmt
 
   - script: |
+      pwd
+      ls
       cd rust
       cargo fmt --all -- --check
     displayName: Check formatting
