@@ -1,6 +1,4 @@
 steps:
-  - template: install-rust.yml
-
   - script: |
       sudo add-apt-repository -y ppa:jonathonf/vim
       sudo apt-get update
@@ -17,6 +15,8 @@ steps:
       test/pythonx/test_prog.py
       vim '+Vader! test/unit/*.vader'
     displayName: Run VIM unit tests
+
+  - template: install-rust.yml
 
   - script: |
       sudo apt-get install -y lldb-5.0 gcc
