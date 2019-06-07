@@ -9,7 +9,7 @@ jobs:
   timeoutInMinutes: 5
 
   steps:
-  - template: azure-install-rust.yml
+  - template: ci/azure-install-rust.yml
 
   - script: |
       rustup component add rustfmt
@@ -26,7 +26,7 @@ jobs:
   timeoutInMinutes: 5
 
   steps:
-  - template: azure-install-rust.yml
+  - template: ci/azure-install-rust.yml
 
   - script: |
       cd padre
