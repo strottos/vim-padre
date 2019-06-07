@@ -20,18 +20,34 @@ jobs:
       cargo fmt --all -- --check
     displayName: Check formatting
 
-- job: unit_tests
+- job: padre_tests
   pool:
     vmImage: 'ubuntu-latest'
-  timeoutInMinutes: 5
+  timeoutInMinutes: 10
 
   steps:
   - template: ci/azure-install-rust.yml
 
   - script: |
       cd padre
-      cargo test -- --nostdcapture
-    displayName: Run Padre CLI testing
+      cargo test -- --nocapture
+    env:
+      RUST_BACKTRACE=1
+    displayName: Run Padre CLI unit testing
+
+  - script: |
+      pip3 install behave
+      cd padre/integrationn
+      behave
+    displayName: Run Padre CLI integration testing
+
+- job: vim_tests
+  pool:
+    vmImage: 'ubuntu-latest'
+  timeoutInMinutes: 10
+
+  steps:
+  - template: ci/azure-install-rust.yml
 
   - script: |
       whoami
@@ -41,3 +57,7 @@ jobs:
       apt-get update
       apt-get install -y vim
     displayName: Install VIM
+
+  - script: |
+      cd padre
+      cargo build
