@@ -250,7 +250,7 @@ function! padre#debugger#BreakpointCallback(channel_id, data)
 endfunction
 
 function! padre#debugger#BreakpointSet(fileName, lineNum)
-  let l:msg = 'Breakpoint set file=' . a:fileName . ' line=' . a:lineNum
+  let l:msg = 'Breakpoint set file=' . a:fileName . ', line=' . a:lineNum
   call padre#debugger#Log(4, l:msg)
 endfunction
 
