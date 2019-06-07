@@ -12,15 +12,6 @@ steps:
       cp test/vimrc ~/.vimrc
     displayName: Install VIM and plugins
 
-  - script: |
-      sudo apt-get install -y lldb gcc
-    displayName: Install lldb and build essentials
-
-  - script: |
-      cd padre
-      cargo build
-    displayName: Compile Padre CLI
-
   - bash: |
       success=0
       fail=0
@@ -38,6 +29,15 @@ steps:
   - bash: |
       vim '+Vader! test/unit/*.vader'
     displayName: Run VIM unit tests
+
+  - script: |
+      sudo apt-get install -y lldb gcc
+    displayName: Install lldb and build essentials
+
+  - script: |
+      cd padre
+      cargo build
+    displayName: Compile Padre CLI
 
   - bash: |
       vim '+Vader! test/integration/*.vader'
