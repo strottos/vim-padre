@@ -1,31 +1,31 @@
 steps:
-- template: ci/install-rust.yml
+  - template: ci/install-rust.yml
 
-- script: |
-    sudo add-apt-repository -y ppa:jonathonf/vim
-    sudo apt-get update
-    sudo apt-get install -y vim
-    mkdir -p ~/.vim/autoload ~/.vim/bundle
-    curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
-    git clone https://github.com/junegunn/vader.vim ~/.vim/bundle/vader
-    ln -s `pwd` ~/.vim/bundle/padre
-    cp test/vimrc ~/.vimrc
-  displayName: Install VIM and plugins
+  - script: |
+      sudo add-apt-repository -y ppa:jonathonf/vim
+      sudo apt-get update
+      sudo apt-get install -y vim
+      mkdir -p ~/.vim/autoload ~/.vim/bundle
+      curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
+      git clone https://github.com/junegunn/vader.vim ~/.vim/bundle/vader
+      ln -s `pwd` ~/.vim/bundle/padre
+      cp test/vimrc ~/.vimrc
+    displayName: Install VIM and plugins
 
-- script: |
-    sudo apt-get install -y lldb gcc
-  displayName: Install lldb and build essentials
+  - script: |
+      sudo apt-get install -y lldb gcc
+    displayName: Install lldb and build essentials
 
-- script: |
-    cd padre
-    cargo build
-  displayName: Compile Padre CLI
+  - script: |
+      cd padre
+      cargo build
+    displayName: Compile Padre CLI
 
-- bash: |
-    vim --version
-    vim '+Vader! test/unit/*.vader'
-  displayName: Run VIM unit tests
+  - bash: |
+      vim --version
+      vim '+Vader! test/unit/*.vader'
+    displayName: Run VIM unit tests
 
-- bash: |
-    vim '+Vader! test/integration/*.vader'
-  displayName: Run VIM integration tests
+  - bash: |
+      vim '+Vader! test/integration/*.vader'
+    displayName: Run VIM integration tests

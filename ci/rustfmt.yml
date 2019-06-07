@@ -1,11 +1,11 @@
 steps:
-- template: ci/install-rust.yml
+  - template: ci/install-rust.yml
 
-- script: |
-  rustup component add rustfmt
-displayName: Install rustfmt
+  - script: |
+      rustup component add rustfmt
+    displayName: Install rustfmt
 
-- script: |
-  cd padre
-  cargo fmt --all -- --check
-displayName: Check formatting
+  - script: |
+      cd padre
+      cargo fmt --all -- --check
+    displayName: Check formatting
