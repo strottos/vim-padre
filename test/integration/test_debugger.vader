@@ -134,6 +134,7 @@ Execute (Check we can debug a simple C program):
   sleep 5
 
   AssertEqual 1, padre#debugger#IsRunning()
+  AssertEqual 4, len(padre#buffer#ReadBuffer('PADRE_Main'))
   AssertEqual 'INFO: PADRE debugger open', padre#buffer#ReadBuffer('PADRE_Main')[0]
   AssertEqual 'INFO: Setting breakpoint in file ' . g:mainFileToDebug . ' at line number 7', padre#buffer#ReadBuffer('PADRE_Main')[1]
   AssertEqual 'INFO: Breakpoint set file=test_prog.c, line=7', padre#buffer#ReadBuffer('PADRE_Main')[2]
@@ -141,6 +142,7 @@ Execute (Check we can debug a simple C program):
   normal r
   sleep 3
 
+  AssertEqual 8, len(padre#buffer#ReadBuffer('PADRE_Main'))
   AssertEqual 'INFO: Launching process', padre#buffer#ReadBuffer('PADRE_Main')[3]
   AssertEqual 'INFO: Breakpoint set file=test_prog.c, line=6', padre#buffer#ReadBuffer('PADRE_Main')[4]
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[5], '^INFO: Process \d\+ Running$'))
@@ -153,23 +155,28 @@ Execute (Check we can debug a simple C program):
   normal S
   sleep 3
 
+  AssertEqual 9, len(padre#buffer#ReadBuffer('PADRE_Main'))
+  AssertEqual 'INFO: Stopped file=' . g:funcFileToDebug . ' line=2', padre#buffer#ReadBuffer('PADRE_Main')[7]
+
   let t:buffers_in_tab = padre#layout#GetBuffersInTab()
   AssertEqual 0, index(t:buffers_in_tab, bufnr(g:funcFileToDebug))
   AssertEqual 1, index(t:buffers_in_tab, padre#buffer#GetBufNumForBufName('PADRE_Main'))
-  AssertEqual 'INFO: Stopped file=' . g:funcFileToDebug . ' line=2', padre#buffer#ReadBuffer('PADRE_Main')[7]
 
   normal s
   sleep 3
 
+  AssertEqual 10, len(padre#buffer#ReadBuffer('PADRE_Main'))
+  AssertEqual 'INFO: Stopped file=' . g:funcFileToDebug . ' line=3', padre#buffer#ReadBuffer('PADRE_Main')[8]
+
   let t:buffers_in_tab = padre#layout#GetBuffersInTab()
   AssertEqual 0, index(t:buffers_in_tab, bufnr(g:funcFileToDebug))
   AssertEqual 1, index(t:buffers_in_tab, padre#buffer#GetBufNumForBufName('PADRE_Main'))
-  AssertEqual 'INFO: Stopped file=' . g:funcFileToDebug . ' line=3', padre#buffer#ReadBuffer('PADRE_Main')[8]
 
   call cursor(3,12)
   normal vp
   sleep 3
 
+  AssertEqual 14, len(padre#buffer#ReadBuffer('PADRE_Main'))
   AssertEqual 'INFO: Variable a={', padre#buffer#ReadBuffer('PADRE_Main')[9]
   AssertEqual 'INFO:     "type": "int",', padre#buffer#ReadBuffer('PADRE_Main')[10]
   AssertEqual 'INFO:     "value": "1"', padre#buffer#ReadBuffer('PADRE_Main')[11]
@@ -178,14 +185,17 @@ Execute (Check we can debug a simple C program):
   normal C
   sleep 3
 
+  AssertEqual 15, len(padre#buffer#ReadBuffer('PADRE_Main'))
+  AssertEqual 'INFO: Stopped file=' . g:mainFileToDebug . ' line=7', padre#buffer#ReadBuffer('PADRE_Main')[13]
+
   let t:buffers_in_tab = padre#layout#GetBuffersInTab()
   AssertEqual 0, index(t:buffers_in_tab, bufnr(g:mainFileToDebug))
   AssertEqual 1, index(t:buffers_in_tab, padre#buffer#GetBufNumForBufName('PADRE_Main'))
-  AssertEqual 'INFO: Stopped file=' . g:mainFileToDebug . ' line=7', padre#buffer#ReadBuffer('PADRE_Main')[13]
 
   normal C
   sleep 5
 
+  AssertEqual 16, len(padre#buffer#ReadBuffer('PADRE_Main'))
   Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[14], '^INFO: Process \d\+ finished with exit code=0$'))
 
   quit
