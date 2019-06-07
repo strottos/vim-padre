@@ -3,7 +3,7 @@ trigger:
 - feature/*
 
 jobs:
-- job: "Check Rust Formatting"
+- job: rustfmt
   pool:
     vmImage: 'ubuntu-latest'
   timeoutInMinutes: 5
