@@ -43,8 +43,7 @@ jobs:
 
   - script: |
       cd padre/integration
-      find / | grep behave$
-      /usr/local/bin/behave
+      ~/.local/bin/behave
     displayName: Run Padre CLI integration testing
 
 - job: vim_tests
