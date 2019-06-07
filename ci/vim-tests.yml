@@ -1,5 +1,5 @@
 steps:
-  - template: ci/install-rust.yml
+  - template: install-rust.yml
 
   - script: |
       sudo add-apt-repository -y ppa:jonathonf/vim
