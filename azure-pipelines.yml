@@ -29,16 +29,16 @@ jobs:
   - template: ci/azure-install-rust.yml
 
   - script: |
+      sudo apt-get install software-properties-common python3 python3-pip python3-setuptools
+      pip3 install behave
+    displayName: Install python dependencies
+
+  - script: |
       cd padre
       cargo test -- --nocapture
     env:
       RUST_BACKTRACE: 1
     displayName: Run Padre CLI unit testing
-
-  - script: |
-      sudo apt-get install software-properties-common python3 python3-pip
-      pip3 install behave
-    displayName: Install python dependencies
 
   - script: |
       cd padre/integration
@@ -64,9 +64,18 @@ jobs:
     displayName: Install VIM and plugins
 
   - script: |
-      sudo apt-get install -y lldb
-    displayName: Install lldb
+      sudo apt-get install -y lldb gcc
+    displayName: Install lldb and build essentials
 
   - script: |
       cd padre
       cargo build
+    displayName: Compile Padre CLI
+
+  - script: |
+      vim '+Vader! test/unit/*.vader'
+    displayName: Run VIM unit tests
+
+  - script: |
+      vim '+Vader! test/integration/*.vader'
+    displayName: Run VIM integration tests
