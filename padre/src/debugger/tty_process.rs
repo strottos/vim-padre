@@ -243,6 +243,8 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
                 .collect();
             let path = argv[0].clone();
 
+            println!("Spawning {:?}", path);
+
             execvp(&path, &argv[..]).unwrap();
 
             exit(-1);
