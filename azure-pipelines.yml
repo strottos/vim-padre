@@ -74,6 +74,7 @@ jobs:
       curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
       git clone https://github.com/junegunn/vader.vim ~/.vim/bundle/vader
       ln -s `pwd` ~/.vim/bundle/padre
+      cp test/vimrc ~/.vimrc
     displayName: Install VIM and plugins
 
   - script: |
