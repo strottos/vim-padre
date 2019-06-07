@@ -29,6 +29,7 @@ jobs:
   - template: ci/azure-install-rust.yml
 
   - script: |
+      ls /dev
       sudo apt-get install software-properties-common python3 python3-pip python3-setuptools
       pip3 install wheel
       pip3 install behave pyhamcrest
@@ -49,7 +50,7 @@ jobs:
 # TODO: Turn this on when warnings fixed
 #    env:
 #      RUSTFLAGS: '-D warnings'
-    displayName: Run Padre CLI unit testing
+    displayName: Build Padre CLI
 
   - script: |
       cd padre/integration

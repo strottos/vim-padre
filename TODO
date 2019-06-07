@@ -1,13 +1,20 @@
+Blockers for merging rust work:
 - Padre command
-  - Tokio (Precursor to everything now):
-    - Add in signal processing
-    - Timeouts
-  - (CRITICAL) Proper termination
-  - (CRITICAL) Fix all tests and warnings
-  - (CRITICAL) Do all TODOs
-  - (CRITICAL) Performance test, seems slow
-  - (CRITICAL) Cleanup code, some long closures and functions atm.
-  * - (CRITICAL) CI/CD (Azure DevOps?)
+* - CI/CD
+  - Performance test, seems slow
+  - Add in signal processing
+  - Timeouts
+  - Proper termination
+  - Fix all tests and warnings
+  - Do all critical TODOs
+  - Cleanup code, some long closures and functions atm.
+- LLDB
+  - Proper variable printing for rust and C++
+  - Better Error Handling, doesn't panic
+  - Fix printing when no variable exists
+
+- Padre command
+  - (HIGH) Do all TODOs
   - (HIGH) Queueing of requests
   - (HIGH) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
   - (HIGH) run arguments
@@ -22,9 +29,6 @@
   - (LOW) Add in preprocessing possibilities like compiling before running PADRE.
   - (LOW) Profiling CPU, mem, etc.
 - LLDB
-  - (CRITICAL) Proper variable printing for rust and C++
-  - (CRITICAL) Better Error Handling, doesn't panic
-  - (CRITICAL) Fix printing when no variable exists
   - (MEDIUM) If rust continue to main main on startup.
   - (LOW) Get things working for multi-threaded programs in LLDB
   - (LOW) Get things working for process spawning in LLDB
