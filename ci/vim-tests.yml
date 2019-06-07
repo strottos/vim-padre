@@ -13,21 +13,8 @@ steps:
     displayName: Install VIM and plugins
 
   - bash: |
+      # Spawn so the /usr/bin/env python lookup gets cached and spawns quickly
       test/pythonx/test_prog.py
-      success=0
-      fail=0
-      for i in {1..100}; do
-          vim '+Vader! test/unit/test_job.vader'
-          if [[ $? == 0 ]]; then
-              success=$((${success} + 1))
-          else
-              fail=$((${success} + 1))
-          fi
-      done
-      echo "Ran test 100 times and got ${success} successes and ${fail} failures"
-    displayName: Check frequency of passing/failing test
-
-  - bash: |
       vim '+Vader! test/unit/*.vader'
     displayName: Run VIM unit tests
 
