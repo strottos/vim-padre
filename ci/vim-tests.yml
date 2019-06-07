@@ -22,6 +22,7 @@ steps:
       sudo apt-get install -y lldb-5.0 gcc
       sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
+      sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server-5.0.0
       cd test/progs
       gcc -g -o test_prog test_prog.c test_func.c
     displayName: Install lldb and build essentials and compile test program
