@@ -19,6 +19,10 @@ steps:
     displayName: Run Padre CLI unit testing
 
   - script: |
+      sudo apt-get install -y lldb-5 gcc
+    displayName: Install lldb and build essentials
+
+  - script: |
       cd padre
       cargo build
     #TODO: Turn this on when warnings fixed
@@ -29,4 +33,6 @@ steps:
   - bash: |
       cd padre/integration
       ~/.local/bin/behave
+    env:
+      RUST_BACKTRACE: 1
     displayName: Run Padre CLI integration testing

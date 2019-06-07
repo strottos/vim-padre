@@ -19,7 +19,7 @@ steps:
     displayName: Run VIM unit tests
 
   - script: |
-      sudo apt-get install -y lldb gcc
+      sudo apt-get install -y lldb-5 gcc
       cd test/progs
       gcc -g -o test_prog test_prog.c test_func.c
     displayName: Install lldb and build essentials and compile test program
