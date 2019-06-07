@@ -64,11 +64,11 @@ function! s:ReadSignsOutput(signs, name)
   let l:ret = []
 
   for l:line in split(a:signs, '\n')
-    let l:match = matchlist(l:line, 'Signs for \(\S\+\):$')
+    let l:match = matchlist(l:line, 'Signs for \(.*\):$')
     if len(l:match) != 0
       let l:filename = l:match[1]
     endif
-    let l:match = matchlist(l:line, '^    line=\(\d\+\) * id=\(\d\+\) * name=' . a:name . '$')
+    let l:match = matchlist(l:line, '^ * line=\(\d\+\) * id=\(\d\+\) * name=' . a:name . '.*$')
     if len(l:match) != 0
       call add(l:ret, {'file': l:filename, 'line': l:match[1]})
     endif
@@ -83,7 +83,7 @@ function! s:LineHasBreakpoint(file, line)
   redir end
 
   for l:line in split(l:signs, '\n')
-    let l:match = matchlist(l:line, '^    line=' . a:line . ' * id=\(\d\+\) * name=PadreBreakpoint$')
+    let l:match = matchlist(l:line, '^ * line=' . a:line . ' * id=\(\d\+\) * name=PadreBreakpoint.*$')
     if len(l:match)
       return match[1]
     endif

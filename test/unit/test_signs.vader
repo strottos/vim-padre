@@ -69,7 +69,7 @@ Execute (We can add a code pointer to a file):
       if len(l:match) != 0
         let l:filename = l:match[1]
       endif
-      let l:match = matchlist(l:line, '^    line=\(\d\+\) * id=\(\d\+\) * name=PadreDebugPointer$')
+      let l:match = matchlist(l:line, '^ * line=\(\d\+\) * id=\(\d\+\) * name=PadreDebugPointer.*$')
       if len(l:match) != 0
         return {'file': l:filename, 'line': match[1]}
       endif
