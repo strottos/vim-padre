@@ -36,8 +36,12 @@ jobs:
     displayName: Run Padre CLI unit testing
 
   - script: |
+      sudo apt-get install python3 python3-pip
       pip3 install behave
-      cd padre/integrationn
+    displayName: Install pythonn dependencies
+
+  - script: |
+      cd padre/integration
       behave
     displayName: Run Padre CLI integration testing
 
