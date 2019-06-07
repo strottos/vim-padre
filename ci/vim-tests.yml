@@ -24,7 +24,7 @@ steps:
   - bash: |
       success=0
       fail=0
-      for i in {1..5}; do
+      for i in {1..100}; do
           vim '+Vader! test/unit/test_job.vader'
           if [[ $? == 0 ]]; then
               success=$((${success} + 1))
@@ -32,7 +32,7 @@ steps:
               fail=$((${success} + 1))
           fi
       done
-      echo "Ran test 5 times and got ${success} successes and ${fail} failures"
+      echo "Ran test 100 times and got ${success} successes and ${fail} failures"
     displayName: Check frequency of passing/failing test
 
   - bash: |

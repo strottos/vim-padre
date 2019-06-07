@@ -22,7 +22,7 @@ jobs:
 - job: vim_tests
   pool:
     vmImage: 'ubuntu-latest'
-  timeoutInMinutes: 10
+  timeoutInMinutes: 30
 
   steps:
   - template: ci/vim-tests.yml
