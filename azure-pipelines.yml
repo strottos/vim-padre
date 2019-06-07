@@ -53,9 +53,9 @@ jobs:
       whoami
       pwd
       uname -a
-      add-apt-repository -y ppa:jonathonf/vim
-      apt-get update
-      apt-get install -y vim
+      sudo add-apt-repository -y ppa:jonathonf/vim
+      sudo apt-get update
+      sudo apt-get install -y vim
     displayName: Install VIM
 
   - script: |
