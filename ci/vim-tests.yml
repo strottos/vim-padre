@@ -22,8 +22,6 @@ steps:
     displayName: Compile Padre CLI
 
   - bash: |
-      /usr/bin/env python --version
-      test/pythonx/test_prog.py
       vim '+Vader! test/unit/*.vader'
     displayName: Run VIM unit tests
 
