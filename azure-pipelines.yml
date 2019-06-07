@@ -25,8 +25,6 @@ jobs:
     displayName: Install rustfmt
 
   - script: |
-      pwd
-      ls
-      cd rust
+      cd padre
       cargo fmt --all -- --check
     displayName: Check formatting
