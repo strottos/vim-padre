@@ -30,6 +30,7 @@ jobs:
 
   - script: |
       ls /dev
+      env
       sudo apt-get install software-properties-common python3 python3-pip python3-setuptools
       pip3 install wheel
       pip3 install behave pyhamcrest
