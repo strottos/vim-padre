@@ -32,7 +32,7 @@ jobs:
       cd padre
       cargo test -- --nocapture
     env:
-      RUST_BACKTRACE=1
+      RUST_BACKTRACE: 1
     displayName: Run Padre CLI unit testing
 
   - script: |
