@@ -34,15 +34,6 @@ class PadreConnection():
         host = socket_data[0]
         port = int(socket_data[1]) if len(socket_data) > 1 else 12345
         self.socket.connect((host, port))
-        padre_started = b'["call","padre#debugger#SignalPADREStarted",[]]'
-        assert self.socket.recv(256) == padre_started
-        self._send("""{"cmd":"run"}""")
-        time.sleep(3)
-        run_response = self.socket.recv(256).decode()
-        assert re.match(r""".*\[1,{"pid":"\d+","status":"OK"}\]""",
-                        run_response)
-        assert re.match(r""".*\["call",".*JumpToPosition",\[.*,2\]\]""",
-                        run_response)
         self.socket.setblocking(0)
         print("Setup Successfully")
 
@@ -65,21 +56,18 @@ class PadreConnection():
 
                 if ready[0]:
                     data = self.socket.recv(4096).decode()
-                    print("Response: {}".format(data))
 
                 if re.match(""".*\\[{},{{"status":"OK"}}\\]"""
                             .format(counter), data):
                     break
         except Exception as e:
             total_time = int((time.time() - start_time) * 1000)
-            print("Failure: {}".format(total_time))
             events.request_failure.fire(request_type="execute",
                                         name="Step",
                                         response_time=total_time,
                                         exception=e)
         else:
             total_time = int((time.time() - start_time) * 1000)
-            print("Success: {}".format(total_time))
             events.request_success.fire(request_type="execute",
                                         name="Step",
                                         response_time=total_time,
@@ -112,7 +100,7 @@ class StepLocust(Locust):
     """
     task_set = StepTaskSet
     min_wait = 0
-    max_wait = 0
+    max_wait = 100
     host = "localhost:12345"
 
     def __init__(self, *args, **kwargs):
