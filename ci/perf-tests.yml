@@ -4,36 +4,24 @@ steps:
   - script: |
       sudo apt-get install software-properties-common python3 python3-pip python3-setuptools
       pip3 install wheel
-      pip3 install behave pyhamcrest
+      pip3 install locustio
     displayName: Install python dependencies
-
-  - script: |
-      cd padre
-      cargo test -- --nocapture
-    env:
-      RUST_BACKTRACE: 1
-      #TODO: Turn this on when warnings fixed
-      #RUSTFLAGS: '-D warnings'
-    displayName: Run Padre CLI unit testing
 
   - script: |
       sudo apt-get install -y lldb-5.0 gcc
       sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/lib/llvm-5.0/bin/lldb-server-5.0.0
-    displayName: Install lldb and build essentials
-
-  - script: |
-      cd padre
-      cargo build
-    #TODO: Turn this on when warnings fixed
-    #env:
-    #  RUSTFLAGS: '-D warnings'
-    displayName: Build Padre CLI
+      gcc -g -O0 -o test_loop test/progs/test_loop.c
+    displayName: Install lldb and build essentials and compile test program
 
   - bash: |
-      cd padre/integration
-      ~/.local/bin/behave
+      cd padre
+      cargo run -d=lldb -t=lldb -- ./test_loop
     env:
       RUST_BACKTRACE: 1
+    displayName: Run Padre CLI against test program
+
+  - bash: |
+      ~/.local/bin/locust -f test/perf/steptest.py --no-web -c 5 -r 0.05 -t 100
     displayName: Run Padre CLI integration testing

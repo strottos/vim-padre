@@ -1,13 +1,11 @@
 Blockers for merging rust work:
 - Padre command
-* - CI/CD
-  - Performance test, seems slow
-  - Add in signal processing
+* - Performance test, seems slow
+  - Add in signal processing/Proper termination
   - Timeouts
-  - Proper termination
-  - Fix all tests and warnings
   - Do all critical TODOs
   - Cleanup code, some long closures and functions atm.
+  - Fix all tests and warnings
 - LLDB
   - Proper variable printing for rust and C++
   - Better Error Handling, doesn't panic
