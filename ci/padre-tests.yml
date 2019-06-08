@@ -47,3 +47,4 @@ steps:
     inputs:
       testResultsFormat: 'JUnit'
       testResultsFiles: '**/TESTS-*.xml'
+    condition: always()

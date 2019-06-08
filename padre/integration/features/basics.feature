@@ -18,7 +18,7 @@ Feature: Basics
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"ping"}' on connection 0
-        Then I receive a response '{"status":"OK","ping":"pong"}' on connection 0
+        Then I receive a response '{"status":"OK","ping":"pongs"}' on connection 0
         When I send a request to PADRE '{\n "cmd":"ping"\n }' on connection 1
         Then I receive a response '{"status":"OK","ping":"pong"}' on connection 1
         When I send a request to PADRE '{"cmd":"ping"}' on connection 2
