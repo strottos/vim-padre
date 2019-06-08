@@ -17,8 +17,14 @@ steps:
 
   - bash: |
       cd padre
+      cargo build
+    displayName: Build Padre CLI
+
+  - bash: |
+      cd padre
       cargo run -- -d=lldb -t=lldb -- ./test_loop &
-      ~/.local/bin/locust -f test/perf/steptest.py --no-web -c 5 -r 0.05 -t 100
+      sleep 10
+      ~/.local/bin/locust -f ../test/perf/steptest.py --no-web -c 5 -r 0.05 -t 100
       kill $(jobs -p)
     env:
       RUST_BACKTRACE: 1
