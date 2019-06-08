@@ -19,6 +19,7 @@ steps:
       cd padre
       cargo run -- -d=lldb -t=lldb -- ./test_loop &
       ~/.local/bin/locust -f test/perf/steptest.py --no-web -c 5 -r 0.05 -t 100
+      kill $(jobs -p)
     env:
       RUST_BACKTRACE: 1
     displayName: Run Padre CLI and perf test
