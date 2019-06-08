@@ -2,6 +2,10 @@ steps:
   - template: install-rust.yml
 
   - script: |
+      cargo install cargo-test-junit
+    displayName: Install test reporters
+
+  - script: |
       sudo apt-get install software-properties-common python3 python3-pip python3-setuptools
       pip3 install wheel
       pip3 install behave pyhamcrest
@@ -10,11 +14,17 @@ steps:
   - script: |
       cd padre
       cargo test -- --nocapture
+      cargo test-junit --name output.xml
     env:
       RUST_BACKTRACE: 1
       #TODO: Turn this on when warnings fixed
       #RUSTFLAGS: '-D warnings'
     displayName: Run Padre CLI unit testing
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: 'padre/output.xml'
 
   - script: |
       sudo apt-get install -y lldb-5.0 gcc
