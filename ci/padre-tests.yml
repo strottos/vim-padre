@@ -2,7 +2,7 @@ steps:
   - template: install-rust.yml
 
   - script: |
-      cargo install cargo-test-junit
+      cargo install cargo-junit
     displayName: Install test reporters
 
   - script: |
@@ -14,7 +14,7 @@ steps:
   - script: |
       cd padre
       cargo test -- --nocapture
-      cargo test-junit --name output.xml
+      cargo junit --name output.xml
     env:
       RUST_BACKTRACE: 1
       #TODO: Turn this on when warnings fixed
