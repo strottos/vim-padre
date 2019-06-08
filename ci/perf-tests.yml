@@ -17,7 +17,7 @@ steps:
 
   - bash: |
       cd padre
-      cargo run -d=lldb -t=lldb -- ./test_loop
+      cargo run -- -d=lldb -t=lldb -- ./test_loop
     env:
       RUST_BACKTRACE: 1
     displayName: Run Padre CLI against test program
