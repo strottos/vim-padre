@@ -17,11 +17,8 @@ steps:
 
   - bash: |
       cd padre
-      cargo run -- -d=lldb -t=lldb -- ./test_loop
+      cargo run -- -d=lldb -t=lldb -- ./test_loop &
+      ~/.local/bin/locust -f test/perf/steptest.py --no-web -c 5 -r 0.05 -t 100
     env:
       RUST_BACKTRACE: 1
-    displayName: Run Padre CLI against test program
-
-  - bash: |
-      ~/.local/bin/locust -f test/perf/steptest.py --no-web -c 5 -r 0.05 -t 100
-    displayName: Run Padre CLI integration testing
+    displayName: Run Padre CLI and perf test

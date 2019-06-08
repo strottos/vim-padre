@@ -112,7 +112,7 @@ class StepLocust(Locust):
     """
     task_set = StepTaskSet
     min_wait = 0
-    max_wait = 1000
+    max_wait = 0
     host = "localhost:12345"
 
     def __init__(self, *args, **kwargs):
