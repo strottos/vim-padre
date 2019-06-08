@@ -14,7 +14,7 @@ steps:
   - script: |
       cd padre
       cargo test -- --nocapture
-      cargo junit --name TEST-cargo.xml
+      cargo junit --name TESTS-cargo.xml
     env:
       RUST_BACKTRACE: 1
       #TODO: Turn this on when warnings fixed
@@ -46,4 +46,4 @@ steps:
   - task: PublishTestResults@2
     inputs:
       testResultsFormat: 'JUnit'
-      testResultsFiles: '**/TEST-*.xml'
+      testResultsFiles: '**/TESTS-*.xml'
