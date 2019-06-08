@@ -12,12 +12,12 @@ steps:
       sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/lib/llvm-5.0/bin/lldb-server-5.0.0
-      gcc -g -O0 -o test_loop test/progs/test_loop.c
+      gcc -g -O0 -o padre/test_loop test/progs/test_loop.c
     displayName: Install lldb and build essentials and compile test program
 
   - bash: |
       cd padre
-      cargo run -- -d=lldb -t=lldb -- test_loop
+      cargo run -- -d=lldb -t=lldb -- ./test_loop
     env:
       RUST_BACKTRACE: 1
     displayName: Run Padre CLI against test program
