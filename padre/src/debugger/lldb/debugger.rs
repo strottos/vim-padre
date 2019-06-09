@@ -18,6 +18,21 @@ use tokio::sync::mpsc::{self, Sender};
 
 #[derive(Debug, Clone)]
 pub enum LLDBStatus {
+    None,
+    Listening,
+    Working,
+}
+
+#[derive(Debug, Clone)]
+pub enum ProcessStatus {
+    None,
+    Running,
+    Paused,
+    Quitting
+}
+
+#[derive(Debug, Clone)]
+pub enum LLDBOutput {
     NoProcess,
     Error,
     LLDBStarted,
@@ -42,9 +57,10 @@ pub struct ImplDebugger {
     notifier: Arc<Mutex<Notifier>>,
     debugger_cmd: String,
     run_cmd: Vec<String>,
-    started: Arc<Mutex<bool>>,
+    lldb_status: Arc<Mutex<LLDBStatus>>,
+    process_status: Arc<Mutex<ProcessStatus>>,
     lldb_in_tx: Option<Sender<Bytes>>,
-    listener_tx: Arc<Mutex<Option<Sender<LLDBStatus>>>>,
+    listener_tx: Arc<Mutex<Option<Sender<LLDBOutput>>>>,
 }
 
 impl ImplDebugger {
@@ -57,7 +73,8 @@ impl ImplDebugger {
             notifier,
             debugger_cmd,
             run_cmd,
-            started: Arc::new(Mutex::new(false)),
+            lldb_status: Arc::new(Mutex::new(LLDBStatus::None)),
+            process_status: Arc::new(Mutex::new(ProcessStatus::None)),
             lldb_in_tx: None,
             listener_tx: Arc::new(Mutex::new(None)),
         }
@@ -85,7 +102,8 @@ impl Debugger for ImplDebugger {
         spawn_process(cmd, lldb_in_rx, lldb_out_tx);
 
         let notifier = self.notifier.clone();
-        let started = self.started.clone();
+        let lldb_status = self.lldb_status.clone();
+        let process_status = self.process_status.clone();
         let listener_tx = self.listener_tx.clone();
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
@@ -123,48 +141,56 @@ impl Debugger for ImplDebugger {
                             Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
                     }
 
-                    // Check LLDB has started
-                    if *started.lock().unwrap() == false && data.contains("(lldb) ") {
-                        // Send messages to LLDB for setup
-                        tokio::spawn(
-                            lldb_in_tx
-                                .clone()
-                                .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
-                        );
+                    // Check LLDB has started if we haven't already
+                    let lldb_status_current = lldb_status.lock().unwrap().clone();
+                    match lldb_status_current {
+                        LLDBStatus::None => {
+                            if data.contains("(lldb) ") {
+                                // Send messages to LLDB for setup
+                                tokio::spawn(
+                                    lldb_in_tx
+                                        .clone()
+                                        .send(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]))
+                                        .map(|_| {})
+                                        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+                                );
 
-                        tokio::spawn(
-                            lldb_in_tx
-                                .clone()
-                                .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
-                        );
+                                tokio::spawn(
+                                    lldb_in_tx
+                                        .clone()
+                                        .send(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]))
+                                        .map(|_| {})
+                                        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+                                );
 
-                        tokio::spawn(
-                            lldb_in_tx
-                                .clone()
-                                .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
-                        );
+                                tokio::spawn(
+                                    lldb_in_tx
+                                        .clone()
+                                        .send(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]))
+                                        .map(|_| {})
+                                        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+                                );
 
-                        *started.lock().unwrap() = true;
-                        notifier.lock().unwrap().signal_started();
-                        if !listener_tx.lock().unwrap().is_none() {
-                            tokio::spawn(
-                                listener_tx
-                                    .clone()
-                                    .lock()
-                                    .unwrap()
-                                    .take()
-                                    .unwrap()
-                                    .send(LLDBStatus::LLDBStarted)
-                                    .map(|_| {})
-                                    .map_err(|e| eprintln!("Error sending to analyser: {}", e))
-                            );
+                                println!("BALLS");
+                                *lldb_status.lock().unwrap() = LLDBStatus::Listening;
+                                println!("BALLS");
+                                notifier.lock().unwrap().signal_started();
+                                if !listener_tx.lock().unwrap().is_none() {
+                                    tokio::spawn(
+                                        listener_tx
+                                            .clone()
+                                            .lock()
+                                            .unwrap()
+                                            .take()
+                                            .unwrap()
+                                            .send(LLDBOutput::LLDBStarted)
+                                            .map(|_| {})
+                                            .map_err(|e| eprintln!("Error sending to analyser: {}", e))
+                                    );
+                                }
+                            }
                         }
+                        _ => {}
                     }
 
                     for line in data.split("\r\n") {
@@ -183,7 +209,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .take()
                                         .unwrap()
-                                        .send(LLDBStatus::ProcessLaunched(pid))
+                                        .send(LLDBOutput::ProcessLaunched(pid))
                                         .map(|_| {})
                                         .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
@@ -201,7 +227,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .take()
                                         .unwrap()
-                                        .send(LLDBStatus::ProcessExited(pid, exit_code))
+                                        .send(LLDBOutput::ProcessExited(pid, exit_code))
                                         .map(|_| {})
                                         .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
@@ -222,7 +248,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .take()
                                         .unwrap()
-                                        .send(LLDBStatus::Breakpoint(file, line))
+                                        .send(LLDBOutput::Breakpoint(file, line))
                                         .map(|_| {})
                                         .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
@@ -242,7 +268,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .take()
                                             .unwrap()
-                                            .send(LLDBStatus::Breakpoint(file, line))
+                                            .send(LLDBOutput::Breakpoint(file, line))
                                             .map(|_| {})
                                             .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
@@ -260,7 +286,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .take()
                                             .unwrap()
-                                            .send(LLDBStatus::BreakpointMultiple)
+                                            .send(LLDBOutput::BreakpointMultiple)
                                             .map(|_| {})
                                             .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
@@ -277,7 +303,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .take()
                                             .unwrap()
-                                            .send(LLDBStatus::BreakpointPending)
+                                            .send(LLDBOutput::BreakpointPending)
                                             .map(|_| {})
                                             .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
@@ -299,7 +325,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .take()
                                             .unwrap()
-                                            .send(LLDBStatus::JumpToPosition(file, line))
+                                            .send(LLDBOutput::JumpToPosition(file, line))
                                             .map(|_| {})
                                             .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
@@ -317,7 +343,7 @@ impl Debugger for ImplDebugger {
                                             .unwrap()
                                             .take()
                                             .unwrap()
-                                            .send(LLDBStatus::UnknownPosition)
+                                            .send(LLDBOutput::UnknownPosition)
                                             .map(|_| {})
                                             .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                     );
@@ -352,7 +378,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .take()
                                         .unwrap()
-                                        .send(LLDBStatus::PrintVariable(
+                                        .send(LLDBOutput::PrintVariable(
                                             variable_type,
                                             variable,
                                             data[start..end].to_string(),
@@ -376,7 +402,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .take()
                                         .unwrap()
-                                        .send(LLDBStatus::NoProcess)
+                                        .send(LLDBOutput::NoProcess)
                                         .map(|_| {})
                                         .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
@@ -398,7 +424,7 @@ impl Debugger for ImplDebugger {
                                         .unwrap()
                                         .take()
                                         .unwrap()
-                                        .send(LLDBStatus::VariableNotFound)
+                                        .send(LLDBOutput::VariableNotFound)
                                         .map(|_| {})
                                         .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
@@ -446,7 +472,14 @@ impl Debugger for ImplDebugger {
     }
 
     fn has_started(&self) -> bool {
-        *self.started.lock().unwrap()
+        match *self.lldb_status.lock().unwrap() {
+            LLDBStatus::None => {
+                false
+            }
+            _ => {
+                true
+            }
+        }
     }
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
@@ -480,7 +513,7 @@ impl Debugger for ImplDebugger {
                 let lldb_status = lldb_status.0.unwrap();
 
                 match lldb_status {
-                    LLDBStatus::Breakpoint(_, _) | LLDBStatus::BreakpointMultiple => {}
+                    LLDBOutput::Breakpoint(_, _) | LLDBOutput::BreakpointMultiple => {}
                     _ => {
                         panic!("WTF? {:?}", lldb_status);
                         // TODO: Error properly
@@ -510,7 +543,7 @@ impl Debugger for ImplDebugger {
 
                 let lldb_status = lldb_status.0.unwrap();
                 match lldb_status {
-                    LLDBStatus::ProcessLaunched(pid) => {
+                    LLDBOutput::ProcessLaunched(pid) => {
                         resp = serde_json::json!({"status":"OK","pid":format!("{}",pid)});
                     }
                     _ => {
@@ -567,10 +600,10 @@ impl Debugger for ImplDebugger {
                 let lldb_status = lldb_status.0.unwrap();
 
                 match lldb_status {
-                    LLDBStatus::Breakpoint(_, _) => {
+                    LLDBOutput::Breakpoint(_, _) => {
                         resp = serde_json::json!({"status":"OK"});
                     }
-                    LLDBStatus::BreakpointPending => {
+                    LLDBOutput::BreakpointPending => {
                         resp = serde_json::json!({"status":"PENDING"});
                     }
                     _ => {
@@ -680,7 +713,7 @@ impl Debugger for ImplDebugger {
                 let lldb_status = lldb_status.0.unwrap();
 
                 match lldb_status {
-                    LLDBStatus::PrintVariable(variable_type, variable, value) => {
+                    LLDBOutput::PrintVariable(variable_type, variable, value) => {
                         resp = serde_json::json!({
                             "status": "OK",
                             "variable": variable,
@@ -688,7 +721,7 @@ impl Debugger for ImplDebugger {
                             "type": variable_type,
                         });
                     }
-                    LLDBStatus::NoProcess | LLDBStatus::VariableNotFound => {
+                    LLDBOutput::NoProcess | LLDBOutput::VariableNotFound => {
                         resp = serde_json::json!({"status":"ERROR"});
                     }
                     _ => {

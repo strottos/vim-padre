@@ -22,7 +22,7 @@ jobs:
 - job: perf_tests
   pool:
     vmImage: 'ubuntu-latest'
-  timeoutInMinutes: 30
+  timeoutInMinutes: 10
 
   steps:
   - template: ci/perf-tests.yml
