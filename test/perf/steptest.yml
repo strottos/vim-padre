@@ -26,5 +26,5 @@ reporting:
     project: Padre
 
   - module: junit-xml
-    filename: report/report.xml
+    filename: report/TESTS-report.xml
     data-source: sample-labels
