@@ -33,3 +33,9 @@ steps:
       PATH: 
       RUST_BACKTRACE: 1
     displayName: Run Padre CLI and perf test
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: '**/TESTS-*.xml'
+    condition: always()
