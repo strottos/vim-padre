@@ -1,7 +1,6 @@
 Blockers for merging rust work:
 - Padre command
 * - Performance test, seems slow
-  - CI Artifacts/Reports
   - Add in signal processing/Proper termination
   - Timeouts
   - Do all critical TODOs
