@@ -754,23 +754,26 @@ impl Debugger for ImplDebugger {
             .map(move |lldb_output| {
                 let mut resp;
 
-                let lldb_output = lldb_output.0.unwrap();
+                let lldb_output = lldb_output.0;
 
                 match lldb_output {
-                    LLDBOutput::PrintVariable(variable_type, variable, value) => {
-                        resp = serde_json::json!({
-                            "status": "OK",
-                            "variable": variable,
-                            "value": value,
-                            "type": variable_type,
-                        });
-                    }
-                    LLDBOutput::NoProcess | LLDBOutput::VariableNotFound => {
-                        resp = serde_json::json!({"status":"ERROR"});
+                    Some(s) => {
+                        match s {
+                            LLDBOutput::PrintVariable(variable_type, variable, value) => {
+                                resp = serde_json::json!({
+                                    "status": "OK",
+                                    "variable": variable,
+                                    "value": value,
+                                    "type": variable_type,
+                                });
+                            }
+                            _ => {
+                                resp = serde_json::json!({"status":"ERROR"});
+                            }
+                        }
                     }
                     _ => {
-                        panic!("WTF? {:?}", lldb_output);
-                        // TODO: Error properly
+                        resp = serde_json::json!({"status":"ERROR"});
                     }
                 };
 

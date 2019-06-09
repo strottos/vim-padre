@@ -2,6 +2,7 @@
 Test stepping performance of Padre with Locust performance tester
 """
 
+import random
 import re
 import select
 import time
@@ -44,16 +45,17 @@ class PadreConnection():
         """
         start_time = time.time()
         try:
-            counter = self._send("""{"cmd":"stepOver"}""")
-            time_start = datetime.now()
+            cmd = "stepIn" if random.random() < 0.5 else "stepOver"
+            counter = self._send("""{{"cmd":"{}"}}""".format(cmd))
+            msg_time = datetime.now()
             data = ""
             status_ok = False
             position_ok = False
             while True:
-                if datetime.now() - time_start >= timedelta(seconds=TIMEOUT):
+                if datetime.now() - msg_time >= timedelta(seconds=TIMEOUT):
                     raise TimeoutException
 
-                timeout = (time_start + timedelta(seconds=TIMEOUT)
+                timeout = (msg_time + timedelta(seconds=TIMEOUT)
                            - datetime.now()) / timedelta(seconds=1)
                 ready = select.select([self.socket], [], [], timeout)
 
@@ -72,16 +74,60 @@ class PadreConnection():
                     data = ""
                     break
 
-        except Exception as e:
+        except Exception as ex:
             total_time = int((time.time() - start_time) * 1000)
             events.request_failure.fire(request_type="execute",
                                         name="Step",
                                         response_time=total_time,
-                                        exception=e)
+                                        exception=ex)
         else:
             total_time = int((time.time() - start_time) * 1000)
             events.request_success.fire(request_type="execute",
                                         name="Step",
+                                        response_time=total_time,
+                                        response_length=0)
+
+    def print(self):
+        """
+        Perform a print variable
+        """
+        start_time = time.time()
+        try:
+            variable = "i" if random.random() < 0.5 else "j"
+            counter = self._send("""{{"cmd":"print","variable":"{}"}}"""
+                                 .format(variable))
+            msg_time = datetime.now()
+
+            while True:
+                if datetime.now() - msg_time >= timedelta(seconds=TIMEOUT):
+                    raise TimeoutException
+
+                timeout = (msg_time + timedelta(seconds=TIMEOUT)
+                           - datetime.now()) / timedelta(seconds=1)
+                ready = select.select([self.socket], [], [], timeout)
+
+                if ready[0]:
+                    data = self.socket.recv(4096).decode()
+
+                if re.match('.*\\[{},{{"status":"OK","type":"int",'
+                            '"value":"\\d+","variable":"{}"}}\\]'
+                            .format(counter, variable), data):
+                    break
+
+                if re.match('.*\\[{},{{"status":"ERROR"}}\\]'.format(counter),
+                            data):
+                    break
+
+        except Exception as ex:
+            total_time = int((time.time() - start_time) * 1000)
+            events.request_failure.fire(request_type="execute",
+                                        name="Print",
+                                        response_time=total_time,
+                                        exception=ex)
+        else:
+            total_time = int((time.time() - start_time) * 1000)
+            events.request_success.fire(request_type="execute",
+                                        name="Print",
                                         response_time=total_time,
                                         response_length=0)
 
@@ -101,9 +147,13 @@ class PadreConnection():
 
 class StepTaskSet(TaskSet):
 
-    @task
+    @task(10)
     def step(self):
         self.client.step()
+
+    @task(1)
+    def print(self):
+        self.client.print()
 
 
 class StepLocust(Locust):
