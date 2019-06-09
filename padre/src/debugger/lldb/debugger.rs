@@ -26,9 +26,8 @@ pub enum LLDBStatus {
 #[derive(Debug, Clone)]
 pub enum ProcessStatus {
     None,
-    Running,
+    Running(u64),
     Paused,
-    Quitting,
 }
 
 #[derive(Debug, Clone)]
@@ -204,6 +203,7 @@ impl Debugger for ImplDebugger {
 
                         for cap in RE_PROCESS_STARTED.captures_iter(line) {
                             let pid = cap[1].parse::<u64>().unwrap();
+                            *process_status.lock().unwrap() = ProcessStatus::Running(pid);
                             if !listener_tx.lock().unwrap().is_none() {
                                 tokio::spawn(
                                     listener_tx
@@ -221,6 +221,8 @@ impl Debugger for ImplDebugger {
                         for cap in RE_PROCESS_EXITED.captures_iter(line) {
                             let pid = cap[1].parse::<u64>().unwrap();
                             let exit_code = cap[2].parse::<u64>().unwrap();
+
+                            *process_status.lock().unwrap() = ProcessStatus::None;
                             notifier.lock().unwrap().signal_exited(pid, exit_code);
                             if !listener_tx.lock().unwrap().is_none() {
                                 tokio::spawn(
@@ -314,6 +316,8 @@ impl Debugger for ImplDebugger {
                         }
 
                         for _ in RE_STOPPED_AT_POSITION.captures_iter(line) {
+                            *process_status.lock().unwrap() = ProcessStatus::Paused;
+
                             let mut found = false;
                             for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
                                 found = true;
