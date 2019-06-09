@@ -28,7 +28,7 @@ pub enum ProcessStatus {
     None,
     Running,
     Paused,
-    Quitting
+    Quitting,
 }
 
 #[derive(Debug, Clone)]
@@ -141,12 +141,13 @@ impl Debugger for ImplDebugger {
                             Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
                     }
 
-                    // Check LLDB has started if we haven't already
-                    let lldb_status_current = lldb_status.lock().unwrap().clone();
-                    match lldb_status_current {
-                        LLDBStatus::None => {
-                            if data.contains("(lldb) ") {
-                                // Send messages to LLDB for setup
+                    if data.contains("(lldb) ") {
+                        // Check LLDB has started if we haven't already
+                        let lldb_status_current = lldb_status.lock().unwrap().clone();
+                        match lldb_status_current {
+                            // LLDB Starting
+                            LLDBStatus::None => {
+                                // Send messages to LLDB for startup
                                 tokio::spawn(
                                     lldb_in_tx
                                         .clone()
@@ -171,9 +172,7 @@ impl Debugger for ImplDebugger {
                                         .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
                                 );
 
-                                println!("BALLS");
                                 *lldb_status.lock().unwrap() = LLDBStatus::Listening;
-                                println!("BALLS");
                                 notifier.lock().unwrap().signal_started();
                                 if !listener_tx.lock().unwrap().is_none() {
                                     tokio::spawn(
@@ -189,8 +188,11 @@ impl Debugger for ImplDebugger {
                                     );
                                 }
                             }
+                            LLDBStatus::Working => {
+                                *lldb_status.lock().unwrap() = LLDBStatus::Listening;
+                            }
+                            LLDBStatus::Listening => {}
                         }
-                        _ => {}
                     }
 
                     for line in data.split("\r\n") {
@@ -473,16 +475,14 @@ impl Debugger for ImplDebugger {
 
     fn has_started(&self) -> bool {
         match *self.lldb_status.lock().unwrap() {
-            LLDBStatus::None => {
-                false
-            }
-            _ => {
-                true
-            }
+            LLDBStatus::None => false,
+            _ => true,
         }
     }
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        *self.lldb_status.lock().unwrap() = LLDBStatus::Working;
+
         self.notifier
             .lock()
             .unwrap()
@@ -509,13 +509,13 @@ impl Debugger for ImplDebugger {
         let f = rx
             .take(1)
             .into_future()
-            .and_then(move |lldb_status| {
-                let lldb_status = lldb_status.0.unwrap();
+            .and_then(move |lldb_output| {
+                let lldb_output = lldb_output.0.unwrap();
 
-                match lldb_status {
+                match lldb_output {
                     LLDBOutput::Breakpoint(_, _) | LLDBOutput::BreakpointMultiple => {}
                     _ => {
-                        panic!("WTF? {:?}", lldb_status);
+                        panic!("WTF? {:?}", lldb_output);
                         // TODO: Error properly
                     }
                 };
@@ -538,16 +538,16 @@ impl Debugger for ImplDebugger {
                 rx.take(1).into_future()
             })
             .timeout(Duration::new(5, 0))
-            .map(|lldb_status| {
+            .map(|lldb_output| {
                 let mut resp;
 
-                let lldb_status = lldb_status.0.unwrap();
-                match lldb_status {
+                let lldb_output = lldb_output.0.unwrap();
+                match lldb_output {
                     LLDBOutput::ProcessLaunched(pid) => {
                         resp = serde_json::json!({"status":"OK","pid":format!("{}",pid)});
                     }
                     _ => {
-                        panic!("WTF? {:?}", lldb_status);
+                        panic!("WTF? {:?}", lldb_output);
                         // TODO: Error properly
                     }
                 };
@@ -567,6 +567,8 @@ impl Debugger for ImplDebugger {
         file: String,
         line: u64,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        *self.lldb_status.lock().unwrap() = LLDBStatus::Working;
+
         self.notifier.lock().unwrap().log_msg(
             LogLevel::INFO,
             format!(
@@ -594,12 +596,12 @@ impl Debugger for ImplDebugger {
         let f = rx
             .take(1)
             .into_future()
-            .map(move |lldb_status| {
+            .map(move |lldb_output| {
                 let mut resp;
 
-                let lldb_status = lldb_status.0.unwrap();
+                let lldb_output = lldb_output.0.unwrap();
 
-                match lldb_status {
+                match lldb_output {
                     LLDBOutput::Breakpoint(_, _) => {
                         resp = serde_json::json!({"status":"OK"});
                     }
@@ -607,7 +609,7 @@ impl Debugger for ImplDebugger {
                         resp = serde_json::json!({"status":"PENDING"});
                     }
                     _ => {
-                        panic!("WTF? {:?}", lldb_status);
+                        panic!("WTF? {:?}", lldb_output);
                         // TODO: Error properly
                     }
                 };
@@ -623,6 +625,8 @@ impl Debugger for ImplDebugger {
     }
 
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        *self.lldb_status.lock().unwrap() = LLDBStatus::Working;
+
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         let stmt = "thread step-in\n".to_string();
@@ -643,6 +647,8 @@ impl Debugger for ImplDebugger {
     }
 
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        *self.lldb_status.lock().unwrap() = LLDBStatus::Working;
+
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         let stmt = "thread step-over\n".to_string();
@@ -665,6 +671,8 @@ impl Debugger for ImplDebugger {
     fn continue_on(
         &mut self,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        *self.lldb_status.lock().unwrap() = LLDBStatus::Working;
+
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         let stmt = "thread continue\n".to_string();
@@ -688,6 +696,8 @@ impl Debugger for ImplDebugger {
         &mut self,
         variable: &str,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        *self.lldb_status.lock().unwrap() = LLDBStatus::Working;
+
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         let stmt = format!("frame variable {}\n", variable);
@@ -707,12 +717,12 @@ impl Debugger for ImplDebugger {
         let f = rx
             .take(1)
             .into_future()
-            .map(move |lldb_status| {
+            .map(move |lldb_output| {
                 let mut resp;
 
-                let lldb_status = lldb_status.0.unwrap();
+                let lldb_output = lldb_output.0.unwrap();
 
-                match lldb_status {
+                match lldb_output {
                     LLDBOutput::PrintVariable(variable_type, variable, value) => {
                         resp = serde_json::json!({
                             "status": "OK",
@@ -725,7 +735,7 @@ impl Debugger for ImplDebugger {
                         resp = serde_json::json!({"status":"ERROR"});
                     }
                     _ => {
-                        panic!("WTF? {:?}", lldb_status);
+                        panic!("WTF? {:?}", lldb_output);
                         // TODO: Error properly
                     }
                 };
