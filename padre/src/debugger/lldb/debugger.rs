@@ -26,6 +26,7 @@ pub enum LLDBStatus {
 #[derive(Debug, Clone)]
 pub enum ProcessStatus {
     None,
+    // (PID)
     Running(u64),
     Paused,
 }
@@ -138,6 +139,9 @@ impl Debugger for ImplDebugger {
                             Regex::new("error: invalid process$").unwrap();
                         static ref RE_VARIABLE_NOT_FOUND: Regex =
                             Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
+                        static ref RE_PROCESS_RUNNING_WARNING: Regex =
+                            Regex::new("There is a running process, kill it and restart\\?: \\[Y/n\\]")
+                                .unwrap();
                     }
 
                     if data.contains("(lldb) ") {
@@ -435,6 +439,32 @@ impl Debugger for ImplDebugger {
                                         .map_err(|e| eprintln!("Error sending to analyser: {}", e))
                                 );
                             }
+                        }
+
+                        for _ in RE_PROCESS_RUNNING_WARNING.captures_iter(line) {
+                            let lldb_status_current = lldb_status.lock().unwrap().clone();
+                            match lldb_status_current {
+                                LLDBStatus::Listening | LLDBStatus::Working => {
+                                    tokio::spawn(
+                                        lldb_in_tx
+                                            .clone()
+                                            .send(Bytes::from(&b"n\n"[..]))
+                                            .map(|_| {})
+                                            .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+                                    );
+                                }
+                                _ => {}
+                            }
+                        //        tokio::spawn(
+                        //            listener_tx
+                        //                .lock()
+                        //                .unwrap()
+                        //                .take()
+                        //                .unwrap()
+                        //                .send(LLDBOutput::VariableNotFound)
+                        //                .map(|_| {})
+                        //                .map_err(|e| eprintln!("Error sending to analyser: {}", e))
+                        //        );
                         }
                     }
 
