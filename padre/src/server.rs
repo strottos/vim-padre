@@ -395,6 +395,7 @@ impl Encoder for PadreCodec {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::{Arc, Mutex};
 
     use crate::notifier::Notifier;
@@ -409,7 +410,8 @@ mod tests {
 
     #[test]
     fn check_simple_json_decoding() {
-        let mut codec = super::PadreCodec::new(get_notifier());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut codec = super::PadreCodec::new(get_notifier(), addr);
         let mut buf = BytesMut::new();
         buf.reserve(19);
         buf.put(r#"[123,{"cmd":"run"}]"#);
@@ -424,7 +426,8 @@ mod tests {
 
     #[test]
     fn check_two_json_decodings() {
-        let mut codec = super::PadreCodec::new(get_notifier());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut codec = super::PadreCodec::new(get_notifier(), addr);
         let mut buf = BytesMut::new();
         buf.reserve(19);
         buf.put(r#"[123,{"cmd":"run"}]"#);
@@ -449,7 +452,8 @@ mod tests {
 
     #[test]
     fn check_two_buffers_json_decodings() {
-        let mut codec = super::PadreCodec::new(get_notifier());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut codec = super::PadreCodec::new(get_notifier(), addr);
         let mut buf = BytesMut::new();
         buf.reserve(16);
         buf.put(r#"[123,{"cmd":"run"#);
@@ -471,7 +475,8 @@ mod tests {
 
     //#[test]
     //fn check_bad_then_good_json_decodings() {
-    //    let mut codec = super::PadreCodec::new(get_notifier());
+    //    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    //    let mut codec = super::PadreCodec::new(get_notifier(), addr);
     //    let mut buf = BytesMut::new();
     //    buf.reserve(16);
     //    buf.put(r#"[123,{"cmd":"run"#);
@@ -495,7 +500,8 @@ mod tests {
 
     #[test]
     fn check_json_decoding_with_file_location() {
-        let mut codec = super::PadreCodec::new(get_notifier());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut codec = super::PadreCodec::new(get_notifier(), addr);
         let mut buf = BytesMut::new();
         buf.reserve(53);
         buf.put(r#"[123,{"cmd":"breakpoint","file":"test.c","line":125}]"#);
@@ -517,7 +523,8 @@ mod tests {
 
     #[test]
     fn check_json_decoding_with_variable() {
-        let mut codec = super::PadreCodec::new(get_notifier());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut codec = super::PadreCodec::new(get_notifier(), addr);
         let mut buf = BytesMut::new();
         buf.reserve(36);
         buf.put(r#"[123,{"cmd":"print","variable":"a"}]"#);
@@ -535,7 +542,8 @@ mod tests {
 
     #[test]
     fn check_json_encoding_response() {
-        let mut codec = super::PadreCodec::new(get_notifier());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut codec = super::PadreCodec::new(get_notifier(), addr);
         let resp = PadreResponse::Response(123, serde_json::json!({"ping":"pong"}));
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf).unwrap();
@@ -549,7 +557,8 @@ mod tests {
 
     #[test]
     fn check_json_encoding_notify() {
-        let mut codec = super::PadreCodec::new(get_notifier());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut codec = super::PadreCodec::new(get_notifier(), addr);
         let resp = PadreResponse::Notify(
             "cmd_test".to_string(),
             vec![serde_json::json!("test"), serde_json::json!(1)],
