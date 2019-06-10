@@ -101,53 +101,53 @@ impl Future for Runner {
             notifier.clone(),
         )));
 
-        let sigint = Signal::new(SIGINT).flatten_stream();
         let debugger_signal = debugger.clone();
-        tokio::spawn(
-            sigint
-                .for_each(move |_| {
-                    debugger_signal.lock().unwrap().stop();
-                    exit(0);
+        let sigint = Signal::new(SIGINT)
+            .flatten_stream()
+            .for_each(move |_| {
+                debugger_signal.lock().unwrap().stop();
+                exit(0);
 
-                    #[allow(unreachable_code)]
-                    Ok(())
-                })
-                .map_err(|e| {
-                    println!("Caught SIGINT Error: {:?}", e);
-                }),
-        );
+                #[allow(unreachable_code)]
+                Ok(())
+            })
+            .map_err(|e| {
+                println!("Caught SIGINT Error: {:?}", e);
+            });
 
-        let sigquit = Signal::new(SIGQUIT).flatten_stream();
         let debugger_signal = debugger.clone();
-        tokio::spawn(
-            sigquit
-                .for_each(move |_| {
-                    debugger_signal.lock().unwrap().stop();
-                    exit(0);
+        let sigquit = Signal::new(SIGQUIT)
+            .flatten_stream()
+            .for_each(move |_| {
+                debugger_signal.lock().unwrap().stop();
+                exit(0);
 
-                    #[allow(unreachable_code)]
-                    Ok(())
-                })
-                .map_err(|e| {
-                    println!("Caught SIGINT Error: {:?}", e);
-                }),
-        );
+                #[allow(unreachable_code)]
+                Ok(())
+            })
+            .map_err(|e| {
+                println!("Caught SIGINT Error: {:?}", e);
+            })
+            .join(sigint)
+            .map(|_| {});
 
-        let sigterm = Signal::new(SIGTERM).flatten_stream();
         let debugger_signal = debugger.clone();
-        tokio::spawn(
-            sigterm
-                .for_each(move |_| {
-                    debugger_signal.lock().unwrap().stop();
-                    exit(0);
+        let signals = Signal::new(SIGTERM)
+            .flatten_stream()
+            .for_each(move |_| {
+                debugger_signal.lock().unwrap().stop();
+                exit(0);
 
-                    #[allow(unreachable_code)]
-                    Ok(())
-                })
-                .map_err(|e| {
-                    println!("Caught SIGINT Error: {:?}", e);
-                }),
-        );
+                #[allow(unreachable_code)]
+                Ok(())
+            })
+            .map_err(|e| {
+                println!("Caught SIGINT Error: {:?}", e);
+            })
+            .join(sigquit)
+            .map(|_| {});
+
+        tokio::spawn(signals);
 
         tokio::spawn(
             listener
