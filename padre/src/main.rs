@@ -102,7 +102,7 @@ impl Future for Runner {
         )));
 
         let debugger_signal = debugger.clone();
-        let sigint = Signal::new(SIGINT)
+        let signals = Signal::new(SIGINT)
             .flatten_stream()
             .for_each(move |_| {
                 debugger_signal.lock().unwrap().stop();
@@ -116,7 +116,7 @@ impl Future for Runner {
             });
 
         let debugger_signal = debugger.clone();
-        let sigquit = Signal::new(SIGQUIT)
+        let signals = Signal::new(SIGQUIT)
             .flatten_stream()
             .for_each(move |_| {
                 debugger_signal.lock().unwrap().stop();
@@ -126,9 +126,9 @@ impl Future for Runner {
                 Ok(())
             })
             .map_err(|e| {
-                println!("Caught SIGINT Error: {:?}", e);
+                println!("Caught SIGQUIT Error: {:?}", e);
             })
-            .join(sigint)
+            .join(signals)
             .map(|_| {});
 
         let debugger_signal = debugger.clone();
@@ -142,9 +142,9 @@ impl Future for Runner {
                 Ok(())
             })
             .map_err(|e| {
-                println!("Caught SIGINT Error: {:?}", e);
+                println!("Caught SIGTERM Error: {:?}", e);
             })
-            .join(sigquit)
+            .join(signals)
             .map(|_| {});
 
         tokio::spawn(signals);
