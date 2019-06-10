@@ -257,9 +257,13 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
                 TtyFileStdioStream::new(tty, stdin_rx)
                     .for_each(move |chunk| {
                         out.write_all(&chunk).unwrap();
-                        tokio::spawn(stdout_tx.clone().send(chunk).map(|_| {}).map_err(|e| {
-                            panic!("Can't send output to be analysed: {}", e)
-                        }));
+                        tokio::spawn(
+                            stdout_tx
+                                .clone()
+                                .send(chunk)
+                                .map(|_| {})
+                                .map_err(|e| panic!("Can't send output to be analysed: {}", e)),
+                        );
                         out.flush()
                     })
                     .map_err(|e| eprintln!("error reading stdout; error = {:?}", e)),
