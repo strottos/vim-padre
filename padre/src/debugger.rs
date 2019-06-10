@@ -238,7 +238,6 @@ impl PadreDebugger {
 mod tests {
     use std::env;
     use std::path::Path;
-    use std::sync::{Arc, Mutex};
 
     fn set_path() {
         let test_files_path_raw = String::from("./test_files/");

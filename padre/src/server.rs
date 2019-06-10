@@ -29,11 +29,13 @@ pub fn process_connection(
     notifier
         .lock()
         .unwrap()
-        .add_listener(connection_tx.clone(), addr);
+        .add_listener(connection_tx.clone(), addr.clone());
 
     if debugger.lock().unwrap().has_started() {
         notifier.lock().unwrap().signal_started();
     }
+
+    let notifier_socket_removed = notifier.clone();
 
     tokio::spawn(
         request_tx
@@ -41,9 +43,17 @@ pub fn process_connection(
                 eprintln!("failed to retrieve message to send: {}", e);
                 io::Error::new(io::ErrorKind::Other, e)
             }))
-            .then(|res| {
+            .then(move |res| {
                 if let Err(e) = res {
-                    eprintln!("failed to send data to socket; error = {:?}", e);
+                    match e.kind() {
+                        // Remove socket from notifier if pipe broken, otherwise report error
+                        std::io::ErrorKind::BrokenPipe => {
+                            notifier_socket_removed.lock().unwrap().remove_listener(&addr);
+                        }
+                        _ => {
+                            panic!("failed to send data to socket; error = {:?}", e);
+                        }
+                    }
                 }
 
                 Ok(())

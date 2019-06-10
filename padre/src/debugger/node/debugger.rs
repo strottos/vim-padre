@@ -49,8 +49,8 @@ impl Debugger for ImplDebugger {
 
     fn breakpoint(
         &mut self,
-        file: String,
-        line_num: u64,
+        _file: String,
+        _line_num: u64,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let f = future::lazy(move || {
             let resp = serde_json::json!({"status":"OK"});
@@ -91,7 +91,7 @@ impl Debugger for ImplDebugger {
 
     fn print(
         &mut self,
-        variable: &str,
+        _variable: &str,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let f = future::lazy(move || {
             let resp = serde_json::json!({"status":"OK"});
