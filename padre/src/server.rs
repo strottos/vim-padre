@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::debugger::PadreDebugger;
 use crate::notifier::{LogLevel, Notifier};
@@ -109,6 +110,7 @@ fn respond_debugger(
         .lock()
         .unwrap()
         .handle(req)
+        .timeout(Duration::new(30, 0))
         .then(move |resp| match resp {
             Ok(s) => Ok(PadreResponse::Response(id, s)),
             Err(e) => {
