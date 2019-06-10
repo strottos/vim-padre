@@ -113,7 +113,10 @@ fn respond_debugger(
         .then(move |resp| match resp {
             Ok(s) => Ok(PadreResponse::Response(id, s)),
             Err(e) => {
-                notifier.lock().unwrap().log_msg(LogLevel::ERROR, format!("{}", e));
+                notifier
+                    .lock()
+                    .unwrap()
+                    .log_msg(LogLevel::ERROR, format!("{}", e));
                 let resp = serde_json::json!({"status":"ERROR"});
                 Ok(PadreResponse::Response(id, resp))
             }
