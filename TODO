@@ -1,8 +1,8 @@
 Blockers for merging rust work:
 - Padre command
-  - Add in signal processing/proper termination/socket removal
-* - Timeouts, with test from a slow LLDB mocker
+* - Add in signal processing/proper termination/socket removal
   - Fix all tests and warnings
+  - Cleanup code, Server/Request separation is a bit odd atm.
 - LLDB
   - Proper variable printing for rust and C++
   - Better Error Handling, doesn't panic
