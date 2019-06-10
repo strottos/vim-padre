@@ -48,7 +48,10 @@ pub fn process_connection(
                     match e.kind() {
                         // Remove socket from notifier if pipe broken, otherwise report error
                         std::io::ErrorKind::BrokenPipe => {
-                            notifier_socket_removed.lock().unwrap().remove_listener(&addr);
+                            notifier_socket_removed
+                                .lock()
+                                .unwrap()
+                                .remove_listener(&addr);
                         }
                         _ => {
                             panic!("failed to send data to socket; error = {:?}", e);
