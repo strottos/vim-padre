@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -22,7 +23,9 @@ pub fn process_connection(
 ) {
     let addr = socket.peer_addr().unwrap();
 
-    let (request_tx, request_rx) = PadreCodec::new(notifier.clone()).framed(socket).split();
+    let (request_tx, request_rx) = PadreCodec::new(notifier.clone(), addr)
+        .framed(socket)
+        .split();
 
     let (connection_tx, connection_rx) = mpsc::channel(1);
 
@@ -35,26 +38,19 @@ pub fn process_connection(
         notifier.lock().unwrap().signal_started();
     }
 
-    let notifier_socket_removed = notifier.clone();
-
     tokio::spawn(
         request_tx
             .send_all(connection_rx.map_err(|e| {
                 eprintln!("failed to retrieve message to send: {}", e);
                 io::Error::new(io::ErrorKind::Other, e)
             }))
-            .then(move |res| {
+            .then(|res| {
                 if let Err(e) = res {
                     match e.kind() {
                         // Remove socket from notifier if pipe broken, otherwise report error
-                        std::io::ErrorKind::BrokenPipe => {
-                            notifier_socket_removed
-                                .lock()
-                                .unwrap()
-                                .remove_listener(&addr);
-                        }
+                        std::io::ErrorKind::BrokenPipe => {}
                         _ => {
-                            panic!("failed to send data to socket; error = {:?}", e);
+                            eprintln!("failed to send data to socket; error = {:?}", e);
                         }
                     }
                 }
@@ -153,11 +149,18 @@ fn send_error_and_debug(
 struct PadreCodec {
     // Track a list of places we should try from in case one of the sends cut off
     notifier: Arc<Mutex<Notifier>>,
+    addr: SocketAddr,
 }
 
 impl PadreCodec {
-    fn new(notifier: Arc<Mutex<Notifier>>) -> Self {
-        PadreCodec { notifier }
+    fn new(notifier: Arc<Mutex<Notifier>>, addr: SocketAddr) -> Self {
+        PadreCodec { notifier, addr }
+    }
+}
+
+impl Drop for PadreCodec {
+    fn drop(&mut self) {
+        self.notifier.lock().unwrap().remove_listener(&self.addr);
     }
 }
 
@@ -204,7 +207,7 @@ impl Decoder for PadreCodec {
                 }
             },
             None => {
-                unreachable!("HEREEEE2");
+                unreachable!();
             }
         };
 
