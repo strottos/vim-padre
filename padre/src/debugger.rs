@@ -211,6 +211,10 @@ impl PadreDebugger {
         }
     }
 
+    pub fn stop(&mut self) {
+        println!("Stopping balls");
+    }
+
     fn send_error_and_debug(
         &self,
         err_msg: String,

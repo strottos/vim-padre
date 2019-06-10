@@ -5,13 +5,14 @@ extern crate serde_derive;
 
 use std::io;
 use std::net::SocketAddr;
+use std::process::exit;
 use std::sync::{Arc, Mutex};
 
 use clap::{App, Arg, ArgMatches};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
-//use signal_hook::iterator::Signals;
+use tokio_signal::unix::{Signal, SIGINT, SIGQUIT, SIGTERM};
 
 mod debugger;
 mod notifier;
@@ -70,24 +71,6 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-//fn install_signals(signals: Signals, debugger: Arc<Mutex<debugger::PadreServer>>) {
-//    thread::spawn(move || {
-//        for _ in signals.forever() {
-//            match debugger.lock() {
-//                Ok(s) => {
-//                    match s.debugger.lock() {
-//                        Ok(t) => t.stop(),
-//                        Err(e) => println!("Debugger not found: {}", e),
-//                    };
-//                },
-//                Err(e) => println!("Debug server not found: {}", e),
-//            };
-//            println!("Terminated!");
-//            exit(0);
-//        }
-//    });
-//}
-
 struct Runner {}
 
 impl Future for Runner {
@@ -118,8 +101,19 @@ impl Future for Runner {
             notifier.clone(),
         )));
 
-        //    let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
-        //    install_signals(signals, Arc::clone(&padre_server_rc));
+        let sigint = Signal::new(SIGINT).flatten_stream();
+        let debugger_signal = debugger.clone();
+        tokio::spawn(
+            sigint.for_each(move |_| {
+                debugger_signal.lock().unwrap().stop();
+                exit(0);
+
+                #[allow(unreachable_code)]
+                Ok(())
+            }).map_err(|e| {
+                println!("Caught SIGINT Error: {:?}", e);
+            })
+        );
 
         tokio::spawn(
             listener

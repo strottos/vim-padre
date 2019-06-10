@@ -13,6 +13,7 @@ steps:
 
   - script: |
       cd padre
+      cargo test -- --nocapture
       cargo junit --name TESTS-cargo.xml
     env:
       RUST_BACKTRACE: 1
