@@ -139,8 +139,6 @@ impl TtyFileStdioStream {
     }
 }
 
-// TODO: May not work correctly having stdin and stdout in one stream like this, but let's see what
-// happens... Might be OK as we don't tend to do stdin while stdout is happening, could be wrong.
 impl Stream for TtyFileStdioStream {
     type Item = Bytes;
     type Error = io::Error;
@@ -260,8 +258,7 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
                     .for_each(move |chunk| {
                         out.write_all(&chunk).unwrap();
                         tokio::spawn(stdout_tx.clone().send(chunk).map(|_| {}).map_err(|e| {
-                            // TODO: Error handling?
-                            eprintln!("Can't send output to be analysed: {}", e)
+                            panic!("Can't send output to be analysed: {}", e)
                         }));
                         out.flush()
                     })

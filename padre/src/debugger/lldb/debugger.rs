@@ -34,7 +34,6 @@ pub enum ProcessStatus {
 #[derive(Debug, Clone)]
 pub enum LLDBOutput {
     NoProcess,
-    Error,
     LLDBStarted,
     // (PID)
     ProcessLaunched(u64),
@@ -748,8 +747,9 @@ impl Debugger for ImplDebugger {
         let f = rx
             .take(1)
             .into_future()
+            .timeout(Duration::new(10, 0))
             .map(move |lldb_output| {
-                let mut resp;
+                let resp;
 
                 let lldb_output = lldb_output.0;
 
@@ -775,8 +775,8 @@ impl Debugger for ImplDebugger {
                 resp
             })
             .map_err(|e| {
-                eprintln!("Error sending to LLDB: {}", e.0);
-                io::Error::new(io::ErrorKind::Other, e.0)
+                eprintln!("Error sending to LLDB: {:?}", e);
+                io::Error::new(io::ErrorKind::Other, "Timed out printing variable")
             });
 
         Box::new(f)

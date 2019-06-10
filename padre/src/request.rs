@@ -1,37 +1,3 @@
-use std::error::Error;
-use std::fmt;
-
-#[derive(Debug)]
-pub struct PadreError {
-    msg: String,
-    debug: String,
-}
-
-impl fmt::Display for PadreError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
-
-impl Error for PadreError {
-    fn description(&self) -> &str {
-        &self.msg
-    }
-}
-
-impl PadreError {
-    pub fn new(msg: String, debug: String) -> PadreError {
-        PadreError {
-            msg: msg,
-            debug: debug,
-        }
-    }
-
-    pub fn get_debug_info(&self) -> &str {
-        &self.debug
-    }
-}
-
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 pub enum PadreRequestCmd {
     Cmd(String),

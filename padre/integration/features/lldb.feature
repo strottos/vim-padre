@@ -266,3 +266,16 @@ Feature: LLDB
             | function                      | args                                                      |
             | padre#debugger#Log            | [4,"Setting breakpoint in file test.c at line number 17"] |
             | padre#debugger#Log            | [2,"Timed out setting breakpoint"]                        |
+
+    Scenario: Test print timeout
+        Given that we have a file 'test_prog.c'
+        And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
+        And that we have a test program 'test_prog' that runs with './test_files/lldb_print_variable_timeout.py'
+        When I debug the program with PADRE
+        Then I expect to be called with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a request to PADRE '{"cmd":"print","variable":"a"}'
+        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
+            | function                      | args                              |
+            | padre#debugger#Log            | [2,"Timed out printing variable"] |
