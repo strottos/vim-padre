@@ -595,7 +595,7 @@ impl Debugger for ImplDebugger {
             })
             .map_err(|e| {
                 eprintln!("Error sending to LLDB: {:?}", e);
-                io::Error::new(io::ErrorKind::Other, "ERROR")
+                io::Error::new(io::ErrorKind::Other, "Timed out spawning process")
             });
 
         Box::new(f)
