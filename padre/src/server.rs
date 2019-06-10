@@ -53,7 +53,7 @@ pub fn process_connection(
         request_rx
             .and_then(move |req| {
                 let debugger = debugger.clone();
-                respond(req, debugger)
+                respond(req, debugger, notifier.clone())
             })
             .for_each(move |resp| {
                 tokio::spawn(
@@ -74,6 +74,7 @@ pub fn process_connection(
 fn respond(
     req: PadreRequest,
     debugger: Arc<Mutex<PadreDebugger>>,
+    notifier: Arc<Mutex<Notifier>>,
 ) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
     let json_response = match req.cmd() {
         PadreRequestCmd::Cmd(s) => {
@@ -81,10 +82,10 @@ fn respond(
             match s {
                 "ping" => debugger.lock().unwrap().ping(),
                 "pings" => debugger.lock().unwrap().pings(),
-                _ => return respond_debugger(req, debugger),
+                _ => return respond_debugger(req, debugger, notifier),
             }
         }
-        _ => return respond_debugger(req, debugger),
+        _ => return respond_debugger(req, debugger, notifier),
     };
 
     let f = future::lazy(move || match json_response {
@@ -100,6 +101,7 @@ fn respond(
 fn respond_debugger(
     req: PadreRequest,
     debugger: Arc<Mutex<PadreDebugger>>,
+    notifier: Arc<Mutex<Notifier>>,
 ) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
     let id = req.id();
 
@@ -108,14 +110,11 @@ fn respond_debugger(
         .lock()
         .unwrap()
         .handle(req)
-        .then(move |resp| {
-            match resp {
-                Ok(s) => {
-                    Ok(PadreResponse::Response(id, s))
-                },
-                Err(e) => {
-                    panic!("Error: {:?}", e);
-                }
+        .then(move |resp| match resp {
+            Ok(s) => Ok(PadreResponse::Response(id, s)),
+            Err(e) => {
+                let resp = serde_json::json!({"status":"ERROR"});
+                Ok(PadreResponse::Response(id, resp))
             }
         });
 
@@ -127,14 +126,8 @@ fn send_error_and_debug(
     err_msg: String,
     debug_msg: String,
 ) -> Result<Option<PadreRequest>, io::Error> {
-    notifier
-        .lock()
-        .unwrap()
-        .log_msg(LogLevel::ERROR, err_msg);
-    notifier
-        .lock()
-        .unwrap()
-        .log_msg(LogLevel::DEBUG, debug_msg);
+    notifier.lock().unwrap().log_msg(LogLevel::ERROR, err_msg);
+    notifier.lock().unwrap().log_msg(LogLevel::DEBUG, debug_msg);
     Ok(None)
 }
 

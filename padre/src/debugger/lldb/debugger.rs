@@ -94,8 +94,8 @@ impl ImplDebugger {
 
 impl Debugger for ImplDebugger {
     fn setup(&mut self) {
+        //self.check_path_exists(&self.debugger_cmd);
         self.check_path_exists(&self.run_cmd[0]);
-        self.check_path_exists(&self.debugger_cmd);
 
         let (lldb_in_tx, lldb_in_rx) = mpsc::channel(1);
         let (lldb_out_tx, lldb_out_rx) = mpsc::channel(32);
@@ -762,21 +762,19 @@ impl Debugger for ImplDebugger {
                 let lldb_output = lldb_output.0;
 
                 match lldb_output {
-                    Some(s) => {
-                        match s {
-                            LLDBOutput::PrintVariable(variable_type, variable, value) => {
-                                resp = serde_json::json!({
-                                    "status": "OK",
-                                    "variable": variable,
-                                    "value": value,
-                                    "type": variable_type,
-                                });
-                            }
-                            _ => {
-                                resp = serde_json::json!({"status":"ERROR"});
-                            }
+                    Some(s) => match s {
+                        LLDBOutput::PrintVariable(variable_type, variable, value) => {
+                            resp = serde_json::json!({
+                                "status": "OK",
+                                "variable": variable,
+                                "value": value,
+                                "type": variable_type,
+                            });
                         }
-                    }
+                        _ => {
+                            resp = serde_json::json!({"status":"ERROR"});
+                        }
+                    },
                     _ => {
                         resp = serde_json::json!({"status":"ERROR"});
                     }
