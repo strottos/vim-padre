@@ -105,7 +105,6 @@ fn respond_debugger(
 ) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
     let id = req.id();
 
-    // TODO: Timeouts
     let f = debugger
         .lock()
         .unwrap()

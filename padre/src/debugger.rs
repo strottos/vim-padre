@@ -240,39 +240,6 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
-    //fn get_lldb_debugger() -> super::PadreDebugger {
-    //    let notifier = Arc::new(Mutex::new(super::Notifier::new()));
-    //    super::get_debugger(
-    //        Some("lldb"),
-    //        Some("lldb"),
-    //        vec!["padre".to_string(), "--".to_string(), "arg1".to_string()],
-    //        notifier,
-    //    )
-    //}
-
-    //    #[test]
-    //    fn basic_ping() {
-    //        let debugger = get_lldb_debugger();
-    //        let ret = debugger.ping().unwrap();
-    //        assert_eq!(ret, serde_json::json!({"ping":"pong"}));
-    //    }
-
-    // TODO: What about tokio executor?
-    //    #[test]
-    //    fn basic_pings() {
-    //        let mut notifier = super::Notifier::new();
-    //
-    //        let (sender, receiver) = mpsc::channel(1);
-    //        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    //
-    //        notifier.add_listener(sender, socket_addr);
-    //
-    //        let debugger = super::PadreDebugger::new(Arc::new(Mutex::new(notifier)));
-    //        let ret = debugger.pings().unwrap();
-    //        assert_eq!(ret, serde_json::json!({"pings":"pongs"}));
-    //        println!("{:?}", receiver.collect().wait());
-    //    }
-
     fn set_path() {
         let test_files_path_raw = String::from("./test_files/");
         let test_files_path = Path::new(&test_files_path_raw)

@@ -150,6 +150,4 @@ mod tests {
 
         assert_eq!(notifier.listeners.len(), 0);
     }
-
-    // TODO: Check this doesn't handle responses
 }

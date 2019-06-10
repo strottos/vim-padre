@@ -204,12 +204,6 @@ impl Debugger for ImplDebugger {
                     }
 
                     for line in data.split("\r\n") {
-                        //        // TODO: Find a more efficient way of doing this, and maybe think about UTF-8
-                        //        let mut line = line;
-                        //        while line.len() > 7 && &line[0..7] == "(lldb) " {
-                        //            line = &line[7..];
-                        //        }
-
                         for cap in RE_PROCESS_STARTED.captures_iter(line) {
                             let pid = cap[1].parse::<u64>().unwrap();
                             *process_status.lock().unwrap() = ProcessStatus::Running(pid);
@@ -554,8 +548,7 @@ impl Debugger for ImplDebugger {
                 match lldb_output {
                     LLDBOutput::Breakpoint(_, _) | LLDBOutput::BreakpointMultiple => {}
                     _ => {
-                        panic!("WTF? {:?}", lldb_output);
-                        // TODO: Error properly
+                        panic!("Don't understand output {:?}", lldb_output);
                     }
                 };
 
@@ -586,8 +579,7 @@ impl Debugger for ImplDebugger {
                         resp = serde_json::json!({"status":"OK","pid":format!("{}",pid)});
                     }
                     _ => {
-                        panic!("WTF? {:?}", lldb_output);
-                        // TODO: Error properly
+                        panic!("Don't understand output {:?}", lldb_output);
                     }
                 };
 
@@ -635,8 +627,9 @@ impl Debugger for ImplDebugger {
         let f = rx
             .take(1)
             .into_future()
+            .timeout(Duration::new(2, 0))
             .map(move |lldb_output| {
-                let mut resp;
+                let resp;
 
                 let lldb_output = lldb_output.0.unwrap();
 
@@ -648,16 +641,15 @@ impl Debugger for ImplDebugger {
                         resp = serde_json::json!({"status":"PENDING"});
                     }
                     _ => {
-                        panic!("WTF? {:?}", lldb_output);
-                        // TODO: Error properly
+                        panic!("Don't understand output {:?}", lldb_output);
                     }
                 };
 
                 resp
             })
             .map_err(|e| {
-                eprintln!("Error sending to LLDB: {}", e.0);
-                io::Error::new(io::ErrorKind::Other, e.0)
+                eprintln!("Error sending to LLDB: {:?}", e);
+                io::Error::new(io::ErrorKind::Other, "Timed out setting breakpoint")
             });
 
         Box::new(f)

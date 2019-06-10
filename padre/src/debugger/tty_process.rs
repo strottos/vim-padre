@@ -270,18 +270,3 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
         }
     };
 }
-
-//TODO:
-//#[cfg(test)]
-//mod tests {
-//    use tokio::sync::mpsc;
-//
-//    #[test]
-//    fn check_spawn_communicate_process() {
-//        let mut runtime = Runtime::new().unwrap();
-//        let (tx, rx) = mpsc::channel(32);
-//        // TODO: Lazy future?
-//        super::spawn_process(vec!("node".to_string(), "test_files/echo_stdin.js".to_string()), rx);
-//        tokio::run(fut)
-//    }
-//}
