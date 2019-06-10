@@ -1,8 +1,7 @@
 Blockers for merging rust work:
 - Padre command
-* - Performance test with printing
-* - Add in signal processing/Proper termination
-  - Timeouts, with test from a slow LLDB mocker
+  - Add in signal processing/Proper termination/socket removal
+* - Timeouts, with test from a slow LLDB mocker
   - Do all critical TODOs
   - Cleanup code, some long closures and functions atm.
   - Fix all tests and warnings

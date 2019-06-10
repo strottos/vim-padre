@@ -108,9 +108,34 @@ fn respond_debugger(
         .lock()
         .unwrap()
         .handle(req)
-        .then(move |resp| Ok(PadreResponse::Response(id, resp.unwrap())));
+        .then(move |resp| {
+            match resp {
+                Ok(s) => {
+                    Ok(PadreResponse::Response(id, s))
+                },
+                Err(e) => {
+                    panic!("Error: {:?}", e);
+                }
+            }
+        });
 
     return Box::new(f);
+}
+
+fn send_error_and_debug(
+    notifier: Arc<Mutex<Notifier>>,
+    err_msg: String,
+    debug_msg: String,
+) -> Result<Option<PadreRequest>, io::Error> {
+    notifier
+        .lock()
+        .unwrap()
+        .log_msg(LogLevel::ERROR, err_msg);
+    notifier
+        .lock()
+        .unwrap()
+        .log_msg(LogLevel::DEBUG, debug_msg);
+    Ok(None)
 }
 
 #[derive(Debug)]
@@ -122,22 +147,6 @@ struct PadreCodec {
 impl PadreCodec {
     fn new(notifier: Arc<Mutex<Notifier>>) -> Self {
         PadreCodec { notifier }
-    }
-
-    fn send_error_and_debug(
-        &self,
-        err_msg: String,
-        debug_msg: String,
-    ) -> Result<Option<PadreRequest>, io::Error> {
-        self.notifier
-            .lock()
-            .unwrap()
-            .log_msg(LogLevel::ERROR, err_msg);
-        self.notifier
-            .lock()
-            .unwrap()
-            .log_msg(LogLevel::DEBUG, debug_msg);
-        Ok(None)
     }
 }
 
@@ -172,7 +181,8 @@ impl Decoder for PadreCodec {
 
                     src.split_to(src.len());
 
-                    return self.send_error_and_debug(
+                    return send_error_and_debug(
+                        self.notifier.clone(),
                         "Must be valid JSON".to_string(),
                         format!(
                             "Can't read '{}': {}",
@@ -190,7 +200,8 @@ impl Decoder for PadreCodec {
         src.split_to(src.len());
 
         if !v.is_array() {
-            return self.send_error_and_debug(
+            return send_error_and_debug(
+                self.notifier.clone(),
                 "Can't read JSON".to_string(),
                 format!(
                     "Can't read '{}': Must be an array",
@@ -200,7 +211,8 @@ impl Decoder for PadreCodec {
         }
 
         if v.as_array().unwrap().len() != 2 {
-            return self.send_error_and_debug(
+            return send_error_and_debug(
+                self.notifier.clone(),
                 "Can't read JSON".to_string(),
                 format!(
                     "Can't read '{}': Array should have 2 elements",
@@ -213,7 +225,8 @@ impl Decoder for PadreCodec {
         let id: u64 = match serde_json::from_value(id.clone()) {
             Ok(s) => s,
             Err(e) => {
-                return self.send_error_and_debug(
+                return send_error_and_debug(
+                    self.notifier.clone(),
                     "Can't read id".to_string(),
                     format!("Can't read '{}': {}", id, e),
                 );
@@ -224,7 +237,8 @@ impl Decoder for PadreCodec {
             match serde_json::from_str(&v[1].take().to_string()) {
                 Ok(args) => args,
                 Err(e) => {
-                    return self.send_error_and_debug(
+                    return send_error_and_debug(
+                        self.notifier.clone(),
                         "Can't read JSON".to_string(),
                         format!(
                             "Can't read '{}': {}",
@@ -238,7 +252,8 @@ impl Decoder for PadreCodec {
         let cmd = match args.remove("cmd") {
             Some(s) => s,
             None => {
-                return self.send_error_and_debug(
+                return send_error_and_debug(
+                    self.notifier.clone(),
                     "Can't find command".to_string(),
                     format!(
                         "Can't find command '{}': Need a cmd in 2nd object",
@@ -251,7 +266,8 @@ impl Decoder for PadreCodec {
         let cmd: String = match serde_json::from_value(cmd) {
             Ok(s) => s,
             Err(e) => {
-                return self.send_error_and_debug(
+                return send_error_and_debug(
+                    self.notifier.clone(),
                     "Can't find command".to_string(),
                     format!(
                         "Can't find command '{}': {}",
@@ -270,7 +286,8 @@ impl Decoder for PadreCodec {
                             let t: u64 = match t.as_u64() {
                                 Some(t) => t,
                                 None => {
-                                    return self.send_error_and_debug(
+                                    return send_error_and_debug(
+                                        self.notifier.clone(),
                                         format!("Badly specified 'line'"),
                                         format!("Badly specified 'line': {}", t),
                                     );
@@ -279,21 +296,24 @@ impl Decoder for PadreCodec {
                             Some((s, t))
                         }
                         _ => {
-                            return self.send_error_and_debug(
+                            return send_error_and_debug(
+                                self.notifier.clone(),
                                 "Can't read 'line' argument".to_string(),
                                 format!("Can't understand 'line': {}", t),
                             );
                         }
                     },
                     None => {
-                        return self.send_error_and_debug(
+                        return send_error_and_debug(
+                            self.notifier.clone(),
                             "Can't read 'line' for file location when 'file' specified".to_string(),
                             format!("Can't understand command with file but no line: '{}'", cmd),
                         );
                     }
                 },
                 _ => {
-                    return self.send_error_and_debug(
+                    return send_error_and_debug(
+                        self.notifier.clone(),
                         format!("Can't read 'file' argument"),
                         format!("Can't understand 'file': {}", s),
                     );
@@ -306,7 +326,8 @@ impl Decoder for PadreCodec {
             Some(s) => match s {
                 serde_json::Value::String(s) => Some(s),
                 _ => {
-                    return self.send_error_and_debug(
+                    return send_error_and_debug(
+                        self.notifier.clone(),
                         format!("Badly specified 'variable'"),
                         format!("Badly specified 'variable': {}", s),
                     );
@@ -326,7 +347,8 @@ impl Decoder for PadreCodec {
         if !args.is_empty() {
             let mut args_left: Vec<String> = args.iter().map(|(key, _)| key.clone()).collect();
             args_left.sort();
-            return self.send_error_and_debug(
+            return send_error_and_debug(
+                self.notifier.clone(),
                 "Bad arguments".to_string(),
                 format!("Bad arguments: {:?}", args_left),
             );

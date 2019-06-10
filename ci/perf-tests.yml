@@ -30,7 +30,6 @@ steps:
       bzt test/perf/steptest.yml
       kill $(jobs -p)
     env:
-      PATH: 
       RUST_BACKTRACE: 1
     displayName: Run Padre CLI and perf test
 

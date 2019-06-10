@@ -20,7 +20,7 @@ TEST_FILES_DIR = os.path.join(
     "../../test_files",
 )
 
-TIMEOUT = 5
+TIMEOUT = 15
 
 
 class Padre():
@@ -194,11 +194,17 @@ def run_padre(context, timeout=20):
 
     def do_stuff(loop, context):
         async def print_stuff(context):
+            i = 0
             while True:
                 try:
                     line = await context.padre.process.stdout.readline()
                     if line != b'':
+                        i = 0
                         print(line)
+                    else:
+                        i += 1
+                    if i == 3:
+                        break
                 except AttributeError:
                     break
 
@@ -210,7 +216,6 @@ def run_padre(context, timeout=20):
 
     yield True  # Pause teardown till later
 
-    # TODO: Put a timeout on this.
     context.padre.process.terminate()
 
 

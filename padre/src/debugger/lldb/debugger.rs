@@ -79,18 +79,23 @@ impl ImplDebugger {
             listener_tx: Arc::new(Mutex::new(None)),
         }
     }
+
+    fn check_path_exists(&self, path: &str) {
+        if !Path::new(path).exists() {
+            self.notifier.lock().unwrap().log_msg(
+                LogLevel::CRITICAL,
+                format!("Can't spawn LLDB as {} does not exist", path),
+            );
+            println!("Can't spawn LLDB as {} does not exist", path);
+            exit(1);
+        }
+    }
 }
 
 impl Debugger for ImplDebugger {
     fn setup(&mut self) {
-        if !Path::new(&self.run_cmd[0]).exists() {
-            self.notifier.lock().unwrap().log_msg(
-                LogLevel::CRITICAL,
-                format!("Can't spawn LLDB as {} does not exist", self.run_cmd[0]),
-            );
-            println!("Can't spawn LLDB as {} does not exist", self.run_cmd[0]);
-            exit(1);
-        }
+        self.check_path_exists(&self.run_cmd[0]);
+        self.check_path_exists(&self.debugger_cmd);
 
         let (lldb_in_tx, lldb_in_rx) = mpsc::channel(1);
         let (lldb_out_tx, lldb_out_rx) = mpsc::channel(32);
@@ -571,9 +576,9 @@ impl Debugger for ImplDebugger {
 
                 rx.take(1).into_future()
             })
-            .timeout(Duration::new(5, 0))
+            .timeout(Duration::new(10, 0))
             .map(|lldb_output| {
-                let mut resp;
+                let resp;
 
                 let lldb_output = lldb_output.0.unwrap();
                 match lldb_output {

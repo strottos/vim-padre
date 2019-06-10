@@ -1,7 +1,6 @@
 """
 Test stepping performance of Padre with Locust performance tester
 """
-
 import random
 import re
 import select
