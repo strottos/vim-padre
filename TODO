@@ -1,7 +1,6 @@
 Blockers for merging rust work:
 - Padre command
-* - Add in signal processing/proper termination
-  - Fix all tests and warnings
+* - Add in proper termination
   - Cleanup code, Server/Request separation is a bit odd atm.
   - Queueing
 - LLDB
