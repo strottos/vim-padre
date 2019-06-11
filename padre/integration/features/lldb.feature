@@ -30,7 +30,7 @@ Feature: LLDB
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate padre
-        #Then padre is not running
+        Then padre is not running
 
     Scenario Outline: Debug a basic program with LLDB using the PADRE interface
         Given that we have a file 'test_prog.c'
@@ -82,7 +82,7 @@ Feature: LLDB
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate padre
-        #Then padre is not running
+        Then padre is not running
 
         Examples:
         | compiler     |
@@ -134,7 +134,7 @@ Feature: LLDB
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate padre
-        #Then padre is not running
+        Then padre is not running
 
     Scenario: PADRE error reporting when program not running
         Given that we have a file 'test_prog.c'
@@ -161,7 +161,7 @@ Feature: LLDB
             | function           | args                      |
             | padre#debugger#Log | [3,"program not running"] |
         When I terminate padre
-        #Then padre is not running
+        Then padre is not running
 
     Scenario: General error handling over PADRE when program is running
         Given that we have a file 'test_prog.c'
@@ -182,7 +182,7 @@ Feature: LLDB
             | function           | args                                  |
             | padre#debugger#Log | [3,"variable 'a' doesn't exist here"] |
         When I terminate padre
-        #Then padre is not running
+        Then padre is not running
 
     Scenario: Printing variables in rust
         Given that we have a file 'test_print_variables.rs'
@@ -237,6 +237,8 @@ Feature: LLDB
             #    | padre#debugger#JumpToPosition | [".*test_print_variables.rs$",22] |
             #When I send a request to PADRE '{"cmd":"print","variable":"b"}'
             #Then I receive a response '{"status":"OK","variable":"b","deref":{"variable":"\\*b","type":"&str","value":"TEST"},"type":"&str *","value":"^&0x[0-9a-f]*$"}'
+        When I terminate padre
+        Then padre is not running
 
     Scenario: Test spawning process a timeout
         Given that we have a file 'test_prog.c'
@@ -266,6 +268,8 @@ Feature: LLDB
             | function                      | args                                                      |
             | padre#debugger#Log            | [4,"Setting breakpoint in file test.c at line number 17"] |
             | padre#debugger#Log            | [2,"Timed out setting breakpoint"]                        |
+        When I terminate padre
+        Then padre is not running
 
     Scenario: Test print timeout
         Given that we have a file 'test_prog.c'
@@ -279,3 +283,5 @@ Feature: LLDB
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function                      | args                              |
             | padre#debugger#Log            | [2,"Timed out printing variable"] |
+        When I terminate padre
+        Then padre is not running

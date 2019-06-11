@@ -14,6 +14,7 @@ from shutil import copyfile
 
 from behave import *
 from hamcrest import *
+import psutil
 
 TEST_FILES_DIR = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
@@ -31,6 +32,8 @@ class Padre():
         self._executable = executable
         self._program_type = program_type
         self._port = None
+        self._pid = None
+        self._children = set()
         self._proc = None
         self._request_counter = 1
         self._last_request_number = None
@@ -59,6 +62,13 @@ class Padre():
         return self._port
 
     @property
+    def pid(self):
+        """
+        Return the PADRE process
+        """
+        return self._pid
+
+    @property
     def process(self):
         """
         Return the PADRE process
@@ -70,6 +80,7 @@ class Padre():
         """
         The setter for the process
         """
+        self._pid = proc.pid
         self._proc = proc
 
     @property
@@ -88,6 +99,13 @@ class Padre():
         """
         return self._last_request_number
 
+    @property
+    def children(self):
+        """
+        Return the children of PADRE
+        """
+        return self._children
+
     @staticmethod
     def get_unused_localhost_port():
         """
@@ -99,6 +117,14 @@ class Padre():
         port = sock.getsockname()[1]
         sock.close()
         return port
+
+    def get_children(self):
+        """
+        Find Children of Padre PID and store them
+        """
+        self._children = \
+            self._children.union(set(psutil.Process(self.pid)
+                                           .children(recursive=True)))
 
 
 async def do_read_from_padre(future, reader, loop):
@@ -174,7 +200,6 @@ def run_padre(context, timeout=20):
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             loop=loop
-
         )
 
         line = await context.padre.process.stdout.readline()
@@ -192,8 +217,8 @@ def run_padre(context, timeout=20):
     assert_that(line, equal_to(expected), "Started server")
     context.connections = []
 
-    def do_stuff(loop, context):
-        async def print_stuff(context):
+    def print_stuff(loop, context):
+        async def a_print_stuff(context):
             i = 0
             while True:
                 try:
@@ -208,15 +233,16 @@ def run_padre(context, timeout=20):
                 except AttributeError:
                     break
 
-        ensure = asyncio.ensure_future(print_stuff(context),
+        ensure = asyncio.ensure_future(a_print_stuff(context),
                                        loop=loop)
 
-    t = threading.Thread(target=do_stuff, args=(loop, context))
+    t = threading.Thread(target=print_stuff, args=(loop, context))
     t.start()
 
     yield True  # Pause teardown till later
 
-    context.padre.process.terminate()
+    if context.padre.process.returncode is None:
+        context.padre.process.terminate()
 
 
 @fixture
@@ -259,6 +285,7 @@ def compile_program(context, source, compiler, output):
     """
     Compile the program and store that in the context for the program
     """
+    context.program = output
     execute = compiler.split(' ')
     execute.extend(["-o",
                     os.path.join(context.tmpdir.name, output),
@@ -292,6 +319,7 @@ def padre_debugger(context):
     """
     use_fixture(run_padre, context)
     use_fixture(connect_to_padre, context)
+    context.padre.get_children()
 
 
 @when("I open another connection to PADRE")
@@ -336,6 +364,7 @@ def padre_request_raw(context, request, connection):
     loop.run_until_complete(do_send_to_padre(
         future, context.connections[int(connection)][1], request, loop))
     assert_that(future.result(), "Padre request sent")
+    context.padre.get_children()
 
 
 @when("I send a raw request to PADRE '{request}'")
@@ -618,7 +647,17 @@ def terminate_program(context):
     """
     Close PADRE
     """
-    context.padre.process.terminate()
+    subprocess.run(["kill", "-SIGINT", "{}".format(context.padre.process.pid)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                    cwd=os.getcwd())
+    async def wait_process(loop):
+        await context.padre.process.wait()
+
+    loop = asyncio.get_event_loop()
+
+    loop.run_until_complete(wait_process(loop))
 
 
 @then(u'padre is not running')
@@ -633,3 +672,18 @@ def padre_not_running(context):
 
     assert_that(context.padre.process.returncode,
                 equal_to(0), "Expected 0 exit code")
+
+    execute = ["pgrep", "lldb|padre|{}".format(context.program)]
+    proc = subprocess.run(execute,
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE,
+                          check=True,
+                          cwd=os.getcwd())
+    running = set([int(x)
+                   for x in proc.stdout.decode().split('\n')
+                   if x != ""])
+    assert_that(context.padre.pid, is_not(is_in(running)),
+                "Padre Pid found Running")
+    for child in context.padre.children:
+        assert_that(child.pid, is_not(is_in(running)),
+                    "Padre Child found {}".format(child))

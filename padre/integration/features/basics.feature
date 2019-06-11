@@ -54,6 +54,7 @@ Feature: Basics
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
         When I terminate padre
+        Then padre is not running
 
     Scenario: Check we can handle terminating connections
         Given that we have a file 'test_prog.c'
@@ -80,6 +81,7 @@ Feature: Basics
             | function           | args       |
             | padre#debugger#Log | [4,"pong"] |
         When I terminate padre
+        Then padre is not running
 
     Scenario: Check we can handle badly sent data and it will log errors appropriately.
         Given that we have a file 'test_prog.c'
@@ -157,6 +159,7 @@ Feature: Basics
         #Then I receive a raw response '[3,{"status":"OK","ping":"pong"}]'
         #And I receive a raw response '[4,{"status":"OK","ping":"pong"}]'
         When I terminate padre
+        Then padre is not running
 
     Scenario: Check we can handle errors setting breakpoints
         Given that we have a file 'test_prog.c'
@@ -202,6 +205,7 @@ Feature: Basics
             | padre#debugger#Log | [2,"Can't understand command"]                           |
             | padre#debugger#Log | [5,"Can't understand command 'bkpt' with file location"] |
         When I terminate padre
+        Then padre is not running
 
     Scenario: Check we can handle errors getting variables
         Given that we have a file 'test_prog.c'
@@ -232,3 +236,4 @@ Feature: Basics
             | padre#debugger#Log | [2,"Can't understand command"]                     |
             | padre#debugger#Log | [5,"Can't understand command 'prt' with variable"] |
         When I terminate padre
+        Then padre is not running
