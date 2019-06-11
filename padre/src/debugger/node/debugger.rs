@@ -34,6 +34,9 @@ impl ImplDebugger {
 impl Debugger for ImplDebugger {
     fn setup(&mut self) {}
 
+    fn teardown(&mut self) {
+    }
+
     fn has_started(&self) -> bool {
         self.started
     }

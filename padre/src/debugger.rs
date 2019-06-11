@@ -120,6 +120,7 @@ fn is_node(cmd: &str) -> bool {
 
 pub trait Debugger: Debug {
     fn setup(&mut self);
+    fn teardown(&mut self);
     fn has_started(&self) -> bool;
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn breakpoint(
@@ -212,7 +213,7 @@ impl PadreDebugger {
     }
 
     pub fn stop(&mut self) {
-        println!("Stopping balls");
+        self.debugger.teardown();
     }
 
     fn send_error_and_debug(

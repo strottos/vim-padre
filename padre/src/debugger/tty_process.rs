@@ -9,7 +9,7 @@ use nix::fcntl::{open, OFlag};
 use nix::libc::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO};
 use nix::pty::{grantpt, posix_openpt, unlockpt, PtyMaster};
 use nix::sys::stat;
-use nix::unistd::{dup, dup2, execvp, fork, setsid, ForkResult};
+use nix::unistd::{dup, dup2, execvp, fork, setsid, ForkResult, Pid};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -204,7 +204,7 @@ impl Stream for TtyFileStdioStream {
     }
 }
 
-pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Sender<Bytes>) {
+pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Sender<Bytes>) -> Pid {
     // Code based on https://github.com/philippkeller/rexpect/blob/master/src/process.rs
     let master_fd = posix_openpt(OFlag::O_RDWR).unwrap();
 
@@ -248,7 +248,7 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
             exit(-1);
         }
 
-        ForkResult::Parent { child: _child_pid } => {
+        ForkResult::Parent { child: child_pid } => {
             let tty = TtyFile::new(master_fd);
 
             let mut out = io::stdout();
@@ -268,6 +268,8 @@ pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Se
                     })
                     .map_err(|e| eprintln!("error reading stdout; error = {:?}", e)),
             );
+
+            return child_pid;
         }
     };
 }

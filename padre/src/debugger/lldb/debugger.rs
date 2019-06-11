@@ -12,6 +12,8 @@ use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
 
 use bytes::Bytes;
+use nix::sys::signal::{kill, Signal};
+use nix::unistd::Pid;
 use regex::Regex;
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
@@ -26,8 +28,7 @@ pub enum LLDBStatus {
 #[derive(Debug, Clone)]
 pub enum ProcessStatus {
     None,
-    // (PID)
-    Running(u64),
+    Running,
     Paused,
 }
 
@@ -57,7 +58,9 @@ pub struct ImplDebugger {
     debugger_cmd: String,
     run_cmd: Vec<String>,
     lldb_status: Arc<Mutex<LLDBStatus>>,
+    lldb_pid: Option<Pid>,
     process_status: Arc<Mutex<ProcessStatus>>,
+    process_pid: Arc<Mutex<Option<u64>>>,
     lldb_in_tx: Option<Sender<Bytes>>,
     listener_tx: Arc<Mutex<Option<Sender<LLDBOutput>>>>,
 }
@@ -73,7 +76,9 @@ impl ImplDebugger {
             debugger_cmd,
             run_cmd,
             lldb_status: Arc::new(Mutex::new(LLDBStatus::None)),
+            lldb_pid: None,
             process_status: Arc::new(Mutex::new(ProcessStatus::None)),
+            process_pid: Arc::new(Mutex::new(None)),
             lldb_in_tx: None,
             listener_tx: Arc::new(Mutex::new(None)),
         }
@@ -103,11 +108,12 @@ impl Debugger for ImplDebugger {
 
         let mut cmd = vec![self.debugger_cmd.clone(), "--".to_string()];
         cmd.extend(self.run_cmd.clone());
-        spawn_process(cmd, lldb_in_rx, lldb_out_tx);
+        self.lldb_pid = Some(spawn_process(cmd, lldb_in_rx, lldb_out_tx));
 
         let notifier = self.notifier.clone();
         let lldb_status = self.lldb_status.clone();
         let process_status = self.process_status.clone();
+        let process_pid = self.process_pid.clone();
         let listener_tx = self.listener_tx.clone();
         let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
@@ -205,7 +211,8 @@ impl Debugger for ImplDebugger {
                     for line in data.split("\r\n") {
                         for cap in RE_PROCESS_STARTED.captures_iter(line) {
                             let pid = cap[1].parse::<u64>().unwrap();
-                            *process_status.lock().unwrap() = ProcessStatus::Running(pid);
+                            *process_status.lock().unwrap() = ProcessStatus::Running;
+                            *process_pid.lock().unwrap() = Some(pid);
                             if !listener_tx.lock().unwrap().is_none() {
                                 tokio::spawn(
                                     listener_tx
@@ -225,6 +232,7 @@ impl Debugger for ImplDebugger {
                             let exit_code = cap[2].parse::<u64>().unwrap();
 
                             *process_status.lock().unwrap() = ProcessStatus::None;
+                            *process_pid.lock().unwrap() = None;
                             notifier.lock().unwrap().signal_exited(pid, exit_code);
                             if !listener_tx.lock().unwrap().is_none() {
                                 tokio::spawn(
@@ -453,16 +461,6 @@ impl Debugger for ImplDebugger {
                                 }
                                 _ => {}
                             }
-                        //        tokio::spawn(
-                        //            listener_tx
-                        //                .lock()
-                        //                .unwrap()
-                        //                .take()
-                        //                .unwrap()
-                        //                .send(LLDBOutput::VariableNotFound)
-                        //                .map(|_| {})
-                        //                .map_err(|e| eprintln!("Error sending to analyser: {}", e))
-                        //        );
                         }
                     }
 
@@ -503,6 +501,21 @@ impl Debugger for ImplDebugger {
                 };
             }
         });
+    }
+
+    fn teardown(&mut self) {
+        match *self.process_status.lock().unwrap() {
+            ProcessStatus::None => return,
+            _ => {},
+        };
+
+        match *self.lldb_status.lock().unwrap() {
+            LLDBStatus::None => return,
+            LLDBStatus::Listening => {
+                kill(self.lldb_pid.unwrap(), Signal::SIGINT).unwrap();
+            },
+            LLDBStatus::Working => {},
+        }
     }
 
     fn has_started(&self) -> bool {
