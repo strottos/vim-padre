@@ -76,8 +76,8 @@ fn install_signals(signals: Signals, debugger: Arc<Mutex<debugger::PadreDebugger
     thread::spawn(move || {
         for _ in signals.forever() {
             match debugger.lock() {
-                Ok(s) => {
-                    println!("s: {:?}", s);
+                Ok(mut s) => {
+                    s.stop();
                 },
                 Err(e) => println!("Debug server not found: {}", e),
             };
