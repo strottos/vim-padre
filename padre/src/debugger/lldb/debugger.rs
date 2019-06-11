@@ -23,6 +23,7 @@ pub enum LLDBStatus {
     None,
     Listening,
     Working,
+    Quitting,
 }
 
 #[derive(Debug, Clone)]
@@ -204,7 +205,7 @@ impl Debugger for ImplDebugger {
                             LLDBStatus::Working => {
                                 *lldb_status.lock().unwrap() = LLDBStatus::Listening;
                             }
-                            LLDBStatus::Listening => {}
+                            LLDBStatus::Listening | LLDBStatus::Quitting => {}
                         }
                     }
 
@@ -459,6 +460,15 @@ impl Debugger for ImplDebugger {
                                             .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
                                     );
                                 }
+                                LLDBStatus::Quitting => {
+                                    tokio::spawn(
+                                        lldb_in_tx
+                                            .clone()
+                                            .send(Bytes::from(&b"Y\n"[..]))
+                                            .map(|_| {})
+                                            .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+                                    );
+                                }
                                 _ => {}
                             }
                         }
@@ -506,16 +516,38 @@ impl Debugger for ImplDebugger {
     fn teardown(&mut self) {
         match *self.process_status.lock().unwrap() {
             ProcessStatus::None => return,
-            _ => {},
+            _ => {}
         };
 
-        match *self.lldb_status.lock().unwrap() {
+        let current_status = self.lldb_status.lock().unwrap().clone();
+
+        match current_status {
             LLDBStatus::None => return,
             LLDBStatus::Listening => {
-                kill(self.lldb_pid.unwrap(), Signal::SIGINT).unwrap();
-            },
-            LLDBStatus::Working => {},
+                match self.lldb_pid {
+                    Some(pid) => kill(pid, Signal::SIGINT).unwrap(),
+                    None => (),
+                }
+                *self.lldb_status.lock().unwrap() = LLDBStatus::Quitting;
+            }
+            LLDBStatus::Working => {
+                *self.lldb_status.lock().unwrap() = LLDBStatus::Quitting;
+            }
+            LLDBStatus::Quitting => {}
         }
+
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+
+        let stmt = format!("quit\n");
+
+        tokio::spawn(
+            lldb_in_tx
+                .clone()
+                .send(Bytes::from(&stmt[..]))
+                .timeout(Duration::new(5, 0))
+                .map(|_| {})
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+        );
     }
 
     fn has_started(&self) -> bool {

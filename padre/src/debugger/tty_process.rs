@@ -204,7 +204,11 @@ impl Stream for TtyFileStdioStream {
     }
 }
 
-pub fn spawn_process(argv: Vec<String>, stdin_rx: Receiver<Bytes>, stdout_tx: Sender<Bytes>) -> Pid {
+pub fn spawn_process(
+    argv: Vec<String>,
+    stdin_rx: Receiver<Bytes>,
+    stdout_tx: Sender<Bytes>,
+) -> Pid {
     // Code based on https://github.com/philippkeller/rexpect/blob/master/src/process.rs
     let master_fd = posix_openpt(OFlag::O_RDWR).unwrap();
 
