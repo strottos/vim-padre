@@ -10,10 +10,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use clap::{App, Arg, ArgMatches};
+use signal_hook::iterator::Signals;
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
-use signal_hook::iterator::Signals;
 
 mod debugger;
 mod notifier;
@@ -78,7 +78,7 @@ fn install_signals(signals: Signals, debugger: Arc<Mutex<debugger::PadreDebugger
             match debugger.lock() {
                 Ok(mut s) => {
                     s.stop();
-                },
+                }
                 Err(e) => println!("Debug server not found: {}", e),
             };
             println!("Terminated!");
