@@ -1,7 +1,7 @@
 //! Node debugger
 
 use std::io;
-use std::process::{Command, Stdio, exit};
+use std::process::{exit, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -10,8 +10,8 @@ use crate::notifier::Notifier;
 use crate::util;
 
 use bytes::Bytes;
-use tokio_process::{CommandExt, Child};
 use tokio::prelude::*;
+use tokio_process::{Child, CommandExt};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
@@ -50,12 +50,12 @@ impl Debugger for ImplDebugger {
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let port = util::get_unused_localhost_port();
         let mut cmd = Command::new(self.debugger_cmd.clone())
-                              .arg(format!("--inspect-brk={}", port))
-                              .arg("--")
-                              .args(self.run_cmd.clone())
-                              .stdin(Stdio::piped())
-                              .spawn_async()
-                              .expect("Can't spawn node");
+            .arg(format!("--inspect-brk={}", port))
+            .arg("--")
+            .args(self.run_cmd.clone())
+            .stdin(Stdio::piped())
+            .spawn_async()
+            .expect("Can't spawn node");
 
         let mut node_stdin = cmd.stdin().take().unwrap();
 
@@ -73,13 +73,12 @@ impl Debugger for ImplDebugger {
         });
 
         tokio::spawn(
-            cmd
-            .map(|a| {
+            cmd.map(|a| {
                 println!("process: {}", a);
             })
             .map_err(|e| {
                 eprintln!("Error spawning node: {}", e);
-            })
+            }),
         );
 
         let f = future::lazy(move || {
@@ -146,5 +145,4 @@ impl Debugger for ImplDebugger {
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}
