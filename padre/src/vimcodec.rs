@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use crate::notifier::{LogLevel, Notifier};
-use crate::server::{PadreRequest, PadreRequestCmd, PadreResponse};
+use crate::server::{Request, RequestCmd, Response};
 
 use bytes::{BufMut, BytesMut};
 use tokio::codec::{Decoder, Encoder};
@@ -31,7 +31,7 @@ impl Drop for VimCodec {
 }
 
 impl Decoder for VimCodec {
-    type Item = PadreRequest;
+    type Item = Request;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -216,11 +216,11 @@ impl Decoder for VimCodec {
             None => None,
         };
 
-        let cmd: PadreRequestCmd = match file_location {
-            Some(s) => PadreRequestCmd::CmdWithFileLocation(cmd, s.0, s.1),
+        let cmd: RequestCmd = match file_location {
+            Some(s) => RequestCmd::CmdWithFileLocation(cmd, s.0, s.1),
             None => match variable {
-                Some(s) => PadreRequestCmd::CmdWithVariable(cmd, s),
-                None => PadreRequestCmd::Cmd(cmd),
+                Some(s) => RequestCmd::CmdWithVariable(cmd, s),
+                None => RequestCmd::Cmd(cmd),
             },
         };
 
@@ -234,20 +234,20 @@ impl Decoder for VimCodec {
             );
         }
 
-        let padre_request: PadreRequest = PadreRequest::new(id, cmd);
+        let padre_request: Request = Request::new(id, cmd);
 
         Ok(Some(padre_request))
     }
 }
 
 impl Encoder for VimCodec {
-    type Item = PadreResponse;
+    type Item = Response;
     type Error = io::Error;
 
-    fn encode(&mut self, resp: PadreResponse, buf: &mut BytesMut) -> Result<(), io::Error> {
+    fn encode(&mut self, resp: Response, buf: &mut BytesMut) -> Result<(), io::Error> {
         let response = match resp {
-            PadreResponse::Response(id, json) => serde_json::to_string(&(id, json)).unwrap(),
-            PadreResponse::Notify(cmd, args) => {
+            Response::Response(id, json) => serde_json::to_string(&(id, json)).unwrap(),
+            Response::Notify(cmd, args) => {
                 serde_json::to_string(&("call".to_string(), cmd, args)).unwrap()
             }
         };
@@ -263,7 +263,7 @@ fn send_error_and_debug(
     notifier: Arc<Mutex<Notifier>>,
     err_msg: String,
     debug_msg: String,
-) -> Result<Option<PadreRequest>, io::Error> {
+) -> Result<Option<Request>, io::Error> {
     notifier.lock().unwrap().log_msg(LogLevel::ERROR, err_msg);
     notifier.lock().unwrap().log_msg(LogLevel::DEBUG, debug_msg);
     Ok(None)
@@ -275,7 +275,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::notifier::Notifier;
-    use crate::server::{PadreRequest, PadreRequestCmd, PadreResponse};
+    use crate::server::{Request, RequestCmd, Response};
 
     use bytes::{BufMut, BytesMut};
     use tokio::codec::{Decoder, Encoder};
@@ -295,7 +295,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, PadreRequestCmd::Cmd("run".to_string())),
+            Request::new(123, RequestCmd::Cmd("run".to_string())),
             padre_request
         );
     }
@@ -311,7 +311,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, PadreRequestCmd::Cmd("run".to_string())),
+            Request::new(123, RequestCmd::Cmd("run".to_string())),
             padre_request
         );
 
@@ -321,7 +321,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(124, PadreRequestCmd::Cmd("run".to_string())),
+            Request::new(124, RequestCmd::Cmd("run".to_string())),
             padre_request
         );
     }
@@ -344,7 +344,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, PadreRequestCmd::Cmd("run".to_string())),
+            Request::new(123, RequestCmd::Cmd("run".to_string())),
             padre_request
         );
     }
@@ -369,7 +369,7 @@ mod tests {
     //    println!("PADRE Request: {:?}", padre_request);
 
     //    assert_eq!(
-    //        PadreRequest::new(124, PadreRequestCmd::Cmd("run".to_string())),
+    //        Request::new(124, RequestCmd::Cmd("run".to_string())),
     //        padre_request.unwrap()
     //    );
     //}
@@ -385,9 +385,9 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(
+            Request::new(
                 123,
-                PadreRequestCmd::CmdWithFileLocation(
+                RequestCmd::CmdWithFileLocation(
                     "breakpoint".to_string(),
                     "test.c".to_string(),
                     125
@@ -408,9 +408,9 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(
+            Request::new(
                 123,
-                PadreRequestCmd::CmdWithVariable("print".to_string(), "a".to_string())
+                RequestCmd::CmdWithVariable("print".to_string(), "a".to_string())
             ),
             padre_request
         );
@@ -420,7 +420,7 @@ mod tests {
     fn check_json_encoding_response() {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let mut codec = super::VimCodec::new(get_notifier(), addr);
-        let resp = PadreResponse::Response(123, serde_json::json!({"ping":"pong"}));
+        let resp = Response::Response(123, serde_json::json!({"ping":"pong"}));
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf).unwrap();
 
@@ -435,7 +435,7 @@ mod tests {
     fn check_json_encoding_notify() {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let mut codec = super::VimCodec::new(get_notifier(), addr);
-        let resp = PadreResponse::Notify(
+        let resp = Response::Notify(
             "cmd_test".to_string(),
             vec![serde_json::json!("test"), serde_json::json!(1)],
         );

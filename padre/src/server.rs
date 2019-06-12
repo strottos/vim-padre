@@ -4,7 +4,7 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::debugger::PadreDebugger;
+use crate::debugger::DebugServer;
 use crate::notifier::{LogLevel, Notifier};
 use crate::vimcodec::VimCodec;
 
@@ -14,41 +14,41 @@ use tokio::prelude::*;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Deserialize, Debug, PartialEq)]
-pub enum PadreRequestCmd {
+pub enum RequestCmd {
     Cmd(String),
     CmdWithFileLocation(String, String, u64),
     CmdWithVariable(String, String),
 }
 
 #[derive(Deserialize, Debug, PartialEq)]
-pub struct PadreRequest {
+pub struct Request {
     id: u64,
-    cmd: PadreRequestCmd,
+    cmd: RequestCmd,
 }
 
-impl PadreRequest {
-    pub fn new(id: u64, cmd: PadreRequestCmd) -> Self {
-        PadreRequest { id, cmd }
+impl Request {
+    pub fn new(id: u64, cmd: RequestCmd) -> Self {
+        Request { id, cmd }
     }
 
     pub fn id(&self) -> u64 {
         self.id
     }
 
-    pub fn cmd(&self) -> &PadreRequestCmd {
+    pub fn cmd(&self) -> &RequestCmd {
         &self.cmd
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub enum PadreResponse {
+pub enum Response {
     Response(u64, serde_json::Value),
     Notify(String, Vec<serde_json::Value>),
 }
 
 pub fn process_connection(
     socket: TcpStream,
-    debugger: Arc<Mutex<PadreDebugger>>,
+    debugger: Arc<Mutex<DebugServer>>,
     notifier: Arc<Mutex<Notifier>>,
 ) {
     let addr = socket.peer_addr().unwrap();
@@ -110,12 +110,12 @@ pub fn process_connection(
 }
 
 fn respond(
-    req: PadreRequest,
-    debugger: Arc<Mutex<PadreDebugger>>,
+    req: Request,
+    debugger: Arc<Mutex<DebugServer>>,
     notifier: Arc<Mutex<Notifier>>,
-) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
+) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
     let json_response = match req.cmd() {
-        PadreRequestCmd::Cmd(s) => {
+        RequestCmd::Cmd(s) => {
             let s: &str = s;
             match s {
                 "ping" => debugger.lock().unwrap().ping(),
@@ -127,7 +127,7 @@ fn respond(
     };
 
     let f = future::lazy(move || match json_response {
-        Ok(resp) => Ok(PadreResponse::Response(req.id(), resp)),
+        Ok(resp) => Ok(Response::Response(req.id(), resp)),
         Err(_) => {
             unreachable!();
         }
@@ -137,10 +137,10 @@ fn respond(
 }
 
 fn respond_debugger(
-    req: PadreRequest,
-    debugger: Arc<Mutex<PadreDebugger>>,
+    req: Request,
+    debugger: Arc<Mutex<DebugServer>>,
     notifier: Arc<Mutex<Notifier>>,
-) -> Box<dyn Future<Item = PadreResponse, Error = io::Error> + Send> {
+) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
     let id = req.id();
 
     let f = debugger
@@ -149,14 +149,14 @@ fn respond_debugger(
         .handle(req)
         .timeout(Duration::new(30, 0))
         .then(move |resp| match resp {
-            Ok(s) => Ok(PadreResponse::Response(id, s)),
+            Ok(s) => Ok(Response::Response(id, s)),
             Err(e) => {
                 notifier
                     .lock()
                     .unwrap()
                     .log_msg(LogLevel::ERROR, format!("{}", e));
                 let resp = serde_json::json!({"status":"ERROR"});
-                Ok(PadreResponse::Response(id, resp))
+                Ok(Response::Response(id, resp))
             }
         });
 

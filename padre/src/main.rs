@@ -73,7 +73,7 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn exit_padre(debugger: Arc<Mutex<debugger::PadreDebugger>>) {
+fn exit_padre(debugger: Arc<Mutex<debugger::DebugServer>>) {
     let when = Instant::now() + Duration::new(5, 0);
 
     tokio::spawn({

@@ -10,7 +10,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use crate::notifier::{LogLevel, Notifier};
-use crate::server::{PadreRequest, PadreRequestCmd};
+use crate::server::{Request, RequestCmd};
 
 use tokio::prelude::*;
 
@@ -19,7 +19,7 @@ pub fn get_debugger(
     debugger_type: Option<&str>,
     run_cmd: Vec<String>,
     notifier: Arc<Mutex<Notifier>>,
-) -> PadreDebugger {
+) -> DebugServer {
     let debugger_type = match debugger_type {
         Some(s) => s.to_string(),
         None => match debugger_cmd {
@@ -49,7 +49,7 @@ pub fn get_debugger(
 
     debugger.setup();
 
-    PadreDebugger::new(notifier, debugger)
+    DebugServer::new(notifier, debugger)
 }
 
 pub fn get_debugger_type(cmd: &str) -> Option<String> {
@@ -140,17 +140,17 @@ pub trait Debugger: Debug {
 }
 
 #[derive(Debug)]
-pub struct PadreDebugger {
+pub struct DebugServer {
     notifier: Arc<Mutex<Notifier>>,
     debugger: Box<dyn Debugger + Send>,
 }
 
-impl PadreDebugger {
+impl DebugServer {
     pub fn new(
         notifier: Arc<Mutex<Notifier>>,
         debugger: Box<dyn Debugger + Send>,
-    ) -> PadreDebugger {
-        PadreDebugger { notifier, debugger }
+    ) -> DebugServer {
+        DebugServer { notifier, debugger }
     }
 
     pub fn ping(&self) -> Result<serde_json::Value, io::Error> {
@@ -173,10 +173,10 @@ impl PadreDebugger {
 
     pub fn handle(
         &mut self,
-        req: PadreRequest,
+        req: Request,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         match req.cmd() {
-            PadreRequestCmd::Cmd(cmd) => {
+            RequestCmd::Cmd(cmd) => {
                 let cmd: &str = cmd;
                 match cmd {
                     "run" => self.debugger.run(),
@@ -189,7 +189,7 @@ impl PadreDebugger {
                     ),
                 }
             }
-            PadreRequestCmd::CmdWithFileLocation(cmd, file, line) => {
+            RequestCmd::CmdWithFileLocation(cmd, file, line) => {
                 let cmd: &str = cmd;
                 match cmd {
                     "breakpoint" => self.debugger.breakpoint(file.clone(), *line),
@@ -199,7 +199,7 @@ impl PadreDebugger {
                     ),
                 }
             }
-            PadreRequestCmd::CmdWithVariable(cmd, variable) => {
+            RequestCmd::CmdWithVariable(cmd, variable) => {
                 let cmd: &str = cmd;
                 match cmd {
                     "print" => self.debugger.print(variable),

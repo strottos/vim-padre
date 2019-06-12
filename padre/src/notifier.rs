@@ -4,7 +4,7 @@
 
 use std::net::SocketAddr;
 
-use crate::server::PadreResponse;
+use crate::server::Response;
 
 use tokio::prelude::*;
 use tokio::sync::mpsc::Sender;
@@ -20,7 +20,7 @@ pub enum LogLevel {
 
 #[derive(Debug)]
 struct Listener {
-    sender: Sender<PadreResponse>,
+    sender: Sender<Response>,
     addr: SocketAddr,
     has_started: bool,
 }
@@ -37,7 +37,7 @@ impl Notifier {
         }
     }
 
-    pub fn add_listener(&mut self, sender: Sender<PadreResponse>, addr: SocketAddr) {
+    pub fn add_listener(&mut self, sender: Sender<Response>, addr: SocketAddr) {
         self.listeners.push(Listener {
             sender,
             addr,
@@ -50,7 +50,7 @@ impl Notifier {
     }
 
     pub fn signal_started(&mut self) {
-        let msg = PadreResponse::Notify("padre#debugger#SignalPADREStarted".to_string(), vec![]);
+        let msg = Response::Notify("padre#debugger#SignalPADREStarted".to_string(), vec![]);
         for mut listener in self.listeners.iter_mut() {
             if !listener.has_started {
                 let sender = listener.sender.clone();
@@ -66,7 +66,7 @@ impl Notifier {
     }
 
     pub fn signal_exited(&mut self, pid: u64, exit_code: u64) {
-        let msg = PadreResponse::Notify(
+        let msg = Response::Notify(
             "padre#debugger#ProcessExited".to_string(),
             vec![serde_json::json!(exit_code), serde_json::json!(pid)],
         );
@@ -74,7 +74,7 @@ impl Notifier {
     }
 
     pub fn log_msg(&mut self, level: LogLevel, msg: String) {
-        let msg = PadreResponse::Notify(
+        let msg = Response::Notify(
             "padre#debugger#Log".to_string(),
             vec![serde_json::json!(level as u8), serde_json::json!(msg)],
         );
@@ -82,7 +82,7 @@ impl Notifier {
     }
 
     pub fn jump_to_position(&mut self, file: String, line: u64) {
-        let msg = PadreResponse::Notify(
+        let msg = Response::Notify(
             "padre#debugger#JumpToPosition".to_string(),
             vec![serde_json::json!(file), serde_json::json!(line)],
         );
@@ -90,14 +90,14 @@ impl Notifier {
     }
 
     pub fn breakpoint_set(&mut self, file: String, line: u64) {
-        let msg = PadreResponse::Notify(
+        let msg = Response::Notify(
             "padre#debugger#BreakpointSet".to_string(),
             vec![serde_json::json!(file), serde_json::json!(line)],
         );
         self.send_msg(msg);
     }
 
-    fn send_msg(&mut self, msg: PadreResponse) {
+    fn send_msg(&mut self, msg: Response) {
         for listener in self.listeners.iter_mut() {
             let sender = listener.sender.clone();
             tokio::spawn(
