@@ -275,6 +275,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::notifier::Notifier;
+    use crate::server::{PadreRequest, PadreRequestCmd, PadreResponse};
 
     use bytes::{BufMut, BytesMut};
     use tokio::codec::{Decoder, Encoder};
