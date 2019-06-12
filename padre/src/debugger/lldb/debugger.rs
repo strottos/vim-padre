@@ -4,7 +4,7 @@ use std::io;
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, sleep};
 use std::time::Duration;
 
 use crate::debugger::tty_process::spawn_process;
@@ -525,7 +525,11 @@ impl Debugger for ImplDebugger {
             LLDBStatus::None => return,
             LLDBStatus::Listening => {
                 match self.lldb_pid {
-                    Some(pid) => kill(pid, Signal::SIGTERM).unwrap(),
+                    Some(pid) => {
+                        kill(pid, Signal::SIGTERM).unwrap();
+                        sleep(Duration::new(1, 0));
+                        kill(pid, Signal::SIGKILL).unwrap();
+                    },
                     None => (),
                 }
                 *self.lldb_status.lock().unwrap() = LLDBStatus::Quitting;

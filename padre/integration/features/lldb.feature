@@ -268,8 +268,6 @@ Feature: LLDB
             | function                      | args                                                      |
             | padre#debugger#Log            | [4,"Setting breakpoint in file test.c at line number 17"] |
             | padre#debugger#Log            | [2,"Timed out setting breakpoint"]                        |
-        When I terminate padre
-        Then padre is not running
 
     Scenario: Test print timeout
         Given that we have a file 'test_prog.c'
@@ -283,5 +281,3 @@ Feature: LLDB
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function                      | args                              |
             | padre#debugger#Log            | [2,"Timed out printing variable"] |
-        When I terminate padre
-        Then padre is not running
