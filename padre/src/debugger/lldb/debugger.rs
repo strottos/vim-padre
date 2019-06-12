@@ -529,7 +529,7 @@ impl Debugger for ImplDebugger {
                         kill(pid, Signal::SIGTERM).unwrap();
                         sleep(Duration::new(1, 0));
                         kill(pid, Signal::SIGKILL).unwrap();
-                    },
+                    }
                     None => (),
                 }
                 *self.lldb_status.lock().unwrap() = LLDBStatus::Quitting;
