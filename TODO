@@ -1,6 +1,5 @@
 Blockers for merging rust work:
 - Padre command
-* - Add in proper termination
   - Cleanup code, Server/Request separation is a bit odd atm.
   - Queueing
 - LLDB
@@ -31,6 +30,7 @@ Blockers for merging rust work:
   - (MEDIUM) If rust continue to main main on startup.
   - (LOW) Get things working for multi-threaded programs in LLDB
   - (LOW) Get things working for process spawning in LLDB
+  - (LOW) Fix LLDB terminating via LLDB
 - VIM
   - (CRITICAL) Padre can be ran multiple times without restarting vim
   - (HIGH) Why it no log immediately

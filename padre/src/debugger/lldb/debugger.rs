@@ -4,7 +4,7 @@ use std::io;
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::thread::{self, sleep};
+use std::thread;
 use std::time::Duration;
 
 use crate::debugger::tty_process::spawn_process;
@@ -515,10 +515,8 @@ impl Debugger for ImplDebugger {
 
     fn teardown(&mut self) {
         match *self.process_pid.lock().unwrap() {
-            Some(pid) => {
-                kill(pid, Signal::SIGINT).unwrap()
-            },
-            None => {},
+            Some(pid) => kill(pid, Signal::SIGINT).unwrap(),
+            None => {}
         }
 
         let current_status = self.lldb_status.lock().unwrap().clone();
@@ -529,7 +527,7 @@ impl Debugger for ImplDebugger {
                 match self.lldb_pid {
                     Some(pid) => {
                         kill(pid, Signal::SIGTERM).unwrap();
-                    },
+                    }
                     None => (),
                 }
                 *self.lldb_status.lock().unwrap() = LLDBStatus::Quitting;
@@ -555,7 +553,7 @@ impl Debugger for ImplDebugger {
         //        .map(|_| {})
         //        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         //);
-    }   //
+    } //
 
     fn has_started(&self) -> bool {
         match *self.lldb_status.lock().unwrap() {
