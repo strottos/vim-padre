@@ -1,7 +1,7 @@
 //! Codec for communicating with VIM
 
-use std::io;
 use std::collections::HashMap;
+use std::io;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 

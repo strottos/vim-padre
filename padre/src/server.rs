@@ -1,8 +1,8 @@
 //! handle server connections
 
 use std::io;
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::debugger::PadreDebugger;
 use crate::notifier::{LogLevel, Notifier};
@@ -53,9 +53,7 @@ pub fn process_connection(
 ) {
     let addr = socket.peer_addr().unwrap();
 
-    let (request_tx, request_rx) = VimCodec::new(notifier.clone(), addr)
-        .framed(socket)
-        .split();
+    let (request_tx, request_rx) = VimCodec::new(notifier.clone(), addr).framed(socket).split();
 
     let (connection_tx, connection_rx) = mpsc::channel(1);
 
