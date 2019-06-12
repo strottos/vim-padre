@@ -12,6 +12,7 @@ use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
 
 use bytes::Bytes;
+use nix::errno::Errno;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use regex::Regex;
@@ -515,7 +516,14 @@ impl Debugger for ImplDebugger {
 
     fn teardown(&mut self) {
         match *self.process_pid.lock().unwrap() {
-            Some(pid) => kill(pid, Signal::SIGINT).unwrap(),
+            Some(pid) => match kill(pid, Signal::SIGINT) {
+                Ok(_) => {},
+                Err(e) => {
+                    if e.as_errno().unwrap() != Errno::ESRCH {
+                        panic!("Can't kill process: {}", e);
+                    }
+                },
+            }
             None => {}
         }
 
