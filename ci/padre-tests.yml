@@ -8,7 +8,7 @@ steps:
   - script: |
       sudo apt-get install software-properties-common python3 python3-pip python3-setuptools
       pip3 install wheel
-      pip3 install behave pyhamcrest
+      pip3 install behave pyhamcrest psutil
     displayName: Install python dependencies
 
   - script: |
