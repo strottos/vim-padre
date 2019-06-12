@@ -20,6 +20,7 @@ mod debugger;
 mod notifier;
 mod server;
 mod vimcodec;
+mod util;
 
 fn get_config<'a>() -> ArgMatches<'a> {
     let app = App::new("VIM Padre")
