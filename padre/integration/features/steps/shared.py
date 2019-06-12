@@ -673,15 +673,8 @@ def padre_not_running(context):
     assert_that(context.padre.process.returncode,
                 equal_to(0), "Expected 0 exit code")
 
-    execute = ["pgrep", "lldb|padre|{}".format(context.program)]
-    proc = subprocess.run(execute,
-                          stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE,
-                          check=True,
-                          cwd=os.getcwd())
-    running = set([int(x)
-                   for x in proc.stdout.decode().split('\n')
-                   if x != ""])
+    running = set(psutil.pids())
+
     assert_that(context.padre.pid, is_not(is_in(running)),
                 "Padre Pid found Running")
     for child in context.padre.children:

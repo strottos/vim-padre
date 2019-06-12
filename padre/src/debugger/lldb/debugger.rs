@@ -525,9 +525,7 @@ impl Debugger for ImplDebugger {
             LLDBStatus::None => return,
             LLDBStatus::Listening => {
                 match self.lldb_pid {
-                    Some(pid) => {
-                        kill(pid, Signal::SIGTERM).unwrap();
-                    }
+                    Some(pid) => kill(pid, Signal::SIGTERM).unwrap(),
                     None => (),
                 }
                 *self.lldb_status.lock().unwrap() = LLDBStatus::Quitting;
