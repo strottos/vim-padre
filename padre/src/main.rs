@@ -7,13 +7,14 @@ use std::io;
 use std::net::SocketAddr;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::time::{Duration, Instant};
 
 use clap::{App, Arg, ArgMatches};
-use signal_hook::iterator::Signals;
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
+use tokio::timer::Delay;
+use tokio_signal::unix::{Signal, SIGINT, SIGQUIT, SIGTERM};
 
 mod debugger;
 mod notifier;
@@ -72,19 +73,23 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn install_signals(signals: Signals, debugger: Arc<Mutex<debugger::PadreDebugger>>) {
-    thread::spawn(move || {
-        for _ in signals.forever() {
-            match debugger.lock() {
-                Ok(mut s) => {
-                    s.stop();
-                }
-                Err(e) => println!("Debug server not found: {}", e),
-            };
-            println!("Terminated!");
-            exit(0);
-        }
+fn exit_padre(
+    debugger: Arc<Mutex<debugger::PadreDebugger>>,
+) {
+    let when = Instant::now() + Duration::new(5, 0);
+
+    tokio::spawn({
+        Delay::new(when)
+            .map_err(|e| panic!("timer failed; err={:?}", e))
+            .and_then(|_| {
+                println!("Timed out exiting!");
+                exit(-1);
+                #[allow(unreachable_code)]
+                Ok(())
+            })
     });
+
+    debugger.lock().unwrap().stop();
 }
 
 struct Runner {}
@@ -117,8 +122,44 @@ impl Future for Runner {
             notifier.clone(),
         )));
 
-        let signals = Signals::new(&[signal_hook::SIGINT, signal_hook::SIGTERM]).unwrap();
-        install_signals(signals, debugger.clone());
+        let debugger_signal = debugger.clone();
+        let signals = Signal::new(SIGINT)
+            .flatten_stream()
+            .for_each(move |_| {
+                exit_padre(debugger_signal.clone());
+                Ok(())
+            })
+            .map_err(|e| {
+                println!("Caught SIGINT Error: {:?}", e);
+            });
+
+        let debugger_signal = debugger.clone();
+        let signals = Signal::new(SIGQUIT)
+            .flatten_stream()
+            .for_each(move |_| {
+                exit_padre(debugger_signal.clone());
+                Ok(())
+            })
+            .map_err(|e| {
+                println!("Caught SIGQUIT Error: {:?}", e);
+            })
+            .join(signals)
+            .map(|_| {});
+
+        let debugger_signal = debugger.clone();
+        let signals = Signal::new(SIGTERM)
+            .flatten_stream()
+            .for_each(move |_| {
+                exit_padre(debugger_signal.clone());
+                Ok(())
+            })
+            .map_err(|e| {
+                println!("Caught SIGTERM Error: {:?}", e);
+            })
+            .join(signals)
+            .map(|_| {});
+
+        tokio::spawn(signals);
 
         tokio::spawn(
             listener

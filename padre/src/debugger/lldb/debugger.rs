@@ -4,7 +4,7 @@ use std::io;
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, sleep};
 use std::time::Duration;
 
 use crate::debugger::tty_process::spawn_process;
@@ -38,9 +38,9 @@ pub enum LLDBOutput {
     NoProcess,
     LLDBStarted,
     // (PID)
-    ProcessLaunched(u64),
+    ProcessLaunched(Pid),
     // (PID, Exit code)
-    ProcessExited(u64, u64),
+    ProcessExited(Pid, u64),
     // (File name, line number)
     Breakpoint(String, u64),
     // (File name, line number)
@@ -61,7 +61,7 @@ pub struct ImplDebugger {
     lldb_status: Arc<Mutex<LLDBStatus>>,
     lldb_pid: Option<Pid>,
     process_status: Arc<Mutex<ProcessStatus>>,
-    process_pid: Arc<Mutex<Option<u64>>>,
+    process_pid: Arc<Mutex<Option<Pid>>>,
     lldb_in_tx: Option<Sender<Bytes>>,
     listener_tx: Arc<Mutex<Option<Sender<LLDBOutput>>>>,
 }
@@ -211,7 +211,7 @@ impl Debugger for ImplDebugger {
 
                     for line in data.split("\r\n") {
                         for cap in RE_PROCESS_STARTED.captures_iter(line) {
-                            let pid = cap[1].parse::<u64>().unwrap();
+                            let pid = Pid::from_raw(cap[1].parse::<i32>().unwrap());
                             *process_status.lock().unwrap() = ProcessStatus::Running;
                             *process_pid.lock().unwrap() = Some(pid);
                             if !listener_tx.lock().unwrap().is_none() {
@@ -229,12 +229,12 @@ impl Debugger for ImplDebugger {
                         }
 
                         for cap in RE_PROCESS_EXITED.captures_iter(line) {
-                            let pid = cap[1].parse::<u64>().unwrap();
+                            let pid = Pid::from_raw(cap[1].parse::<i32>().unwrap());
                             let exit_code = cap[2].parse::<u64>().unwrap();
 
                             *process_status.lock().unwrap() = ProcessStatus::None;
                             *process_pid.lock().unwrap() = None;
-                            notifier.lock().unwrap().signal_exited(pid, exit_code);
+                            notifier.lock().unwrap().signal_exited(pid.as_raw() as u64, exit_code);
                             if !listener_tx.lock().unwrap().is_none() {
                                 tokio::spawn(
                                     listener_tx
@@ -514,10 +514,12 @@ impl Debugger for ImplDebugger {
     }
 
     fn teardown(&mut self) {
-        match *self.process_status.lock().unwrap() {
-            ProcessStatus::None => return,
-            _ => {}
-        };
+        match *self.process_pid.lock().unwrap() {
+            Some(pid) => {
+                kill(pid, Signal::SIGINT).unwrap()
+            },
+            None => {},
+        }
 
         let current_status = self.lldb_status.lock().unwrap().clone();
 
@@ -525,7 +527,9 @@ impl Debugger for ImplDebugger {
             LLDBStatus::None => return,
             LLDBStatus::Listening => {
                 match self.lldb_pid {
-                    Some(pid) => kill(pid, Signal::SIGINT).unwrap(),
+                    Some(pid) => {
+                        kill(pid, Signal::SIGTERM).unwrap();
+                    },
                     None => (),
                 }
                 *self.lldb_status.lock().unwrap() = LLDBStatus::Quitting;
@@ -536,19 +540,22 @@ impl Debugger for ImplDebugger {
             LLDBStatus::Quitting => {}
         }
 
-        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+        exit(0);
 
-        let stmt = format!("quit\n");
-
-        tokio::spawn(
-            lldb_in_tx
-                .clone()
-                .send(Bytes::from(&stmt[..]))
-                .timeout(Duration::new(5, 0))
-                .map(|_| {})
-                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
-        );
-    }
+        // TODO: Preferred method
+        //
+        //let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+        //
+        //let stmt = format!("quit\n");
+        //
+        //tokio::spawn(
+        //    lldb_in_tx
+        //        .clone()
+        //        .send(Bytes::from(&stmt[..]))
+        //        .map(|_| {})
+        //        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+        //);
+    }   //
 
     fn has_started(&self) -> bool {
         match *self.lldb_status.lock().unwrap() {
