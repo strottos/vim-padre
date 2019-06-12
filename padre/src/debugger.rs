@@ -146,10 +146,7 @@ pub struct DebugServer {
 }
 
 impl DebugServer {
-    pub fn new(
-        notifier: Arc<Mutex<Notifier>>,
-        debugger: Box<dyn Debugger + Send>,
-    ) -> DebugServer {
+    pub fn new(notifier: Arc<Mutex<Notifier>>, debugger: Box<dyn Debugger + Send>) -> DebugServer {
         DebugServer { notifier, debugger }
     }
 
