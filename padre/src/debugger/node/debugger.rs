@@ -9,9 +9,8 @@ use crate::debugger::Debugger;
 use crate::notifier::Notifier;
 use crate::util;
 
-use bytes::Bytes;
 use tokio::prelude::*;
-use tokio_process::{Child, CommandExt};
+use tokio_process::CommandExt;
 
 #[derive(Debug)]
 pub struct ImplDebugger {
