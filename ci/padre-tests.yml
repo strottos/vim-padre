@@ -14,11 +14,15 @@ steps:
   - script: |
       cd padre
       cargo test -- --nocapture
-      cargo junit --name TESTS-cargo.xml
     env:
       RUST_BACKTRACE: 1
       RUSTFLAGS: '-D warnings'
     displayName: Run Padre CLI unit testing
+
+  - script: |
+      cd padre
+      cargo junit --name TESTS-cargo.xml
+    displayName: Run Padre CLI unit testing reporting
 
   - script: |
       sudo apt-get install -y lldb-5.0 gcc
