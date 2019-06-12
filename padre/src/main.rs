@@ -18,8 +18,8 @@ use tokio_signal::unix::{Signal, SIGINT, SIGQUIT, SIGTERM};
 
 mod debugger;
 mod notifier;
-mod request;
 mod server;
+mod vimcodec;
 
 fn get_config<'a>() -> ArgMatches<'a> {
     let app = App::new("VIM Padre")

@@ -10,7 +10,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use crate::notifier::{LogLevel, Notifier};
-use crate::request::{PadreRequest, PadreRequestCmd};
+use crate::server::{PadreRequest, PadreRequestCmd};
 
 use tokio::prelude::*;
 

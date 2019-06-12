@@ -1,7 +1,6 @@
 Blockers for merging rust work:
 - Padre command
   - Cleanup code, Server/Request separation is a bit odd atm.
-  - Queueing
 - LLDB
   - Proper variable printing for rust and C++
   - Better Error Handling, doesn't panic
@@ -10,10 +9,9 @@ Blockers for merging rust work:
 - NodeJS Debugger (ideally done after Padre command bits)
 
 - Padre command
+  - (HIGH) Queueing of requests
   - (HIGH) Performance stress test
   - (HIGH) Update README with video
-  - (HIGH) Do all TODOs
-  - (HIGH) Queueing of requests
   - (HIGH) Support requesting non-existent files, e.g. assembly for LLDB and internal scripts for Node.
   - (HIGH) run arguments
   - (HIGH) Make things more configurable
