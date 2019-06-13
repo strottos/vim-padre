@@ -9,6 +9,7 @@ use crate::debugger::Debugger;
 use crate::notifier::Notifier;
 use crate::util;
 
+use hyper::Client;
 use tokio::prelude::*;
 use tokio_process::CommandExt;
 
@@ -53,10 +54,12 @@ impl Debugger for ImplDebugger {
             .arg("--")
             .args(self.run_cmd.clone())
             .stdin(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn_async()
             .expect("Can't spawn node");
 
         let mut node_stdin = cmd.stdin().take().unwrap();
+        let node_stderr = cmd.stderr().take().unwrap();
 
         thread::spawn(move || {
             let mut stdin = io::stdin();
@@ -71,6 +74,17 @@ impl Debugger for ImplDebugger {
             }
         });
 
+        let reader = io::BufReader::new(node_stderr);
+        let lines = tokio::io::lines(reader);
+        tokio::spawn(
+            lines.for_each(move |l| {
+                eprintln!("{}", l);
+                Ok(())
+            })
+            .map(|a| println!("stderr: {:?}", a))
+            .map_err(|e| println!("stderr err: {:?}", e))
+        );
+
         tokio::spawn(
             cmd.map(|a| {
                 println!("process: {}", a);
@@ -79,6 +93,20 @@ impl Debugger for ImplDebugger {
                 eprintln!("Error spawning node: {}", e);
             }),
         );
+
+        let uri = format!("http://127.0.0.1:{}/json", port).parse().unwrap();
+
+        tokio::spawn(
+            Client::new()
+                .get(uri)
+                .map(|out| {
+                    println!("Out: {:?}", out);
+                })
+                .map_err(|e| {
+                    println!("Error sending to node: {}", e);
+                })
+        );
+        //let node_details: Vec<NodeDetails> = response.json().unwrap();
 
         let f = future::lazy(move || {
             let resp = serde_json::json!({"status":"OK"});
@@ -141,6 +169,17 @@ impl Debugger for ImplDebugger {
 
         Box::new(f)
     }
+}
+
+#[derive(Deserialize, Debug)]
+struct NodeDetails {
+    description: String,
+    devtoolsFrontendUrl: String,
+    faviconUrl: String,
+    id: String,
+    title: String,
+    url: String,
+    webSocketDebuggerUrl: String,
 }
 
 #[cfg(test)]
