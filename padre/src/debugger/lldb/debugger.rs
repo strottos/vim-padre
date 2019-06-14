@@ -100,6 +100,7 @@ impl ImplDebugger {
 
 impl Debugger for ImplDebugger {
     fn setup(&mut self) {
+        //TODO
         //self.check_path_exists(&self.debugger_cmd);
         self.check_path_exists(&self.run_cmd[0]);
 

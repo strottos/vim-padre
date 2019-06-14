@@ -8,11 +8,11 @@ Feature: NodeJS
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test_files/test_prog.js","line":16}'
-        Then I receive a response 'PENDING'
+        Then I receive a response '{"status":"PENDING"}'
         When I send a request to PADRE '{"cmd":"run"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                  |
-            | padre#debugger#JumpToPosition | [".*test_prog.js",1]  |
+            | padre#debugger#JumpToPosition | [".*test_prog.js",22] |
             | padre#debugger#BreakpointSet  | [".*test_prog.js",16] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test_files/test_prog.js","line":19}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with

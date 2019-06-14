@@ -195,6 +195,7 @@ def run_padre(context, timeout=20):
                 os.path.dirname(os.path.realpath(__file__)),
                 "../../../target/debug/padre"
             ), "--debugger={}".format(context.padre.program_type),
+            "--type={}".format(context.padre.program_type),
             "--host={}".format("127.0.0.1"),
             "--port={}".format(context.padre.port), context.padre.executable,
             stdin=asyncio.subprocess.PIPE,
@@ -548,6 +549,7 @@ def check_response_in(results, request_number, expected_response):
                 equal_to(request_number),
                 "Found correct request number")
 
+    print(expected_response)
     expected_response = json.loads(expected_response)
     check_json(response[1], expected_response)
 
