@@ -225,19 +225,33 @@ impl Debugger for ImplDebugger {
     }
 
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
+        let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
+
+        let f = ws_tx
+            .send(OwnedMessage::Text(
+                "{\"method\":\"Debugger.stepInto\"}".to_string(),
+            ))
+            .map(|_| serde_json::json!({"status":"OK"}))
+            .map_err(|e| {
+                eprintln!("Error sending stepping in: {:?}", e);
+                io::Error::new(io::ErrorKind::Other, "Timed out stepping in")
+            });
 
         Box::new(f)
     }
 
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
+        let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
+
+        let f = ws_tx
+            .send(OwnedMessage::Text(
+                "{\"method\":\"Debugger.stepOver\"}".to_string(),
+            ))
+            .map(|_| serde_json::json!({"status":"OK"}))
+            .map_err(|e| {
+                eprintln!("Error sending stepping in: {:?}", e);
+                io::Error::new(io::ErrorKind::Other, "Timed out stepping in")
+            });
 
         Box::new(f)
     }
@@ -245,10 +259,17 @@ impl Debugger for ImplDebugger {
     fn continue_on(
         &mut self,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
+        let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
+
+        let f = ws_tx
+            .send(OwnedMessage::Text(
+                "{\"method\":\"Debugger.resume\"}".to_string(),
+            ))
+            .map(|_| serde_json::json!({"status":"OK"}))
+            .map_err(|e| {
+                eprintln!("Error sending stepping in: {:?}", e);
+                io::Error::new(io::ErrorKind::Other, "Timed out stepping in")
+            });
 
         Box::new(f)
     }
@@ -400,7 +421,13 @@ fn analyse_message(
         };
 
         if method == "Debugger.scriptParsed" {
-            analyse_script_parsed(json, ws_tx.clone(), scripts.clone(), pending_breakpoints.clone(), notifier.clone());
+            analyse_script_parsed(
+                json,
+                ws_tx.clone(),
+                scripts.clone(),
+                pending_breakpoints.clone(),
+                notifier.clone(),
+            );
         } else if method == "Runtime.executionContextCreated" {
             tokio::spawn(otx.clone().send(true).map(|_| {}).map_err(|e| {
                 eprintln!("Error spawning node: {:?}", e);
@@ -478,10 +505,7 @@ fn analyse_script_parsed(
     });
 }
 
-fn analyse_debugger_paused(
-    mut json: serde_json::Value,
-    notifier: Arc<Mutex<Notifier>>,
-) {
+fn analyse_debugger_paused(mut json: serde_json::Value, notifier: Arc<Mutex<Notifier>>) {
     let file = json["params"]["callFrames"][0]["url"].take();
     let file: String = match serde_json::from_value(file) {
         Ok(s) => {
@@ -501,16 +525,13 @@ fn analyse_debugger_paused(
         Ok(s) => {
             let s: u64 = s;
             s + 1
-        },
+        }
         Err(e) => {
             panic!("Can't understand line_num: {:?}", e);
         }
     };
 
-    notifier
-        .lock()
-        .unwrap()
-        .jump_to_position(file, line_num);
+    notifier.lock().unwrap().jump_to_position(file, line_num);
 }
 
 fn add_id_to_message(msg: OwnedMessage, ws_id: Arc<Mutex<u64>>) -> OwnedMessage {
@@ -557,19 +578,21 @@ mod tests {
     #[test]
     fn check_simple_response() {
         let msg = OwnedMessage::Text("{\"id\":1,\"result\":{}}".to_string());
-        let (tx, _rx) = mpsc::channel(1);
+        let (tx, _) = mpsc::channel(1);
+        let (tx2, _) = mpsc::channel(1);
         let scripts = Arc::new(Mutex::new(vec![]));
         let pending_breakpoints: Arc<Mutex<Vec<super::FileLocation>>> =
             Arc::new(Mutex::new(vec![]));
         let notifier = Arc::new(Mutex::new(notifier::Notifier::new()));
 
-        super::analyse_message(msg, tx, scripts, pending_breakpoints, notifier);
+        super::analyse_message(msg, tx, tx2, scripts, pending_breakpoints, notifier);
     }
 
     #[test]
     fn check_internal_script_parsed() {
         let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"7\",\"url\":\"internal/bootstrap/loaders.js\",\"startLine\":0,\"startColumn\":0,\"endLine\":312,\"endColumn\":0,\"executionContextId\":1,\"hash\":\"39ff95c38ab7c4bb459aabfe5c5eb3a27441a4d8\",\"executionContextAuxData\":{\"isDefault\":true},\"isLiveEdit\":false,\"sourceMapURL\":\"\",\"hasSourceURL\":false,\"isModule\":false,\"length\":9613}}".to_string());
-        let (tx, _rx) = mpsc::channel(1);
+        let (tx, _) = mpsc::channel(1);
+        let (tx2, _) = mpsc::channel(1);
         let scripts = Arc::new(Mutex::new(vec![]));
         let pending_breakpoints: Arc<Mutex<Vec<super::FileLocation>>> =
             Arc::new(Mutex::new(vec![]));
@@ -578,6 +601,7 @@ mod tests {
         super::analyse_message(
             msg,
             tx.clone(),
+            tx2.clone(),
             scripts.clone(),
             pending_breakpoints.clone(),
             notifier.clone(),
@@ -596,7 +620,7 @@ mod tests {
 
         let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"8\",\"url\":\"internal/bootstrap/node.js\",\"startLine\":0,\"startColumn\":0,\"endLine\":438,\"endColumn\":0,\"executionContextId\":1,\"hash\":\"3f184a9d8a71f2554b8b31895d935027129c91c4\",\"executionContextAuxData\":{\"isDefault\":true},\"isLiveEdit\":false,\"sourceMapURL\":\"\",\"hasSourceURL\":false,\"isModule\":false,\"length\":14904}}".to_string());
 
-        super::analyse_message(msg, tx, scripts.clone(), pending_breakpoints, notifier);
+        super::analyse_message(msg, tx, tx2, scripts.clone(), pending_breakpoints, notifier);
 
         assert_eq!(scripts.clone().lock().unwrap().len(), 2);
         assert_eq!(
@@ -613,13 +637,14 @@ mod tests {
     #[test]
     fn check_file_script_parsed() {
         let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"52\",\"url\":\"file:///home/me/test.js\"}}".to_string());
-        let (tx, _rx) = mpsc::channel(1);
+        let (tx, _) = mpsc::channel(1);
+        let (tx2, _) = mpsc::channel(1);
         let scripts = Arc::new(Mutex::new(vec![]));
         let pending_breakpoints: Arc<Mutex<Vec<super::FileLocation>>> =
             Arc::new(Mutex::new(vec![]));
         let notifier = Arc::new(Mutex::new(notifier::Notifier::new()));
 
-        super::analyse_message(msg, tx, scripts.clone(), pending_breakpoints, notifier);
+        super::analyse_message(msg, tx, tx2, scripts.clone(), pending_breakpoints, notifier);
 
         assert_eq!(scripts.clone().lock().unwrap().len(), 1);
         assert_eq!(
