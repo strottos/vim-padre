@@ -154,10 +154,9 @@ impl Debugger for ImplDebugger {
 
         let f = listener_rx
             .take(4)
-            .for_each(move |results| {
-                println!("Results: {}", results.0);
-                if &results.0 == "Runtime.executionContextCreated" {
-                    let mut pid_str: String = match serde_json::from_value(results.1) {
+            .for_each(move |(identifier, value)| {
+                if identifier == "Runtime.executionContextCreated" {
+                    let mut pid_str: String = match serde_json::from_value(value) {
                         Ok(s) => s,
                         Err(e) => {
                             panic!("Can't understand pid: {:?}", e);
@@ -167,7 +166,7 @@ impl Debugger for ImplDebugger {
                     pid_str = pid_str[5..to].to_string();
                     *pid.lock().unwrap() = Some(pid_str);
                 }
-                found.lock().unwrap().insert(results.0);
+                found.lock().unwrap().insert(identifier);
                 Ok(())
             })
             .into_future()
@@ -213,14 +212,58 @@ impl Debugger for ImplDebugger {
                     if script.file == file {
                         let ws_tx = self.ws_tx.clone();
 
-                        let tx = ws_tx.lock().unwrap().clone().unwrap();
+                        let (listener_tx, listener_rx) = mpsc::channel(1);
 
-                        let f = tx.send(OwnedMessage::Text(
-                                format!("{{\"method\":\"Debugger.setBreakpoint\",\"params\":{{\"location\":{{\"scriptId\":{},\"lineNumber\":{}}}}}}}", script.script_id, line_num - 1)
-                            )).map(|_| {
-                                serde_json::json!({"status":"OK"})
-                            }).map_err(|e| {
-                                eprintln!("Error sending breakpoint to node: {:?}", e);
+                        *self.listener.lock().unwrap() = Some(listener_tx);
+                        let listener = self.listener.clone();
+
+                        let id = get_next_ws_id(self.ws_id.clone());
+                        let msg = OwnedMessage::Text(
+                            format!("{{\"id\":{},\"method\":\"Debugger.setBreakpoint\",\"params\":{{\"location\":{{\"scriptId\":\"{}\",\"lineNumber\":{}}}}}}}", id, script.script_id, line_num - 1)
+                        );
+
+                        tokio::spawn(
+                            ws_tx
+                                .lock()
+                                .unwrap()
+                                .clone()
+                                .unwrap()
+                                .send(msg)
+                                .map(|_| {})
+                                .map_err(|e| {
+                                    eprintln!("Error sending breakpoint to node: {:?}", e);
+                                }),
+                        );
+
+                        let success = Arc::new(Mutex::new(serde_json::json!(null)));
+                        let success_found = success.clone();
+                        let notifier = self.notifier.clone();
+
+                        let f = listener_rx
+                            .take_while(move |(identifier, value)| {
+                                if identifier == &format!("{}", id) {
+                                    *success.lock().unwrap() = value.clone();
+                                    Ok(false)
+                                } else {
+                                    Ok(true)
+                                }
+                            })
+                            .into_future()
+                            .map(move |_| {
+                                *listener.lock().unwrap() = None;
+                                let success = success_found.lock().unwrap().clone();
+                                if success["error"].is_null() {
+                                    serde_json::json!({"status":"OK"})
+                                } else {
+                                    notifier.lock().unwrap().log_msg(
+                                        LogLevel::ERROR,
+                                        format!("Error setting breakpoint: {}", success),
+                                    );
+                                    serde_json::json!({"status":"ERROR"})
+                                }
+                            })
+                            .map_err(|e| {
+                                eprintln!("Error sending breakpoint to node: {:?}", e.0);
                                 io::Error::new(io::ErrorKind::Other, "Timed out sending breakpoint")
                             });
 
@@ -266,10 +309,14 @@ impl Debugger for ImplDebugger {
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
 
+        let id = get_next_ws_id(self.ws_id.clone());
+        let msg = OwnedMessage::Text(format!(
+            "{{\"id\":{},\"method\":\"Debugger.stepInto\"}}",
+            id
+        ));
+
         let f = ws_tx
-            .send(OwnedMessage::Text(
-                "{\"method\":\"Debugger.stepInto\"}".to_string(),
-            ))
+            .send(msg)
             .map(|_| serde_json::json!({"status":"OK"}))
             .map_err(|e| {
                 eprintln!("Error sending stepping in: {:?}", e);
@@ -282,10 +329,14 @@ impl Debugger for ImplDebugger {
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
 
+        let id = get_next_ws_id(self.ws_id.clone());
+        let msg = OwnedMessage::Text(format!(
+            "{{\"id\":{},\"method\":\"Debugger.stepOver\"}}",
+            id
+        ));
+
         let f = ws_tx
-            .send(OwnedMessage::Text(
-                "{\"method\":\"Debugger.stepOver\"}".to_string(),
-            ))
+            .send(msg)
             .map(|_| serde_json::json!({"status":"OK"}))
             .map_err(|e| {
                 eprintln!("Error sending stepping in: {:?}", e);
@@ -300,10 +351,11 @@ impl Debugger for ImplDebugger {
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
 
+        let id = get_next_ws_id(self.ws_id.clone());
+        let msg = OwnedMessage::Text(format!("{{\"id\":{},\"method\":\"Debugger.resume\"}}", id));
+
         let f = ws_tx
-            .send(OwnedMessage::Text(
-                "{\"method\":\"Debugger.resume\"}".to_string(),
-            ))
+            .send(msg)
             .map(|_| serde_json::json!({"status":"OK"}))
             .map_err(|e| {
                 eprintln!("Error sending stepping in: {:?}", e);
@@ -367,47 +419,22 @@ fn analyse_line(
                 let tx_setup = tx.clone();
                 let scripts = scripts.clone();
 
-                tokio::spawn(
-                    tx_setup
-                        .clone()
-                        .send(OwnedMessage::Text(
-                            "{\"method\":\"Runtime.enable\"}".to_string(),
-                        ))
-                        .map(|a| {
-                            println!("Sending setup: {:?}", a);
-                        })
-                        .map_err(|e| {
-                            println!("Error sending setup: {:?}", e);
-                        }),
-                );
+                let msg = OwnedMessage::Text("{\"method\":\"Runtime.enable\"}".to_string());
+                let msg = add_id_to_message(msg, ws_id.clone());
 
-                tokio::spawn(
-                    tx_setup
-                        .clone()
-                        .send(OwnedMessage::Text(
-                            "{\"method\":\"Debugger.enable\"}".to_string(),
-                        ))
-                        .map(|a| {
-                            println!("Sending setup: {:?}", a);
-                        })
-                        .map_err(|e| {
-                            println!("Error sending setup: {:?}", e);
-                        }),
-                );
+                send_message(tx_setup.clone(), msg);
 
-                tokio::spawn(
-                    tx_setup
-                        .clone()
-                        .send(OwnedMessage::Text(
-                            "{\"method\":\"Runtime.runIfWaitingForDebugger\"}".to_string(),
-                        ))
-                        .map(move |a| {
-                            println!("Sending setup: {:?}", a);
-                        })
-                        .map_err(|e| {
-                            println!("Error sending setup: {:?}", e);
-                        }),
+                let msg = OwnedMessage::Text("{\"method\":\"Debugger.enable\"}".to_string());
+                let msg = add_id_to_message(msg, ws_id.clone());
+
+                send_message(tx_setup.clone(), msg);
+
+                let msg = OwnedMessage::Text(
+                    "{\"method\":\"Runtime.runIfWaitingForDebugger\"}".to_string(),
                 );
+                let msg = add_id_to_message(msg, ws_id.clone());
+
+                send_message(tx_setup.clone(), msg);
 
                 let ws_tx = tx.clone();
 
@@ -416,6 +443,7 @@ fn analyse_line(
                         analyse_message(
                             message,
                             ws_tx.clone(),
+                            ws_id.clone(),
                             listener.clone(),
                             scripts.clone(),
                             pending_breakpoints.clone(),
@@ -425,7 +453,6 @@ fn analyse_line(
                         None
                     })
                     .select(rx.map_err(|_| WebSocketError::NoDataAvailable))
-                    .map(move |msg| add_id_to_message(msg, ws_id.clone()))
                     .forward(sink)
             })
             .map(|_| ())
@@ -435,9 +462,22 @@ fn analyse_line(
     }
 }
 
+fn send_message(tx: Sender<OwnedMessage>, msg: OwnedMessage) {
+    tokio::spawn(
+        tx.send(msg)
+            .map(|a| {
+                println!("Sending setup: {:?}", a);
+            })
+            .map_err(|e| {
+                println!("Error sending setup: {:?}", e);
+            }),
+    );
+}
+
 fn analyse_message(
     message: OwnedMessage,
     ws_tx: Sender<OwnedMessage>,
+    ws_id: Arc<Mutex<u64>>,
     listener: Arc<Mutex<Option<Sender<(String, serde_json::Value)>>>>,
     scripts: Arc<Mutex<Vec<Script>>>,
     pending_breakpoints: Arc<Mutex<Vec<FileLocation>>>,
@@ -464,6 +504,7 @@ fn analyse_message(
             analyse_script_parsed(
                 json,
                 ws_tx.clone(),
+                ws_id.clone(),
                 scripts.clone(),
                 pending_breakpoints.clone(),
                 notifier.clone(),
@@ -488,7 +529,6 @@ fn analyse_message(
         } else if method == "Debugger.resumed" {
             println!("TODO: Code {:?}", message);
         } else if method == "Runtime.consoleAPICalled" {
-            println!("TODO: Code {:?}", message);
         } else if method == "Runtime.exceptionThrown" {
             println!("TODO: Code {:?}", message);
         } else {
@@ -505,9 +545,10 @@ fn analyse_message(
                         panic!("Can't understand id: {:?}", e);
                     }
                 };
+                json["id"] = serde_json::json!(id);
                 tokio::spawn(
                     listener_tx
-                        .send((format!("{}", id), json["result"].take()))
+                        .send((format!("{}", id), json))
                         .map(|_| {})
                         .map_err(|e| {
                             eprintln!("Error spawning node: {:?}", e);
@@ -524,6 +565,7 @@ fn analyse_message(
 fn analyse_script_parsed(
     json: serde_json::Value,
     ws_tx: Sender<OwnedMessage>,
+    ws_id: Arc<Mutex<u64>>,
     scripts: Arc<Mutex<Vec<Script>>>,
     pending_breakpoints: Arc<Mutex<Vec<FileLocation>>>,
     notifier: Arc<Mutex<Notifier>>,
@@ -557,14 +599,14 @@ fn analyse_script_parsed(
 
     for bkpt in pending_breakpoints.lock().unwrap().iter() {
         if bkpt.file == file {
-            tokio::spawn(
-                ws_tx.clone().send(OwnedMessage::Text(
-                    format!("{{\"method\":\"Debugger.setBreakpoint\",\"params\":{{\"location\":{{\"scriptId\":{},\"lineNumber\":{}}}}}}}", script_id, bkpt.line_num - 1)
-                )).map(|_| {
-                }).map_err(|e| {
-                    eprintln!("Error sending breakpoint to node: {:?}", e);
-                })
+            let id = get_next_ws_id(ws_id.clone());
+            let msg = OwnedMessage::Text(
+                format!("{{\"id\":{},\"method\":\"Debugger.setBreakpoint\",\"params\":{{\"location\":{{\"scriptId\":\"{}\",\"lineNumber\":{}}}}}}}", id, script_id, bkpt.line_num - 1)
             );
+
+            tokio::spawn(ws_tx.clone().send(msg).map(|_| {}).map_err(|e| {
+                eprintln!("Error sending breakpoint to node: {:?}", e);
+            }));
 
             notifier
                 .lock()
@@ -614,13 +656,17 @@ fn add_id_to_message(msg: OwnedMessage, ws_id: Arc<Mutex<u64>>) -> OwnedMessage 
     println!("MESAGE: {:?}", msg);
     if let OwnedMessage::Text(s) = &msg {
         let mut json: serde_json::Value = serde_json::from_str(s).unwrap();
-        let id = *ws_id.lock().unwrap();
-        *ws_id.lock().unwrap() += 1;
-        json["id"] = serde_json::json!(id);
+        json["id"] = serde_json::json!(get_next_ws_id(ws_id));
         OwnedMessage::Text(json.to_string())
     } else {
         unreachable!();
     }
+}
+
+fn get_next_ws_id(ws_id: Arc<Mutex<u64>>) -> u64 {
+    let id = *ws_id.lock().unwrap();
+    *ws_id.lock().unwrap() += 1;
+    id
 }
 
 #[cfg(test)]
@@ -655,20 +701,30 @@ mod tests {
     fn check_simple_response() {
         let msg = OwnedMessage::Text("{\"id\":1,\"result\":{}}".to_string());
         let (tx, _) = mpsc::channel(1);
-        let (tx2, _) = mpsc::channel(1);
+        let ws_id = Arc::new(Mutex::new(100));
+        let listener_none = Arc::new(Mutex::new(None));
         let scripts = Arc::new(Mutex::new(vec![]));
         let pending_breakpoints: Arc<Mutex<Vec<super::FileLocation>>> =
             Arc::new(Mutex::new(vec![]));
         let notifier = Arc::new(Mutex::new(notifier::Notifier::new()));
 
-        super::analyse_message(msg, tx, tx2, scripts, pending_breakpoints, notifier);
+        super::analyse_message(
+            msg,
+            tx,
+            ws_id,
+            listener_none,
+            scripts,
+            pending_breakpoints,
+            notifier,
+        );
     }
 
     #[test]
     fn check_internal_script_parsed() {
         let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"7\",\"url\":\"internal/bootstrap/loaders.js\",\"startLine\":0,\"startColumn\":0,\"endLine\":312,\"endColumn\":0,\"executionContextId\":1,\"hash\":\"39ff95c38ab7c4bb459aabfe5c5eb3a27441a4d8\",\"executionContextAuxData\":{\"isDefault\":true},\"isLiveEdit\":false,\"sourceMapURL\":\"\",\"hasSourceURL\":false,\"isModule\":false,\"length\":9613}}".to_string());
         let (tx, _) = mpsc::channel(1);
-        let (tx2, _) = mpsc::channel(1);
+        let ws_id = Arc::new(Mutex::new(100));
+        let listener_none = Arc::new(Mutex::new(None));
         let scripts = Arc::new(Mutex::new(vec![]));
         let pending_breakpoints: Arc<Mutex<Vec<super::FileLocation>>> =
             Arc::new(Mutex::new(vec![]));
@@ -677,7 +733,8 @@ mod tests {
         super::analyse_message(
             msg,
             tx.clone(),
-            tx2.clone(),
+            ws_id.clone(),
+            listener_none.clone(),
             scripts.clone(),
             pending_breakpoints.clone(),
             notifier.clone(),
@@ -696,7 +753,15 @@ mod tests {
 
         let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"8\",\"url\":\"internal/bootstrap/node.js\",\"startLine\":0,\"startColumn\":0,\"endLine\":438,\"endColumn\":0,\"executionContextId\":1,\"hash\":\"3f184a9d8a71f2554b8b31895d935027129c91c4\",\"executionContextAuxData\":{\"isDefault\":true},\"isLiveEdit\":false,\"sourceMapURL\":\"\",\"hasSourceURL\":false,\"isModule\":false,\"length\":14904}}".to_string());
 
-        super::analyse_message(msg, tx, tx2, scripts.clone(), pending_breakpoints, notifier);
+        super::analyse_message(
+            msg,
+            tx,
+            ws_id,
+            listener_none,
+            scripts.clone(),
+            pending_breakpoints,
+            notifier,
+        );
 
         assert_eq!(scripts.clone().lock().unwrap().len(), 2);
         assert_eq!(
@@ -714,13 +779,22 @@ mod tests {
     fn check_file_script_parsed() {
         let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"52\",\"url\":\"file:///home/me/test.js\"}}".to_string());
         let (tx, _) = mpsc::channel(1);
-        let (tx2, _) = mpsc::channel(1);
+        let ws_id = Arc::new(Mutex::new(100));
+        let listener_none = Arc::new(Mutex::new(None));
         let scripts = Arc::new(Mutex::new(vec![]));
         let pending_breakpoints: Arc<Mutex<Vec<super::FileLocation>>> =
             Arc::new(Mutex::new(vec![]));
         let notifier = Arc::new(Mutex::new(notifier::Notifier::new()));
 
-        super::analyse_message(msg, tx, tx2, scripts.clone(), pending_breakpoints, notifier);
+        super::analyse_message(
+            msg,
+            tx,
+            ws_id,
+            listener_none,
+            scripts.clone(),
+            pending_breakpoints,
+            notifier,
+        );
 
         assert_eq!(scripts.clone().lock().unwrap().len(), 1);
         assert_eq!(
