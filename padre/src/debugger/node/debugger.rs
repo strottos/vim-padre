@@ -1,5 +1,6 @@
 //! Node debugger
 
+use std::collections::HashSet;
 use std::io;
 use std::path::Path;
 use std::process::{exit, Command, Stdio};
@@ -37,6 +38,7 @@ pub struct ImplDebugger {
     debugger_cmd: String,
     run_cmd: Vec<String>,
     node_process: Option<Command>,
+    listener: Arc<Mutex<Option<Sender<(String, serde_json::Value)>>>>,
     ws_tx: Arc<Mutex<Option<Sender<OwnedMessage>>>>,
     ws_id: Arc<Mutex<u64>>,
     pending_breakpoints: Arc<Mutex<Vec<FileLocation>>>,
@@ -54,6 +56,7 @@ impl ImplDebugger {
             debugger_cmd,
             run_cmd,
             node_process: None,
+            listener: Arc::new(Mutex::new(None)),
             ws_tx: Arc::new(Mutex::new(None)),
             ws_id: Arc::new(Mutex::new(1)),
             pending_breakpoints: Arc::new(Mutex::new(vec![])),
@@ -108,7 +111,10 @@ impl Debugger for ImplDebugger {
         let pending_breakpoints = self.pending_breakpoints.clone();
         let notifier = self.notifier.clone();
 
-        let (otx, orx) = mpsc::channel(1);
+        let (listener_tx, listener_rx) = mpsc::channel(1);
+
+        *self.listener.lock().unwrap() = Some(listener_tx);
+        let listener = self.listener.clone();
 
         tokio::spawn(
             lines
@@ -120,7 +126,7 @@ impl Debugger for ImplDebugger {
                         port,
                         ws_tx.clone(),
                         ws_id.clone(),
-                        otx.clone(),
+                        listener.clone(),
                         scripts.clone(),
                         pending_breakpoints.clone(),
                         notifier.clone(),
@@ -140,14 +146,47 @@ impl Debugger for ImplDebugger {
             }),
         );
 
-        let f = orx
-            .take(1)
+        let listener = self.listener.clone();
+        let found = Arc::new(Mutex::new(HashSet::new()));
+        let found_check = found.clone();
+        let pid = Arc::new(Mutex::new(None));
+        let pid_found = pid.clone();
+
+        let f = listener_rx
+            .take(4)
+            .for_each(move |results| {
+                println!("Results: {}", results.0);
+                if &results.0 == "Runtime.executionContextCreated" {
+                    let mut pid_str: String = match serde_json::from_value(results.1) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            panic!("Can't understand pid: {:?}", e);
+                        }
+                    };
+                    let to = pid_str.len() - 1;
+                    pid_str = pid_str[5..to].to_string();
+                    *pid.lock().unwrap() = Some(pid_str);
+                }
+                found.lock().unwrap().insert(results.0);
+                Ok(())
+            })
             .into_future()
-            .map(|ok| {
+            .map(move |_| {
+                *listener.lock().unwrap() = None;
+                let expected: HashSet<String> = [
+                    "1".to_string(),
+                    "2".to_string(),
+                    "3".to_string(),
+                    "Runtime.executionContextCreated".to_string(),
+                ]
+                .iter()
+                .cloned()
+                .collect();
                 let resp;
-                if ok.0.unwrap() {
-                    resp = serde_json::json!({"status":"OK"});
+                if expected == *found_check.lock().unwrap() {
+                    resp = serde_json::json!({"status":"OK","pid":*pid_found.lock().unwrap()});
                 } else {
+                    println!("BALLS");
                     resp = serde_json::json!({"status":"ERROR"});
                 }
                 resp
@@ -292,7 +331,7 @@ fn analyse_line(
     port: u16,
     ws_tx: Arc<Mutex<Option<Sender<OwnedMessage>>>>,
     ws_id: Arc<Mutex<u64>>,
-    otx: Sender<bool>,
+    listener: Arc<Mutex<Option<Sender<(String, serde_json::Value)>>>>,
     scripts: Arc<Mutex<Vec<Script>>>,
     pending_breakpoints: Arc<Mutex<Vec<FileLocation>>>,
     notifier: Arc<Mutex<Notifier>>,
@@ -314,7 +353,7 @@ fn analyse_line(
         let (tx, rx) = mpsc::channel(1);
         *ws_tx.clone().lock().unwrap() = Some(tx.clone());
         let ws_id = ws_id.clone();
-        let otx = otx.clone();
+        let listener = listener.clone();
         let scripts = scripts.clone();
         let pending_breakpoints = pending_breakpoints.clone();
         let notifier = notifier.clone();
@@ -377,7 +416,7 @@ fn analyse_line(
                         analyse_message(
                             message,
                             ws_tx.clone(),
-                            otx.clone(),
+                            listener.clone(),
                             scripts.clone(),
                             pending_breakpoints.clone(),
                             notifier.clone(),
@@ -399,11 +438,12 @@ fn analyse_line(
 fn analyse_message(
     message: OwnedMessage,
     ws_tx: Sender<OwnedMessage>,
-    otx: Sender<bool>,
+    listener: Arc<Mutex<Option<Sender<(String, serde_json::Value)>>>>,
     scripts: Arc<Mutex<Vec<Script>>>,
     pending_breakpoints: Arc<Mutex<Vec<FileLocation>>>,
     notifier: Arc<Mutex<Notifier>>,
 ) {
+    println!("message: {:?}", &message);
     let mut json: serde_json::Value;
     if let OwnedMessage::Text(s) = &message {
         json = serde_json::from_str(s).unwrap();
@@ -429,18 +469,53 @@ fn analyse_message(
                 notifier.clone(),
             );
         } else if method == "Runtime.executionContextCreated" {
-            tokio::spawn(otx.clone().send(true).map(|_| {}).map_err(|e| {
-                eprintln!("Error spawning node: {:?}", e);
-            }));
+            let listener_tx = listener.clone().lock().unwrap().clone();
+            match listener_tx {
+                Some(listener_tx) => {
+                    tokio::spawn(
+                        listener_tx
+                            .send((method, json["params"]["context"]["name"].take()))
+                            .map(|_| {})
+                            .map_err(|e| {
+                                eprintln!("Error spawning node: {:?}", e);
+                            }),
+                    );
+                }
+                None => {}
+            };
         } else if method == "Debugger.paused" {
             analyse_debugger_paused(json, notifier.clone());
+        } else if method == "Debugger.resumed" {
+            println!("TODO: Code {:?}", message);
+        } else if method == "Runtime.consoleAPICalled" {
+            println!("TODO: Code {:?}", message);
         } else if method == "Runtime.exceptionThrown" {
             println!("TODO: Code {:?}", message);
         } else {
             panic!("Can't understand message: {:?}", message);
         }
     } else if json["id"].is_number() {
-        println!("Handling id {}", json["id"]);
+        let listener_tx = listener.clone().lock().unwrap().clone();
+        match listener_tx {
+            Some(listener_tx) => {
+                let id = json["id"].take();
+                let id: u64 = match serde_json::from_value(id) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        panic!("Can't understand id: {:?}", e);
+                    }
+                };
+                tokio::spawn(
+                    listener_tx
+                        .send((format!("{}", id), json["result"].take()))
+                        .map(|_| {})
+                        .map_err(|e| {
+                            eprintln!("Error spawning node: {:?}", e);
+                        }),
+                );
+            }
+            None => {}
+        };
     } else {
         panic!("Can't understand message: {:?}", json)
     }
@@ -506,6 +581,7 @@ fn analyse_script_parsed(
 }
 
 fn analyse_debugger_paused(mut json: serde_json::Value, notifier: Arc<Mutex<Notifier>>) {
+    println!("JSON: {:?}", json);
     let file = json["params"]["callFrames"][0]["url"].take();
     let file: String = match serde_json::from_value(file) {
         Ok(s) => {

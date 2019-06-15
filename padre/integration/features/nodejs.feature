@@ -10,7 +10,7 @@ Feature: NodeJS
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test_files/test_prog.js","line":16}'
         Then I receive a response '{"status":"PENDING"}'
         When I send a request to PADRE '{"cmd":"run"}'
-        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
             | function                      | args                  |
             | padre#debugger#JumpToPosition | [".*test_prog.js",22] |
             | padre#debugger#BreakpointSet  | [".*test_prog.js",16] |
@@ -18,10 +18,6 @@ Feature: NodeJS
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                  |
             | padre#debugger#BreakpointSet  | [".*test_prog.js",19] |
-        When I send a request to PADRE '{"cmd":"stepOver"}'
-        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                  |
-            | padre#debugger#JumpToPosition | [".*test_prog.js",22] |
         When I send a request to PADRE '{"cmd":"stepOver"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                  |
