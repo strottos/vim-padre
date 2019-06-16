@@ -1,7 +1,6 @@
 steps:
   - bash: |
       sudo apt-get update
-      sudo apt-get upgrade
       sudo apt-get install -y lldb-5.0 gcc
       sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
