@@ -211,9 +211,19 @@ impl Debugger for ImplDebugger {
                     if script.file == file {
                         let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
 
-                        let msg = OwnedMessage::Text(
-                            format!("{{\"method\":\"Debugger.setBreakpoint\",\"params\":{{\"location\":{{\"scriptId\":\"{}\",\"lineNumber\":{}}}}}}}", script.script_id, line_num - 1)
-                        );
+                        let msg = OwnedMessage::Text(format!(
+                            "{{\
+                             \"method\":\"Debugger.setBreakpoint\",\
+                             \"params\":{{\
+                             \"location\":{{\
+                             \"scriptId\":\"{}\",\
+                             \"lineNumber\":{}\
+                             }}\
+                             }}\
+                             }}",
+                            script.script_id,
+                            line_num - 1
+                        ));
 
                         let notifier = self.notifier.clone();
 
@@ -224,8 +234,8 @@ impl Debugger for ImplDebugger {
                             self.notifier.clone(),
                             self.ws_id.clone(),
                         )
-                        .map(move |success| {
-                            if success {
+                        .map(move |response| {
+                            if response.0 {
                                 notifier
                                     .lock()
                                     .unwrap()
@@ -283,8 +293,8 @@ impl Debugger for ImplDebugger {
             self.notifier.clone(),
             self.ws_id.clone(),
         )
-        .map(|success| {
-            if success {
+        .map(|response| {
+            if response.0 {
                 serde_json::json!({"status":"OK"})
             } else {
                 serde_json::json!({"status":"ERROR"})
@@ -306,8 +316,8 @@ impl Debugger for ImplDebugger {
             self.notifier.clone(),
             self.ws_id.clone(),
         )
-        .map(|success| {
-            if success {
+        .map(|response| {
+            if response.0 {
                 serde_json::json!({"status":"OK"})
             } else {
                 serde_json::json!({"status":"ERROR"})
@@ -331,8 +341,8 @@ impl Debugger for ImplDebugger {
             self.notifier.clone(),
             self.ws_id.clone(),
         )
-        .map(|success| {
-            if success {
+        .map(|response| {
+            if response.0 {
                 serde_json::json!({"status":"OK"})
             } else {
                 serde_json::json!({"status":"ERROR"})
@@ -344,11 +354,46 @@ impl Debugger for ImplDebugger {
 
     fn print(
         &mut self,
-        _variable: &str,
+        variable: &str,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
+        let ws_tx = self.ws_tx.lock().unwrap().clone().unwrap();
+
+        let msg = OwnedMessage::Text(format!(
+            "{{\
+             \"method\":\"Debugger.evaluateOnCallFrame\",\
+             \"params\":{{\
+             \"callFrameId\":\"{{\\\"ordinal\\\":0,\\\"injectedScriptId\\\":1}}\",\
+             \"expression\":\"{}\",\
+             \"returnByValue\":true\
+             }}\
+             }}",
+            variable,
+        ));
+
+        let variable = variable.to_string();
+
+        let f = send_and_receive_message(
+            ws_tx,
+            msg,
+            self.listener.clone(),
+            self.notifier.clone(),
+            self.ws_id.clone(),
+        )
+        .map(move |response| {
+            println!("Response: {:?}", response);
+            if response.0 {
+                let mut json = response.1;
+                let variable_type = json["result"]["result"]["type"].take();
+                let value = json["result"]["result"]["value"].take();
+                serde_json::json!({
+                    "status": "OK",
+                    "type": variable_type,
+                    "variable": variable,
+                    "value": value,
+                })
+            } else {
+                serde_json::json!({"status":"ERROR"})
+            }
         });
 
         Box::new(f)
@@ -451,7 +496,7 @@ fn send_and_receive_message(
     listener: Arc<Mutex<Option<Sender<(String, serde_json::Value)>>>>,
     notifier: Arc<Mutex<Notifier>>,
     ws_id: Arc<Mutex<u64>>,
-) -> Box<dyn Future<Item = bool, Error = io::Error> + Send> {
+) -> Box<dyn Future<Item = (bool, serde_json::Value), Error = io::Error> + Send> {
     let (listener_tx, listener_rx) = mpsc::channel(1);
     *listener.lock().unwrap() = Some(listener_tx);
 
@@ -461,13 +506,13 @@ fn send_and_receive_message(
 
     send_message(tx, msg);
 
-    let success = Arc::new(Mutex::new(serde_json::json!(null)));
-    let success_found = success.clone();
+    let response = Arc::new(Mutex::new(serde_json::json!(null)));
+    let response_found = response.clone();
 
     let f = listener_rx
         .take_while(move |(identifier, value)| {
             if identifier == &format!("{}", id) {
-                *success.lock().unwrap() = value.clone();
+                *response.lock().unwrap() = value.clone();
                 Ok(false)
             } else {
                 Ok(true)
@@ -476,15 +521,15 @@ fn send_and_receive_message(
         .into_future()
         .map(move |_| {
             *listener.lock().unwrap() = None;
-            let success = success_found.lock().unwrap().clone();
-            if success["error"].is_null() {
-                true
+            let response = response_found.lock().unwrap().clone();
+            if response["error"].is_null() {
+                (true, response)
             } else {
                 notifier.lock().unwrap().log_msg(
                     LogLevel::ERROR,
-                    format!("Error received from node: {}", success),
+                    format!("Error received from node: {}", response),
                 );
-                false
+                (false, response)
             }
         })
         .map_err(|e| {
@@ -579,7 +624,10 @@ fn analyse_message(
             None => {}
         };
     } else {
-        panic!("Can't understand message: {:?}", json)
+        notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::ERROR, format!("Response error: {}", json));
     }
 }
 
@@ -637,8 +685,8 @@ fn analyse_script_parsed(
                     notifier.clone(),
                     ws_id.clone(),
                 )
-                .map(move |success| {
-                    if success {
+                .map(move |response| {
+                    if response.0 {
                         notifier_breakpoint
                             .lock()
                             .unwrap()
@@ -650,7 +698,7 @@ fn analyse_script_parsed(
                 .map_err(|e| {
                     eprintln!("Error setting pending breakpoint: {}", e);
                     ()
-                })
+                }),
             );
         }
     }
@@ -734,7 +782,6 @@ mod tests {
         assert_eq!(101, *ws_id.lock().unwrap());
     }
 
-    // TODO
     #[test]
     fn check_simple_response() {
         let msg = OwnedMessage::Text("{\"id\":1,\"result\":{}}".to_string());
@@ -759,7 +806,30 @@ mod tests {
 
     #[test]
     fn check_internal_script_parsed() {
-        let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"7\",\"url\":\"internal/bootstrap/loaders.js\",\"startLine\":0,\"startColumn\":0,\"endLine\":312,\"endColumn\":0,\"executionContextId\":1,\"hash\":\"39ff95c38ab7c4bb459aabfe5c5eb3a27441a4d8\",\"executionContextAuxData\":{\"isDefault\":true},\"isLiveEdit\":false,\"sourceMapURL\":\"\",\"hasSourceURL\":false,\"isModule\":false,\"length\":9613}}".to_string());
+        let msg = OwnedMessage::Text(
+            "{\
+             \"method\":\"Debugger.scriptParsed\",\
+             \"params\":{\
+             \"scriptId\":\"7\",\
+             \"url\":\"internal/bootstrap/loaders.js\",\
+             \"startLine\":0,\
+             \"startColumn\":0,\
+             \"endLine\":312,\
+             \"endColumn\":0,\
+             \"executionContextId\":1,\
+             \"hash\":\"39ff95c38ab7c4bb459aabfe5c5eb3a27441a4d8\",\
+             \"executionContextAuxData\":{\
+             \"isDefault\":true\
+             },\
+             \"isLiveEdit\":false,\
+             \"sourceMapURL\":\"\",\
+             \"hasSourceURL\":false,\
+             \"isModule\":false,\
+             \"length\":9613\
+             }\
+             }"
+            .to_string(),
+        );
         let (tx, _) = mpsc::channel(1);
         let ws_id = Arc::new(Mutex::new(100));
         let listener_none = Arc::new(Mutex::new(None));
@@ -789,7 +859,30 @@ mod tests {
         );
         assert_eq!(scripts.clone().lock().unwrap()[0].is_internal, false);
 
-        let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"8\",\"url\":\"internal/bootstrap/node.js\",\"startLine\":0,\"startColumn\":0,\"endLine\":438,\"endColumn\":0,\"executionContextId\":1,\"hash\":\"3f184a9d8a71f2554b8b31895d935027129c91c4\",\"executionContextAuxData\":{\"isDefault\":true},\"isLiveEdit\":false,\"sourceMapURL\":\"\",\"hasSourceURL\":false,\"isModule\":false,\"length\":14904}}".to_string());
+        let msg = OwnedMessage::Text(
+            "{\
+             \"method\":\"Debugger.scriptParsed\",\
+             \"params\":{\
+             \"scriptId\":\"8\",\
+             \"url\":\"internal/bootstrap/node.js\",\
+             \"startLine\":0,\
+             \"startColumn\":0,\
+             \"endLine\":438,\
+             \"endColumn\":0,\
+             \"executionContextId\":1,\
+             \"hash\":\"3f184a9d8a71f2554b8b31895d935027129c91c4\",\
+             \"executionContextAuxData\":{\
+             \"isDefault\":true\
+             },\
+             \"isLiveEdit\":false,\
+             \"sourceMapURL\":\"\",\
+             \"hasSourceURL\":false,\
+             \"isModule\":false,\
+             \"length\":14904\
+             }\
+             }"
+            .to_string(),
+        );
 
         super::analyse_message(
             msg,
@@ -815,7 +908,16 @@ mod tests {
 
     #[test]
     fn check_file_script_parsed() {
-        let msg = OwnedMessage::Text("{\"method\":\"Debugger.scriptParsed\",\"params\":{\"scriptId\":\"52\",\"url\":\"file:///home/me/test.js\"}}".to_string());
+        let msg = OwnedMessage::Text(
+            "{\
+             \"method\":\"Debugger.scriptParsed\",\
+             \"params\":{\
+             \"scriptId\":\"52\",\
+             \"url\":\"file:///home/me/test.js\"\
+             }\
+             }"
+            .to_string(),
+        );
         let (tx, _) = mpsc::channel(1);
         let ws_id = Arc::new(Mutex::new(100));
         let listener_none = Arc::new(Mutex::new(None));

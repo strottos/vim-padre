@@ -549,7 +549,6 @@ def check_response_in(results, request_number, expected_response):
                 equal_to(request_number),
                 "Found correct request number")
 
-    print(expected_response)
     expected_response = json.loads(expected_response)
     check_json(response[1], expected_response)
 
@@ -563,7 +562,11 @@ def check_json(response, expected_response):
                 "Got correct keys in response")
 
     for key in response.keys():
-        if not isinstance(response[key], dict):
+        if isinstance(response[key], int):
+            assert_that(response[key],
+                        expected_response[key],
+                        "Integers match")
+        elif not isinstance(response[key], dict):
             assert_that(response[key],
                         matches_regexp(expected_response[key]),
                         "Response regexp matches")
