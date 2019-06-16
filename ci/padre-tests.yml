@@ -1,5 +1,7 @@
 steps:
-  - script: |
+  - bash: |
+      sudo apt-get update
+      sudo apt-get upgrade
       sudo apt-get install -y lldb-5.0 gcc
       sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
@@ -8,6 +10,8 @@ steps:
       sudo apt-get remove -y nodejs
       curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
       sudo apt-get install -y nodejs
+      which node
+      find / | grep node
       node -v
     displayName: Install lldb-5, node-12 and build essentials
 
