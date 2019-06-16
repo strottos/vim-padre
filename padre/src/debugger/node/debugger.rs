@@ -462,6 +462,7 @@ fn analyse_line(
 
                 stream
                     .filter_map(move |message| {
+                        println!("MSG: {:?}", message);
                         analyse_message(
                             message,
                             ws_tx.clone(),
@@ -596,6 +597,8 @@ fn analyse_message(
             println!("TODO: Code {:?}", message);
         } else if method == "Runtime.consoleAPICalled" {
         } else if method == "Runtime.exceptionThrown" {
+            println!("TODO: Code {:?}", message);
+        } else if method == "Runtime.executionContextDestroyed" {
             println!("TODO: Code {:?}", message);
         } else {
             panic!("Can't understand message: {:?}", message);
