@@ -41,7 +41,7 @@ pub enum LLDBOutput {
     // (PID)
     ProcessLaunched(Pid),
     // (PID, Exit code)
-    ProcessExited(Pid, u64),
+    ProcessExited(Pid, i64),
     // (File name, line number)
     Breakpoint(String, u64),
     // (File name, line number)
@@ -232,7 +232,7 @@ impl Debugger for ImplDebugger {
 
                         for cap in RE_PROCESS_EXITED.captures_iter(line) {
                             let pid = Pid::from_raw(cap[1].parse::<i32>().unwrap());
-                            let exit_code = cap[2].parse::<u64>().unwrap();
+                            let exit_code = cap[2].parse::<i64>().unwrap();
 
                             *process_status.lock().unwrap() = ProcessStatus::None;
                             *process_pid.lock().unwrap() = None;

@@ -65,7 +65,7 @@ impl Notifier {
         }
     }
 
-    pub fn signal_exited(&mut self, pid: u64, exit_code: u64) {
+    pub fn signal_exited(&mut self, pid: u64, exit_code: i64) {
         let msg = Response::Notify(
             "padre#debugger#ProcessExited".to_string(),
             vec![serde_json::json!(exit_code), serde_json::json!(pid)],

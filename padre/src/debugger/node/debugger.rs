@@ -137,9 +137,14 @@ impl Debugger for ImplDebugger {
                 .map_err(|e| println!("stderr err: {:?}", e)),
         );
 
+        let notifier = self.notifier.clone();
+
         tokio::spawn(
-            cmd.map(|a| {
-                println!("process: {}", a);
+            cmd.map(move |exit_status| {
+                notifier
+                    .lock()
+                    .unwrap()
+                    .signal_exited(0, exit_status.code().unwrap() as i64);
             })
             .map_err(|e| {
                 eprintln!("Error spawning node: {}", e);
@@ -462,7 +467,6 @@ fn analyse_line(
 
                 stream
                     .filter_map(move |message| {
-                        println!("MSG: {:?}", message);
                         analyse_message(
                             message,
                             ws_tx.clone(),
@@ -553,6 +557,8 @@ fn analyse_message(
     let mut json: serde_json::Value;
     if let OwnedMessage::Text(s) = &message {
         json = serde_json::from_str(s).unwrap();
+    } else if message.is_close() {
+        return;
     } else {
         panic!("Can't understand message: {:?}", message)
     }
@@ -599,7 +605,7 @@ fn analyse_message(
         } else if method == "Runtime.exceptionThrown" {
             println!("TODO: Code {:?}", message);
         } else if method == "Runtime.executionContextDestroyed" {
-            println!("TODO: Code {:?}", message);
+            send_message(ws_tx.clone(), OwnedMessage::Close(None));
         } else {
             panic!("Can't understand message: {:?}", message);
         }

@@ -41,7 +41,7 @@ Feature: NodeJS
         When I send a request to PADRE '{"cmd":"print","variable":"b"}'
         Then I receive a response '{"status":"OK","variable":"b","value":123,"type":"number"}'
         When I send a request to PADRE '{"cmd":"continue"}'
-        Then I receive both a response 'OK' and I expect to be called with
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                     | args       |
             | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate padre
