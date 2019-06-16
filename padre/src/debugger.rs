@@ -111,7 +111,11 @@ fn is_node(cmd: &str) -> bool {
         return true;
     }
 
-    if cmd_file_type.contains("ELF") && cmd == "node" {
+    if (cmd_file_type.contains("ELF")
+        || (cmd_file_type.contains("Mach-O")
+            && cmd_file_type.to_ascii_lowercase().contains("executable")))
+        && cmd == "node"
+    {
         return true;
     }
 

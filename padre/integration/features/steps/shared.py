@@ -195,7 +195,6 @@ def run_padre(context, timeout=20):
                 os.path.dirname(os.path.realpath(__file__)),
                 "../../../target/debug/padre"
             ), "--debugger={}".format(context.padre.program_type),
-            "--type={}".format(context.padre.program_type),
             "--host={}".format("127.0.0.1"),
             "--port={}".format(context.padre.port), context.padre.executable,
             stdin=asyncio.subprocess.PIPE,
