@@ -29,7 +29,9 @@ steps:
       sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/lib/llvm-5.0/bin/lldb-server-5.0.0
-    displayName: Install lldb and build essentials
+      curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+    displayName: Install lldb-5, node-12 and build essentials
 
   - script: |
       cd padre
