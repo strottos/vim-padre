@@ -125,7 +125,8 @@ impl Debugger for ImplDebugger {
 
         let mut cmd = vec![self.debugger_cmd.clone(), "--".to_string()];
         cmd.extend(self.run_cmd.clone());
-        self.lldb_handler.lock().unwrap().lldb_pid = Some(spawn_process(cmd, lldb_in_rx, lldb_out_tx));
+        self.lldb_handler.lock().unwrap().lldb_pid =
+            Some(spawn_process(cmd, lldb_in_rx, lldb_out_tx));
 
         let lldb_handler = self.lldb_handler.clone();
 
@@ -163,7 +164,14 @@ impl Debugger for ImplDebugger {
     }
 
     fn teardown(&mut self) {
-        match *self.lldb_handler.lock().unwrap().process_pid.lock().unwrap() {
+        match *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .process_pid
+            .lock()
+            .unwrap()
+        {
             Some(pid) => match kill(pid, Signal::SIGINT) {
                 Ok(_) => {}
                 Err(e) => {
@@ -175,7 +183,14 @@ impl Debugger for ImplDebugger {
             None => {}
         }
 
-        let current_status = self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap().clone();
+        let current_status = self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap()
+            .clone();
 
         match current_status {
             LLDBStatus::None => return,
@@ -188,10 +203,22 @@ impl Debugger for ImplDebugger {
                     }
                     None => (),
                 }
-                *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Quitting;
+                *self
+                    .lldb_handler
+                    .lock()
+                    .unwrap()
+                    .lldb_status
+                    .lock()
+                    .unwrap() = LLDBStatus::Quitting;
             }
             LLDBStatus::Working => {
-                *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Quitting;
+                *self
+                    .lldb_handler
+                    .lock()
+                    .unwrap()
+                    .lldb_status
+                    .lock()
+                    .unwrap() = LLDBStatus::Quitting;
             }
             LLDBStatus::Quitting => {}
         }
@@ -214,14 +241,27 @@ impl Debugger for ImplDebugger {
     }
 
     fn has_started(&self) -> bool {
-        match *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() {
+        match *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap()
+        {
             LLDBStatus::None => false,
             _ => true,
         }
     }
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Working;
+        *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap() = LLDBStatus::Working;
 
         self.notifier
             .lock()
@@ -264,7 +304,13 @@ impl Debugger for ImplDebugger {
             })
             .and_then(move |_| {
                 let (tx, rx) = mpsc::channel(1);
-                *lldb_handler.clone().lock().unwrap().listener_tx.lock().unwrap() = Some(tx);
+                *lldb_handler
+                    .clone()
+                    .lock()
+                    .unwrap()
+                    .listener_tx
+                    .lock()
+                    .unwrap() = Some(tx);
 
                 let stmt = format!("process launch\n");
 
@@ -307,7 +353,13 @@ impl Debugger for ImplDebugger {
         file: String,
         line: u64,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Working;
+        *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap() = LLDBStatus::Working;
 
         self.notifier.lock().unwrap().log_msg(
             LogLevel::INFO,
@@ -365,7 +417,13 @@ impl Debugger for ImplDebugger {
     }
 
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Working;
+        *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap() = LLDBStatus::Working;
 
         let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
 
@@ -388,7 +446,13 @@ impl Debugger for ImplDebugger {
     }
 
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Working;
+        *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap() = LLDBStatus::Working;
 
         let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
 
@@ -413,7 +477,13 @@ impl Debugger for ImplDebugger {
     fn continue_on(
         &mut self,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Working;
+        *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap() = LLDBStatus::Working;
 
         let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
 
@@ -439,7 +509,13 @@ impl Debugger for ImplDebugger {
         &mut self,
         variable: &str,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self.lldb_handler.lock().unwrap().lldb_status.lock().unwrap() = LLDBStatus::Working;
+        *self
+            .lldb_handler
+            .lock()
+            .unwrap()
+            .lldb_status
+            .lock()
+            .unwrap() = LLDBStatus::Working;
 
         let lldb_handler = self.lldb_handler.clone();
         let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
@@ -493,9 +569,7 @@ impl Debugger for ImplDebugger {
 }
 
 impl LLDBHandler {
-    pub fn new(
-        notifier: Arc<Mutex<Notifier>>,
-    ) -> LLDBHandler {
+    pub fn new(notifier: Arc<Mutex<Notifier>>) -> LLDBHandler {
         LLDBHandler {
             notifier,
             lldb_in_tx: None,
@@ -507,31 +581,25 @@ impl LLDBHandler {
         }
     }
 
-    fn analyse_lldb_output(
-        &self,
-        data: &str,
-    ) {
+    fn analyse_lldb_output(&self, data: &str) {
         lazy_static! {
             static ref RE_PROCESS_STARTED: Regex =
                 Regex::new("^Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
-            static ref RE_PROCESS_EXITED: Regex = Regex::new(
-                "^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$"
-            )
-            .unwrap();
+            static ref RE_PROCESS_EXITED: Regex =
+                Regex::new("^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$")
+                    .unwrap();
             static ref RE_BREAKPOINT: Regex = Regex::new(
                 "Breakpoint (\\d+): where = .* at (.*):(\\d+):\\d+, address = 0x[0-9a-f]*$"
             )
             .unwrap();
-            static ref RE_BREAKPOINT_2: Regex = Regex::new(
-                "Breakpoint (\\d+): where = .* at (.*):(\\d+), address = 0x[0-9a-f]*$"
-            )
-            .unwrap();
+            static ref RE_BREAKPOINT_2: Regex =
+                Regex::new("Breakpoint (\\d+): where = .* at (.*):(\\d+), address = 0x[0-9a-f]*$")
+                    .unwrap();
             static ref RE_BREAKPOINT_MULTIPLE: Regex =
                 Regex::new("Breakpoint (\\d+): (\\d+) locations\\.$").unwrap();
             static ref RE_BREAKPOINT_PENDING: Regex =
                 Regex::new("Breakpoint (\\d+): no locations \\(pending\\)\\.$").unwrap();
-            static ref RE_STOPPED_AT_POSITION: Regex =
-                Regex::new(" *frame #\\d.*$").unwrap();
+            static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
             static ref RE_JUMP_TO_POSITION: Regex =
                 Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
             static ref RE_PRINTED_VARIABLE: Regex =
@@ -539,8 +607,7 @@ impl LLDBHandler {
             static ref RE_PROCESS_NOT_RUNNING: Regex =
                 Regex::new("error: invalid process$").unwrap();
             static ref RE_VARIABLE_NOT_FOUND: Regex =
-                Regex::new("error: no variable named '([^']*)' found in this frame$")
-                    .unwrap();
+                Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
             static ref RE_PROCESS_RUNNING_WARNING: Regex =
                 Regex::new("There is a running process, kill it and restart\\?: \\[Y/n\\]")
                     .unwrap();
@@ -612,7 +679,10 @@ impl LLDBHandler {
                 found_breakpoint = true;
                 let file = cap[2].to_string();
                 let line = cap[3].parse::<u64>().unwrap();
-                self.notifier.lock().unwrap().breakpoint_set(file.clone(), line);
+                self.notifier
+                    .lock()
+                    .unwrap()
+                    .breakpoint_set(file.clone(), line);
                 if !self.listener_tx.lock().unwrap().is_none() {
                     let listener_tx = self.listener_tx.clone();
                     tokio::spawn(
@@ -633,7 +703,10 @@ impl LLDBHandler {
                     found_breakpoint = true;
                     let file = cap[2].to_string();
                     let line = cap[3].parse::<u64>().unwrap();
-                    self.notifier.lock().unwrap().breakpoint_set(file.clone(), line);
+                    self.notifier
+                        .lock()
+                        .unwrap()
+                        .breakpoint_set(file.clone(), line);
                     if !self.listener_tx.lock().unwrap().is_none() {
                         let listener_tx = self.listener_tx.clone();
                         tokio::spawn(
