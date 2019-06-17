@@ -634,7 +634,7 @@ impl LLDBHandler {
                     let file = cap[2].to_string();
                     let line = cap[3].parse::<u64>().unwrap();
                     self.notifier.lock().unwrap().breakpoint_set(file.clone(), line);
-                    if self.listener_tx.lock().unwrap().is_none() {
+                    if !self.listener_tx.lock().unwrap().is_none() {
                         let listener_tx = self.listener_tx.clone();
                         tokio::spawn(
                             listener_tx
