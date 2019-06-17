@@ -4,7 +4,7 @@ Feature: LLDB
     Scenario: Debug a basic program with LLDB using the LLDB command line
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with 'lldb'
+        And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -35,7 +35,7 @@ Feature: LLDB
     Scenario Outline: Debug a basic program with LLDB using the PADRE interface
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler '<compiler>' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with 'lldb'
+        And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -92,7 +92,7 @@ Feature: LLDB
     Scenario: Debug a basic program with LLDB using the both the LLDB command line and the PADRE connection
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with 'lldb'
+        And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -139,7 +139,7 @@ Feature: LLDB
     Scenario: PADRE error reporting when program not running
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with 'lldb'
+        And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -166,7 +166,7 @@ Feature: LLDB
     Scenario: General error handling over PADRE when program is running
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with 'lldb'
+        And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -187,7 +187,7 @@ Feature: LLDB
     Scenario: Printing variables in rust
         Given that we have a file 'test_print_variables.rs'
         And I have compiled the test program 'test_print_variables.rs' with compiler 'rustc -g' to program 'test_print_variables'
-        And that we have a test program 'test_print_variables' that runs with 'lldb'
+        And that we have a test program 'test_print_variables' that runs with 'lldb' debugger
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -243,7 +243,7 @@ Feature: LLDB
     Scenario: Test spawning process a timeout
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with './test_files/lldb_spawn_timeout.py'
+        And that we have a test program 'test_prog' that runs with './test_files/lldb_spawn_timeout.py' debugger of type 'lldb'
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -258,7 +258,7 @@ Feature: LLDB
     Scenario: Test breakpoint timeout
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with './test_files/lldb_breakpoint_timeout.py'
+        And that we have a test program 'test_prog' that runs with './test_files/lldb_breakpoint_timeout.py' debugger of type 'lldb'
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -272,7 +272,7 @@ Feature: LLDB
     Scenario: Test print timeout
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with './test_files/lldb_print_variable_timeout.py'
+        And that we have a test program 'test_prog' that runs with './test_files/lldb_print_variable_timeout.py' debugger of type 'lldb'
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |

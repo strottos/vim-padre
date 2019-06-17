@@ -28,8 +28,9 @@ class Padre():
     """
     Details for program
     """
-    def __init__(self, executable, program_type):
+    def __init__(self, executable, debugger, program_type):
         self._executable = executable
+        self._debugger = debugger
         self._program_type = program_type
         self._port = None
         self._pid = None
@@ -44,6 +45,13 @@ class Padre():
         The executable for PADRE
         """
         return self._executable
+
+    @property
+    def debugger(self):
+        """
+        The debugger executable path
+        """
+        return self._debugger
 
     @property
     def program_type(self):
@@ -190,17 +198,32 @@ def run_padre(context, timeout=20):
 
         loop.call_at(loop.time() + TIMEOUT, cancel)
 
-        context.padre.process = await asyncio.create_subprocess_exec(
-            os.path.join(
-                os.path.dirname(os.path.realpath(__file__)),
-                "../../../target/debug/padre"
-            ), "--debugger={}".format(context.padre.program_type),
-            "--host={}".format("127.0.0.1"),
-            "--port={}".format(context.padre.port), context.padre.executable,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            loop=loop
-        )
+        if context.padre.program_type is not None:
+            context.padre.process = await asyncio.create_subprocess_exec(
+                os.path.join(
+                    os.path.dirname(os.path.realpath(__file__)),
+                    "../../../target/debug/padre"
+                ), "--debugger={}".format(context.padre.debugger),
+                "--type={}".format(context.padre.program_type),
+                "--host={}".format("127.0.0.1"),
+                "--port={}".format(context.padre.port), context.padre.executable,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                loop=loop
+            )
+        else:
+            context.padre.process = await asyncio.create_subprocess_exec(
+                os.path.join(
+                    os.path.dirname(os.path.realpath(__file__)),
+                    "../../../target/debug/padre"
+                ), "--debugger={}".format(context.padre.debugger),
+                "--host={}".format("127.0.0.1"),
+                "--port={}".format(context.padre.port), context.padre.executable,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                loop=loop
+            )
+
 
         line = await context.padre.process.stdout.readline()
 
@@ -297,9 +320,9 @@ def compile_program(context, source, compiler, output):
 
 
 @given(
-    "that we have a test program '{executable}' that runs with '{progtype}'"
+    "that we have a test program '{executable}' that runs with '{debugger}' debugger"
     )
-def padre(context, executable, progtype):
+def padre(context, executable, debugger):
     """
     Copy the contents of the test program to a temporary empty directory
     and change dir to that directory and store the program in the context
@@ -308,7 +331,23 @@ def padre(context, executable, progtype):
         executable = os.path.join(context.tmpdir.name, executable)
     if not os.path.exists(executable):
         copyfile(os.path.join(TEST_FILES_DIR, executable), executable)
-    context.padre = Padre(executable, progtype)
+    context.padre = Padre(executable, debugger, None)
+    return padre
+
+
+@given(
+    "that we have a test program '{executable}' that runs with '{debugger}' debugger of type '{progtype}'"
+    )
+def padre(context, executable, debugger, progtype):
+    """
+    Copy the contents of the test program to a temporary empty directory
+    and change dir to that directory and store the program in the context
+    """
+    if "/" not in executable:
+        executable = os.path.join(context.tmpdir.name, executable)
+    if not os.path.exists(executable):
+        copyfile(os.path.join(TEST_FILES_DIR, executable), executable)
+    context.padre = Padre(executable, debugger, progtype)
     return padre
 
 

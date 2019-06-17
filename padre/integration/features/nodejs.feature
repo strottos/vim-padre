@@ -2,7 +2,7 @@ Feature: NodeJS
     Debug with PADRE for a nodeJS program
 
     Scenario: Debug a basic program with nodeJS
-        Given that we have a test program './test_files/test_prog.js' that runs with 'node'
+        Given that we have a test program './test_files/test_prog.js' that runs with 'node' debugger
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |

@@ -1,5 +1,4 @@
 /// Various utility for use in PADRE
-
 use std::env;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -18,8 +17,8 @@ pub fn file_is_binary_executable(cmd: &str) -> bool {
     let output = get_file_type(cmd);
 
     if output.contains("ELF")
-        || (output.contains("Mach-O")
-            && output.to_ascii_lowercase().contains("executable")) {
+        || (output.contains("Mach-O") && output.to_ascii_lowercase().contains("executable"))
+    {
         true
     } else {
         false
@@ -115,7 +114,10 @@ mod tests {
     #[test]
     fn is_file_executable() {
         assert_eq!(true, super::file_is_binary_executable("./test_files/node"));
-        assert_eq!(false, super::file_is_binary_executable("./test_files/test_node.js"));
+        assert_eq!(
+            false,
+            super::file_is_binary_executable("./test_files/test_node.js")
+        );
     }
 
     #[test]
@@ -169,6 +171,9 @@ mod tests {
 
     #[test]
     fn test_getting_files_full_path_when_not_exists() {
-        assert_eq!("file_surely_doesnt_exist".to_string(), super::get_file_full_path("file_surely_doesnt_exist"));
+        assert_eq!(
+            "file_surely_doesnt_exist".to_string(),
+            super::get_file_full_path("file_surely_doesnt_exist")
+        );
     }
 }
