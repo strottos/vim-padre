@@ -275,7 +275,8 @@ endfunction
 function! padre#debugger#PrintVariableCallback(channel_id, data)
   let l:status = remove(a:data, 'status')
   if l:status != 'OK'
-    call padre#debugger#Log(2, 'Error: ' . string(a:data))
+    call padre#debugger#Log(2, 'Error printing variable')
+    return
   endif
 
   let l:variable_name = remove(a:data, 'variable')

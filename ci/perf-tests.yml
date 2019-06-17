@@ -14,7 +14,10 @@ steps:
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/lib/llvm-5.0/bin/lldb-server-5.0.0
       gcc -g -O0 -o padre/test_loop test/progs/test_loop.c
-    displayName: Install lldb and build essentials and compile test program
+      sudo rm /usr/local/bin/node
+      curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+    displayName: Install lldb, node and build essentials and compile test program
 
   - bash: |
       cd padre
@@ -24,6 +27,18 @@ steps:
   - bash: |
       cd padre
       cargo run -- -d=lldb -t=lldb -- ./test_loop &
+      sleep 10
+      cd ../
+      python test/perf/setup.py
+      bzt test/perf/steptest.yml
+      kill $(jobs -p)
+    env:
+      RUST_BACKTRACE: 1
+    displayName: Run Padre CLI and perf test for LLDB
+
+  - bash: |
+      cd padre
+      cargo run -- -d=node -t=node -- ./test_loop.js &
       sleep 10
       cd ../
       python test/perf/setup.py
