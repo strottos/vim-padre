@@ -148,7 +148,7 @@ impl Debugger for ImplDebugger {
         //                .map_err(|e| panic!("io error = {:?}", e))
         //        );
 
-        let mut lldb_in_tx = self.lldb_in_tx.clone().unwrap();
+        let lldb_in_tx = self.lldb_in_tx.clone().unwrap();
 
         thread::spawn(|| {
             lldb_read_stdin(lldb_in_tx);
