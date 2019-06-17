@@ -1,7 +1,6 @@
 //! lldb client debugger
 
 use std::io;
-use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep};
@@ -10,6 +9,7 @@ use std::time::Duration;
 use crate::debugger::tty_process::spawn_process;
 use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
+use crate::util::{file_exists, get_file_full_path};
 
 use bytes::Bytes;
 use nix::errno::Errno;
@@ -85,24 +85,33 @@ impl ImplDebugger {
             listener_tx: Arc::new(Mutex::new(None)),
         }
     }
-
-    fn check_path_exists(&self, path: &str) {
-        if !Path::new(path).exists() {
-            self.notifier.lock().unwrap().log_msg(
-                LogLevel::CRITICAL,
-                format!("Can't spawn LLDB as {} does not exist", path),
-            );
-            println!("Can't spawn LLDB as {} does not exist", path);
-            exit(1);
-        }
-    }
 }
 
 impl Debugger for ImplDebugger {
     fn setup(&mut self) {
-        //TODO
-        //self.check_path_exists(&self.debugger_cmd);
-        self.check_path_exists(&self.run_cmd[0]);
+        let mut not_found = None;
+
+        if !file_exists(&self.debugger_cmd) {
+            self.debugger_cmd = get_file_full_path(&self.debugger_cmd);
+        }
+
+        if !file_exists(&self.debugger_cmd) {
+            not_found = Some(&self.debugger_cmd);
+        }
+
+        if !file_exists(&self.run_cmd[0]) {
+            not_found = Some(&self.run_cmd[0]);
+        };
+
+        if let Some(s) = not_found {
+            self.notifier.lock().unwrap().log_msg(
+                LogLevel::CRITICAL,
+                format!("Can't spawn LLDB as {} does not exist", s),
+            );
+            println!("Can't spawn LLDB as {} does not exist", s);
+
+            exit(1);
+        }
 
         let (lldb_in_tx, lldb_in_rx) = mpsc::channel(1);
         let (lldb_out_tx, lldb_out_rx) = mpsc::channel(32);

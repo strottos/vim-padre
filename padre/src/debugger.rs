@@ -2,15 +2,13 @@ mod lldb;
 mod node;
 mod tty_process;
 
-use std::env;
 use std::fmt::Debug;
 use std::io;
-use std::path::PathBuf;
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use crate::notifier::{LogLevel, Notifier};
 use crate::server::{Request, RequestCmd};
+use crate::util::{file_is_binary_executable, file_is_text, get_file_full_path};
 
 use tokio::prelude::*;
 
@@ -53,6 +51,7 @@ pub fn get_debugger(
 }
 
 pub fn get_debugger_type(cmd: &str) -> Option<String> {
+    let cmd = get_file_full_path(cmd);
     if is_node(&cmd) {
         Some(String::from("node"))
     } else if is_lldb(&cmd) {
@@ -62,41 +61,8 @@ pub fn get_debugger_type(cmd: &str) -> Option<String> {
     }
 }
 
-fn find_cmd_full_path(cmd: &str) -> String {
-    let cmd_full_path_buf = env::var_os("PATH")
-        .and_then(|paths| {
-            env::split_paths(&paths)
-                .filter_map(|dir| {
-                    let cmd_full_path = dir.join(&cmd);
-                    if cmd_full_path.is_file() {
-                        Some(cmd_full_path)
-                    } else {
-                        None
-                    }
-                })
-                .next()
-        })
-        .unwrap_or(PathBuf::from(cmd));
-    String::from(cmd_full_path_buf.as_path().to_str().unwrap())
-}
-
-fn find_file_type(cmd: &str) -> String {
-    let cmd_full_path = find_cmd_full_path(cmd);
-
-    let output = Command::new("file")
-        .arg("-L") // Follow symlinks
-        .arg(&cmd_full_path)
-        .output()
-        .ok()
-        .expect(&format!("Can't run file on {} to find file type", cmd));
-
-    String::from_utf8_lossy(&output.stdout).to_string()
-}
-
 fn is_lldb(cmd: &str) -> bool {
-    let cmd_file_type = find_file_type(cmd);
-
-    if cmd_file_type.contains("ELF") || cmd.contains("lldb") {
+    if file_is_binary_executable(cmd) {
         return true;
     }
 
@@ -104,18 +70,11 @@ fn is_lldb(cmd: &str) -> bool {
 }
 
 fn is_node(cmd: &str) -> bool {
-    let cmd_file_type = find_file_type(cmd);
-
-    if (cmd_file_type.contains("ASCII") || cmd_file_type.contains("UTF-8")) && cmd.ends_with(".js")
-    {
+    if file_is_text(cmd) && cmd.ends_with(".js") {
         return true;
     }
 
-    if (cmd_file_type.contains("ELF")
-        || (cmd_file_type.contains("Mach-O")
-            && cmd_file_type.to_ascii_lowercase().contains("executable")))
-        && cmd == "node"
-    {
+    if file_is_binary_executable(cmd) && cmd.contains("node") {
         return true;
     }
 
@@ -245,25 +204,22 @@ mod tests {
     use std::env;
     use std::path::Path;
 
-    fn set_path() {
-        let test_files_path_raw = String::from("./test_files/");
-        let test_files_path = Path::new(&test_files_path_raw)
-            .canonicalize()
-            .expect("Cannot find test_files directory");
-        let path_var = format!(
-            "/bin:{}:/usr/bin",
-            test_files_path.as_path().to_str().unwrap()
-        );
-        env::set_var("PATH", &path_var);
-    }
-
-    #[test]
-    fn finds_lldb_when_specified_and_in_path() {
-        set_path();
-        assert_eq!(
-            super::get_debugger_type("lldb-server"),
-            Some(String::from("lldb"))
-        );
+    fn get_test_path_env_var() -> String {
+        format!(
+            "{}:{}:/bin:/usr/bin",
+            Path::new("./test_files")
+                .canonicalize()
+                .expect("Cannot find test_files directory")
+                .as_path()
+                .to_str()
+                .unwrap(),
+            Path::new("./integration/test_files")
+                .canonicalize()
+                .expect("Cannot find test_files directory")
+                .as_path()
+                .to_str()
+                .unwrap(),
+        )
     }
 
     #[test]
@@ -293,8 +249,13 @@ mod tests {
 
     #[test]
     fn finds_node_when_node_program() {
-        set_path();
+        let old_path = env::var("PATH").unwrap();
+        let path_var = get_test_path_env_var();
+        env::set_var("PATH", &path_var);
+
         assert_eq!(super::get_debugger_type("node"), Some(String::from("node")));
+
+        env::set_var("PATH", old_path);
     }
 
     #[test]

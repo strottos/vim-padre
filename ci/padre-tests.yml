@@ -32,7 +32,6 @@ steps:
       sudo rm /usr/local/bin/node
       curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
       sudo apt-get install -y nodejs
-      node -v
     displayName: Install lldb-5, node-12 and build essentials
 
   - script: |
