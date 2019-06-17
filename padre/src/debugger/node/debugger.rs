@@ -422,7 +422,7 @@ fn analyse_line(
 
     for cap in RE_NODE_STARTED.captures_iter(&line) {
         let node_debugger_hex = cap[1].to_string();
-        let uri = format!("ws://localhost:{}/{}", port, node_debugger_hex);
+        let uri = format!("ws://127.0.0.1:{}/{}", port, node_debugger_hex);
 
         // We need a little sleep otherwise we fail to connect,
         // shame to block the thread but can live with it while

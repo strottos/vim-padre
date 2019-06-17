@@ -104,7 +104,7 @@ pub fn process_connection(
                 Ok(())
             })
             .map_err(|e| {
-                eprintln!("failed to accept socket; error = {:?}", e);
+                eprintln!("Socket error = {:?}", e);
             }),
     );
 }
