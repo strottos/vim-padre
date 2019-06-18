@@ -811,7 +811,10 @@ impl LLDBHandler {
     }
 
     fn found_breakpoint(&self, file: String, line: u64) {
-        self.notifier.lock().unwrap().breakpoint_set(file.clone(), line);
+        self.notifier
+            .lock()
+            .unwrap()
+            .breakpoint_set(file.clone(), line);
         if !self.listener_tx.lock().unwrap().is_none() {
             let listener_tx = self.listener_tx.clone();
             tokio::spawn(
@@ -858,7 +861,6 @@ impl LLDBHandler {
             );
         }
     }
-
 
     fn jump_to_position(&self, file: String, line: u64) {
         self.notifier
