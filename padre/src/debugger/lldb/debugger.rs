@@ -157,8 +157,22 @@ impl Debugger for ImplDebugger {
 
         let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
 
-        thread::spawn(|| {
-            lldb_read_stdin(lldb_in_tx);
+        thread::spawn(move || {
+            let mut lldb_in_tx = lldb_in_tx.clone().unwrap();
+            let mut stdin = io::stdin();
+            loop {
+                let mut buf = vec![0; 1024];
+                let n = match stdin.read(&mut buf) {
+                    Err(_) | Ok(0) => break,
+                    Ok(n) => n,
+                };
+                buf.truncate(n);
+                let bytes = Bytes::from(buf);
+                lldb_in_tx = match lldb_in_tx.send(bytes).wait() {
+                    Ok(tx) => tx,
+                    Err(_) => break,
+                };
+            }
         });
     }
 
@@ -564,46 +578,13 @@ impl LLDBHandler {
         for line in data.split("\r\n") {
             for cap in RE_PROCESS_STARTED.captures_iter(line) {
                 let pid = Pid::from_raw(cap[1].parse::<i32>().unwrap());
-                *self.process_status.lock().unwrap() = ProcessStatus::Running;
-                *self.process_pid.lock().unwrap() = Some(pid);
-                if !self.listener_tx.lock().unwrap().is_none() {
-                    let listener_tx = self.listener_tx.clone();
-                    tokio::spawn(
-                        listener_tx
-                            .lock()
-                            .unwrap()
-                            .clone()
-                            .unwrap()
-                            .send(LLDBOutput::ProcessLaunched(pid))
-                            .map(|_| {})
-                            .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                    );
-                }
+                self.process_started(pid);
             }
 
             for cap in RE_PROCESS_EXITED.captures_iter(line) {
                 let pid = Pid::from_raw(cap[1].parse::<i32>().unwrap());
                 let exit_code = cap[2].parse::<i64>().unwrap();
-
-                *self.process_status.lock().unwrap() = ProcessStatus::None;
-                *self.process_pid.lock().unwrap() = None;
-                self.notifier
-                    .lock()
-                    .unwrap()
-                    .signal_exited(pid.as_raw() as u64, exit_code);
-                if !self.listener_tx.lock().unwrap().is_none() {
-                    let listener_tx = self.listener_tx.clone();
-                    tokio::spawn(
-                        listener_tx
-                            .lock()
-                            .unwrap()
-                            .clone()
-                            .unwrap()
-                            .send(LLDBOutput::ProcessExited(pid, exit_code))
-                            .map(|_| {})
-                            .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                    );
-                }
+                self.process_exited(pid, exit_code);
             }
 
             let mut found_breakpoint = false;
@@ -612,20 +593,7 @@ impl LLDBHandler {
                 found_breakpoint = true;
                 let file = cap[2].to_string();
                 let line = cap[3].parse::<u64>().unwrap();
-                self.notifier.lock().unwrap().breakpoint_set(file.clone(), line);
-                if !self.listener_tx.lock().unwrap().is_none() {
-                    let listener_tx = self.listener_tx.clone();
-                    tokio::spawn(
-                        listener_tx
-                            .lock()
-                            .unwrap()
-                            .clone()
-                            .unwrap()
-                            .send(LLDBOutput::Breakpoint(file, line))
-                            .map(|_| {})
-                            .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                    );
-                }
+                self.found_breakpoint(file, line);
             }
 
             if !found_breakpoint {
@@ -633,57 +601,20 @@ impl LLDBHandler {
                     found_breakpoint = true;
                     let file = cap[2].to_string();
                     let line = cap[3].parse::<u64>().unwrap();
-                    self.notifier.lock().unwrap().breakpoint_set(file.clone(), line);
-                    if self.listener_tx.lock().unwrap().is_none() {
-                        let listener_tx = self.listener_tx.clone();
-                        tokio::spawn(
-                            listener_tx
-                                .lock()
-                                .unwrap()
-                                .clone()
-                                .unwrap()
-                                .send(LLDBOutput::Breakpoint(file, line))
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                        );
-                    }
+                    self.found_breakpoint(file, line);
                 }
             }
 
             if !found_breakpoint {
                 for _ in RE_BREAKPOINT_MULTIPLE.captures_iter(line) {
                     found_breakpoint = true;
-                    if !self.listener_tx.lock().unwrap().is_none() {
-                        let listener_tx = self.listener_tx.clone();
-                        tokio::spawn(
-                            listener_tx
-                                .lock()
-                                .unwrap()
-                                .clone()
-                                .unwrap()
-                                .send(LLDBOutput::BreakpointMultiple)
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                        );
-                    }
+                    self.found_multiple_breakpoints();
                 }
             }
 
             if !found_breakpoint {
                 for _ in RE_BREAKPOINT_PENDING.captures_iter(line) {
-                    if !self.listener_tx.lock().unwrap().is_none() {
-                        let listener_tx = self.listener_tx.clone();
-                        tokio::spawn(
-                            listener_tx
-                                .lock()
-                                .unwrap()
-                                .clone()
-                                .unwrap()
-                                .send(LLDBOutput::BreakpointPending)
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                        );
-                    }
+                    self.found_pending_breakpoint();
                 }
             }
 
@@ -695,154 +626,31 @@ impl LLDBHandler {
                     found = true;
                     let file = cap[1].to_string();
                     let line = cap[2].parse::<u64>().unwrap();
-                    self.notifier
-                        .lock()
-                        .unwrap()
-                        .jump_to_position(file.clone(), line);
-                    if !self.listener_tx.lock().unwrap().is_none() {
-                        let listener_tx = self.listener_tx.clone();
-                        tokio::spawn(
-                            listener_tx
-                                .lock()
-                                .unwrap()
-                                .clone()
-                                .unwrap()
-                                .send(LLDBOutput::JumpToPosition(file, line))
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                        );
-                    }
+                    self.jump_to_position(file, line);
                 }
 
                 if !found {
-                    self.notifier
-                        .lock()
-                        .unwrap()
-                        .log_msg(LogLevel::WARN, "Stopped at unknown position".to_string());
-
-                    if !self.listener_tx.lock().unwrap().is_none() {
-                        let listener_tx = self.listener_tx.clone();
-                        tokio::spawn(
-                            listener_tx
-                                .lock()
-                                .unwrap()
-                                .clone()
-                                .unwrap()
-                                .send(LLDBOutput::UnknownPosition)
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                        );
-                    }
+                    self.jump_to_unknown_position();
                 }
             }
 
             for cap in RE_PRINTED_VARIABLE.captures_iter(line) {
                 let variable_type = cap[1].to_string();
                 let variable = cap[2].to_string();
-
-                let mut start = 1;
-
-                while &data[start..start + 1] != ")" {
-                    start += 1;
-                }
-                while &data[start..start + 1] != "=" {
-                    start += 1;
-                }
-                start += 2;
-
-                let mut end = data.len();
-
-                if data.contains("(lldb) ") {
-                    end -= 9; // Strip off "\r\n(lldb) "
-                }
-
-                if !self.listener_tx.lock().unwrap().is_none() {
-                    let listener_tx = self.listener_tx.clone();
-                    tokio::spawn(
-                        listener_tx
-                            .lock()
-                            .unwrap()
-                            .clone()
-                            .unwrap()
-                            .send(LLDBOutput::PrintVariable(
-                                variable_type,
-                                variable,
-                                data[start..end].to_string(),
-                            ))
-                            .map(|_| {})
-                            .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                    );
-                }
+                self.printed_variable(variable_type, variable, data);
             }
 
             for _ in RE_PROCESS_NOT_RUNNING.captures_iter(line) {
-                self.notifier
-                    .lock()
-                    .unwrap()
-                    .log_msg(LogLevel::WARN, "program not running".to_string());
-
-                if !self.listener_tx.lock().unwrap().is_none() {
-                    let listener_tx = self.listener_tx.clone();
-                    tokio::spawn(
-                        listener_tx
-                            .lock()
-                            .unwrap()
-                            .clone()
-                            .unwrap()
-                            .send(LLDBOutput::NoProcess)
-                            .map(|_| {})
-                            .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                    );
-                }
+                self.process_not_running();
             }
 
             for cap in RE_VARIABLE_NOT_FOUND.captures_iter(line) {
                 let variable = cap[1].to_string();
-
-                self.notifier.lock().unwrap().log_msg(
-                    LogLevel::WARN,
-                    format!("variable '{}' doesn't exist here", variable),
-                );
-
-                if !self.listener_tx.lock().unwrap().is_none() {
-                    let listener_tx = self.listener_tx.clone();
-                    tokio::spawn(
-                        listener_tx
-                            .lock()
-                            .unwrap()
-                            .clone()
-                            .unwrap()
-                            .send(LLDBOutput::VariableNotFound)
-                            .map(|_| {})
-                            .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
-                    );
-                }
+                self.variable_not_found(&variable);
             }
 
             for _ in RE_PROCESS_RUNNING_WARNING.captures_iter(line) {
-                let lldb_status_current = self.lldb_status.lock().unwrap().clone();
-                let lldb_in_tx = self.lldb_in_tx.clone();
-                match lldb_status_current {
-                    LLDBStatus::Listening | LLDBStatus::Working => {
-                        tokio::spawn(
-                            lldb_in_tx
-                                .unwrap()
-                                .send(Bytes::from(&b"n\n"[..]))
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
-                        );
-                    }
-                    LLDBStatus::Quitting => {
-                        tokio::spawn(
-                            lldb_in_tx
-                                .unwrap()
-                                .send(Bytes::from(&b"Y\n"[..]))
-                                .map(|_| {})
-                                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
-                        );
-                    }
-                    _ => {}
-                }
+                self.process_running_warning();
             }
         }
     }
@@ -894,22 +702,239 @@ impl LLDBHandler {
             );
         }
     }
-}
 
-fn lldb_read_stdin(lldb_in_tx: Option<Sender<Bytes>>) {
-    let mut lldb_in_tx = lldb_in_tx.clone().unwrap();
-    let mut stdin = io::stdin();
-    loop {
-        let mut buf = vec![0; 1024];
-        let n = match stdin.read(&mut buf) {
-            Err(_) | Ok(0) => break,
-            Ok(n) => n,
-        };
-        buf.truncate(n);
-        let bytes = Bytes::from(buf);
-        lldb_in_tx = match lldb_in_tx.send(bytes).wait() {
-            Ok(tx) => tx,
-            Err(_) => break,
-        };
+    fn process_started(&self, pid: Pid) {
+        *self.process_status.lock().unwrap() = ProcessStatus::Running;
+        *self.process_pid.lock().unwrap() = Some(pid);
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::ProcessLaunched(pid))
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn process_exited(&self, pid: Pid, exit_code: i64) {
+        *self.process_status.lock().unwrap() = ProcessStatus::None;
+        *self.process_pid.lock().unwrap() = None;
+        self.notifier
+            .lock()
+            .unwrap()
+            .signal_exited(pid.as_raw() as u64, exit_code);
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::ProcessExited(pid, exit_code))
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn found_breakpoint(&self, file: String, line: u64) {
+        self.notifier.lock().unwrap().breakpoint_set(file.clone(), line);
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::Breakpoint(file, line))
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn found_multiple_breakpoints(&self) {
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::BreakpointMultiple)
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn found_pending_breakpoint(&self) {
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::BreakpointPending)
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+
+    fn jump_to_position(&self, file: String, line: u64) {
+        self.notifier
+            .lock()
+            .unwrap()
+            .jump_to_position(file.clone(), line);
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::JumpToPosition(file, line))
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn jump_to_unknown_position(&self) {
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::WARN, "Stopped at unknown position".to_string());
+
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::UnknownPosition)
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn printed_variable(&self, variable_type: String, variable: String, data: &str) {
+        let mut start = 1;
+
+        while &data[start..start + 1] != ")" {
+            start += 1;
+        }
+        while &data[start..start + 1] != "=" {
+            start += 1;
+        }
+        start += 2;
+
+        let mut end = data.len();
+
+        if data.contains("(lldb) ") {
+            end -= 9; // Strip off "\r\n(lldb) "
+        }
+
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::PrintVariable(
+                        variable_type,
+                        variable,
+                        data[start..end].to_string(),
+                    ))
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn process_not_running(&self) {
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::WARN, "program not running".to_string());
+
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::NoProcess)
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn variable_not_found(&self, variable: &str) {
+        self.notifier.lock().unwrap().log_msg(
+            LogLevel::WARN,
+            format!("variable '{}' doesn't exist here", variable),
+        );
+
+        if !self.listener_tx.lock().unwrap().is_none() {
+            let listener_tx = self.listener_tx.clone();
+            tokio::spawn(
+                listener_tx
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+                    .send(LLDBOutput::VariableNotFound)
+                    .map(|_| {})
+                    .map_err(|e| eprintln!("Error sending to analyser: {}", e)),
+            );
+        }
+    }
+
+    fn process_running_warning(&self) {
+        let lldb_status_current = self.lldb_status.lock().unwrap().clone();
+        let lldb_in_tx = self.lldb_in_tx.clone();
+        match lldb_status_current {
+            LLDBStatus::Listening | LLDBStatus::Working => {
+                tokio::spawn(
+                    lldb_in_tx
+                        .unwrap()
+                        .send(Bytes::from(&b"n\n"[..]))
+                        .map(|_| {})
+                        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+                );
+            }
+            LLDBStatus::Quitting => {
+                tokio::spawn(
+                    lldb_in_tx
+                        .unwrap()
+                        .send(Bytes::from(&b"Y\n"[..]))
+                        .map(|_| {})
+                        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+                );
+            }
+            _ => {}
+        }
     }
 }
