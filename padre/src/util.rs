@@ -6,7 +6,7 @@ use std::process::Command;
 
 /// Get an unused port on the local system and return it. This port
 /// can subsequently be used.
-pub fn get_unused_localhost_port() -> u16 {
+pub fn _get_unused_localhost_port() -> u16 {
     let listener = TcpListener::bind(format!("127.0.0.1:0")).unwrap();
     listener.local_addr().unwrap().port()
 }

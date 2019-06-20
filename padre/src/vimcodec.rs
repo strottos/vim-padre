@@ -246,9 +246,9 @@ impl Encoder for VimCodec {
 
     fn encode(&mut self, resp: Response, buf: &mut BytesMut) -> Result<(), io::Error> {
         let response = match resp {
-            Response::Response(id, json) => serde_json::to_string(&(id, json)).unwrap(),
+            Response::Response(id, json) => serde_json::to_string(&(id, json)).unwrap() + "\n",
             Response::Notify(cmd, args) => {
-                serde_json::to_string(&("call".to_string(), cmd, args)).unwrap()
+                serde_json::to_string(&("call".to_string(), cmd, args)).unwrap() + "\n"
             }
         };
 

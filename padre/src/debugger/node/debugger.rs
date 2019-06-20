@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
-use crate::util;
 
 use regex::Regex;
 use tokio::prelude::*;
@@ -77,9 +76,8 @@ impl Debugger for ImplDebugger {
     }
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let port = util::get_unused_localhost_port();
         let mut cmd = Command::new(self.debugger_cmd.clone())
-            .arg(format!("--inspect-brk={}", port))
+            .arg(format!("--inspect-brk=0"))
             .arg("--")
             .args(self.run_cmd.clone())
             .stdin(Stdio::piped())
@@ -123,7 +121,6 @@ impl Debugger for ImplDebugger {
 
                     analyse_line(
                         line,
-                        port,
                         ws_tx.clone(),
                         ws_id.clone(),
                         listener.clone(),
@@ -407,7 +404,6 @@ impl Debugger for ImplDebugger {
 
 fn analyse_line(
     line: String,
-    port: u16,
     ws_tx: Arc<Mutex<Option<Sender<OwnedMessage>>>>,
     ws_id: Arc<Mutex<u64>>,
     listener: Arc<Mutex<Option<Sender<(String, serde_json::Value)>>>>,
@@ -417,12 +413,11 @@ fn analyse_line(
 ) {
     lazy_static! {
         static ref RE_NODE_STARTED: Regex =
-            Regex::new("^Debugger listening on ws://127.0.0.1:\\d+/(.*)$").unwrap();
+            Regex::new("^Debugger listening on (ws://127.0.0.1:\\d+/.*)$").unwrap();
     }
 
     for cap in RE_NODE_STARTED.captures_iter(&line) {
-        let node_debugger_hex = cap[1].to_string();
-        let uri = format!("ws://127.0.0.1:{}/{}", port, node_debugger_hex);
+        let uri = cap[1].to_string();
 
         // We need a little sleep otherwise we fail to connect,
         // shame to block the thread but can live with it while
@@ -598,7 +593,7 @@ fn analyse_message(
                 None => {}
             };
         } else if method == "Debugger.paused" {
-            analyse_debugger_paused(json, notifier.clone());
+            analyse_debugger_paused(json, scripts, notifier.clone());
         } else if method == "Debugger.resumed" {
             println!("TODO: Code {:?}", message);
         } else if method == "Runtime.consoleAPICalled" {
@@ -719,7 +714,11 @@ fn analyse_script_parsed(
     });
 }
 
-fn analyse_debugger_paused(mut json: serde_json::Value, notifier: Arc<Mutex<Notifier>>) {
+fn analyse_debugger_paused(
+    mut json: serde_json::Value,
+    _scripts: Arc<Mutex<Vec<Script>>>,
+    notifier: Arc<Mutex<Notifier>>,
+) {
     let file = json["params"]["callFrames"][0]["url"].take();
     let file: String = match serde_json::from_value(file) {
         Ok(s) => {
@@ -730,7 +729,17 @@ fn analyse_debugger_paused(mut json: serde_json::Value, notifier: Arc<Mutex<Noti
             s
         }
         Err(e) => {
-            panic!("Can't understand file: {:?}", e);
+            println!("JSON: {}", json);
+            let result = json["result"].take();
+            match result {
+                serde_json::Value::Null => {
+                    println!("HERE");
+                }
+                _ => {
+                    println!("HERE2");
+                }
+            }
+            panic!("Err TODO Code: {:?}", e);
         }
     };
 
