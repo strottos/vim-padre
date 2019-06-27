@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn find_and_use_unused_port() {
-        let port = super::get_unused_localhost_port();
+        let port = super::_get_unused_localhost_port();
         thread::sleep(Duration::new(1, 0));
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
         assert_eq!(listener.local_addr().unwrap().port(), port);

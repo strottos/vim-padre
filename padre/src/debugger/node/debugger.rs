@@ -599,10 +599,10 @@ fn analyse_message(
         } else if method == "Runtime.exceptionThrown" {
             println!("TODO: Code {:?}", message);
         } else if method == "Debugger.scriptFailedToParse" {
-            notifier
-                .lock()
-                .unwrap()
-                .log_msg(LogLevel::WARN, format!("Debugger couldn't parse script, error: {}", json));
+            notifier.lock().unwrap().log_msg(
+                LogLevel::WARN,
+                format!("Debugger couldn't parse script, error: {}", json),
+            );
         } else if method == "Runtime.executionContextDestroyed" {
             send_message(ws_tx.clone(), OwnedMessage::Close(None));
         } else {

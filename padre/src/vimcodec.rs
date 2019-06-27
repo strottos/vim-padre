@@ -425,8 +425,9 @@ mod tests {
         codec.encode(resp, &mut buf).unwrap();
 
         let mut expected = BytesMut::new();
-        expected.reserve(21);
+        expected.reserve(22);
         expected.put(r#"[123,{"ping":"pong"}]"#);
+        expected.put("\n");
 
         assert_eq!(expected, buf);
     }
@@ -443,8 +444,9 @@ mod tests {
         codec.encode(resp, &mut buf).unwrap();
 
         let mut expected = BytesMut::new();
-        expected.reserve(32);
+        expected.reserve(31);
         expected.put(r#"["call","cmd_test",["test",1]]"#);
+        expected.put("\n");
 
         assert_eq!(expected, buf);
     }
