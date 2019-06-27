@@ -312,11 +312,14 @@ function! padre#debugger#JumpToPosition(file, line)
       execute s:CurrentFileBufWindow . 'wincmd w'
       call padre#buffer#UnsetPadreKeyBindings(bufname('%'))
     endif
-    execute 'edit ' . l:fileToLoad
 
-    call padre#buffer#SetMainPadreKeyBindings(l:fileToLoad)
+    if filereadable(l:fileToLoad)
+      execute 'view ' . l:fileToLoad
 
-    let s:CurrentFileLoaded = l:fileToLoad
+      let s:CurrentFileLoaded = l:fileToLoad
+    endif
+
+    call padre#buffer#SetMainPadreKeyBindings(s:CurrentFileLoaded)
   endif
 
   let s:CurrentFileBufWindow = winnr()

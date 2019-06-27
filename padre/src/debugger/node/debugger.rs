@@ -559,7 +559,7 @@ fn analyse_message(
     }
 
     if json["method"].is_string() {
-        let method = json["method"].take();
+        let method = json["method"].clone();
         let method: String = match serde_json::from_value(method.clone()) {
             Ok(s) => s,
             Err(e) => {
@@ -595,10 +595,14 @@ fn analyse_message(
         } else if method == "Debugger.paused" {
             analyse_debugger_paused(json, scripts, notifier.clone());
         } else if method == "Debugger.resumed" {
-            println!("TODO: Code {:?}", message);
         } else if method == "Runtime.consoleAPICalled" {
         } else if method == "Runtime.exceptionThrown" {
             println!("TODO: Code {:?}", message);
+        } else if method == "Debugger.scriptFailedToParse" {
+            notifier
+                .lock()
+                .unwrap()
+                .log_msg(LogLevel::WARN, format!("Debugger couldn't parse script, error: {}", json));
         } else if method == "Runtime.executionContextDestroyed" {
             send_message(ws_tx.clone(), OwnedMessage::Close(None));
         } else {
