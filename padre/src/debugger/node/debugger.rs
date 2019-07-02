@@ -619,7 +619,6 @@ mod tests {
     use crate::debugger::node::ws::WSHandler;
     use crate::notifier;
     use tokio::sync::mpsc;
-    use websocket::OwnedMessage;
 
     #[test]
     fn check_internal_script_parsed() {
