@@ -2,6 +2,8 @@
 *.swo
 *.swn
 *.swm
+.DS_Store
+*.dSYM
 test/progs/test_prog
 test/progs/test_prog.dSYM/
 padre/integration/log.html
