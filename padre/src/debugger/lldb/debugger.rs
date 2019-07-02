@@ -66,7 +66,7 @@ pub struct ImplDebugger {
 struct LLDBHandler {
     notifier: Arc<Mutex<Notifier>>,
     lldb_status: Arc<Mutex<LLDBStatus>>,
-    lldb_pid: Option<Pid>,
+    pid: Option<Pid>,
     process_status: Arc<Mutex<ProcessStatus>>,
     process_pid: Arc<Mutex<Option<Pid>>>,
     lldb_in_tx: Option<Sender<Bytes>>,
@@ -125,7 +125,7 @@ impl Debugger for ImplDebugger {
 
         let mut cmd = vec![self.debugger_cmd.clone(), "--".to_string()];
         cmd.extend(self.run_cmd.clone());
-        self.lldb_handler.lock().unwrap().lldb_pid =
+        self.lldb_handler.lock().unwrap().pid =
             Some(spawn_process(cmd, lldb_in_rx, lldb_out_tx));
 
         let lldb_handler = self.lldb_handler.clone();
@@ -209,7 +209,7 @@ impl Debugger for ImplDebugger {
         match current_status {
             LLDBStatus::None => return,
             LLDBStatus::Listening => {
-                match self.lldb_handler.lock().unwrap().lldb_pid {
+                match self.lldb_handler.lock().unwrap().pid {
                     Some(pid) => {
                         kill(pid, Signal::SIGTERM).unwrap();
                         sleep(Duration::new(1, 0));
@@ -587,7 +587,7 @@ impl LLDBHandler {
         LLDBHandler {
             notifier,
             lldb_in_tx: None,
-            lldb_pid: None,
+            pid: None,
             lldb_status: Arc::new(Mutex::new(LLDBStatus::None)),
             process_pid: Arc::new(Mutex::new(None)),
             process_status: Arc::new(Mutex::new(ProcessStatus::None)),

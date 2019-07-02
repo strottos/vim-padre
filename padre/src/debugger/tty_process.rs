@@ -177,12 +177,15 @@ impl Stream for TtyFileStdioStream {
                     match self.io.read(&mut buffer) {
                         Ok(_) => {
                             // TODO: More efficient, this is crap, but works for now
-                            for byte in buffer.iter() {
+                            let mut reserve = 0;
+                            for (n, byte) in buffer.iter().enumerate() {
                                 if *byte != 0 {
-                                    self.bytes_mut.reserve(1);
-                                    self.bytes_mut.put(*byte);
+                                    reserve = n;
+                                    break;
                                 }
                             }
+                            self.bytes_mut.reserve(reserve);
+                            self.bytes_mut.put(&buffer[0..reserve]);
                         }
                         Err(e) => {
                             if e.kind() == io::ErrorKind::WouldBlock {

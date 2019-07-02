@@ -93,7 +93,6 @@ impl Debugger for ImplDebugger {
                     Ok(n) => n,
                 };
                 buf.truncate(n);
-                node_stdin.write(&buf).unwrap();
             }
         });
 
