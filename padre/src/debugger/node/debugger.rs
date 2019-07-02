@@ -250,54 +250,6 @@ impl Debugger for ImplDebugger {
                 io::Error::new(io::ErrorKind::Other, "Timed out connecting")
             });
 
-        //        let listener = self.listener.clone();
-        //        let found = Arc::new(Mutex::new(HashSet::new()));
-        //        let found_check = found.clone();
-        //        let pid = Arc::new(Mutex::new(None));
-        //        let pid_found = pid.clone();
-        //
-        //        let f = listener_rx
-        //            .take(4)
-        //            .for_each(move |(identifier, value)| {
-        //                if identifier == "Runtime.executionContextCreated" {
-        //                    let mut pid_str: String = match serde_json::from_value(value) {
-        //                        Ok(s) => s,
-        //                        Err(e) => {
-        //                            panic!("Can't understand pid: {:?}", e);
-        //                        }
-        //                    };
-        //                    let to = pid_str.len() - 1;
-        //                    pid_str = pid_str[5..to].to_string();
-        //                    *pid.lock().unwrap() = Some(pid_str);
-        //                }
-        //                found.lock().unwrap().insert(identifier);
-        //                Ok(())
-        //            })
-        //            .into_future()
-        //            .map(move |_| {
-        //                *listener.lock().unwrap() = None;
-        //                let expected: HashSet<String> = [
-        //                    "1".to_string(),
-        //                    "2".to_string(),
-        //                    "3".to_string(),
-        //                    "Runtime.executionContextCreated".to_string(),
-        //                ]
-        //                .iter()
-        //                .cloned()
-        //                .collect();
-        //                let resp;
-        //                if expected == *found_check.lock().unwrap() {
-        //                    resp = serde_json::json!({"status":"OK","pid":*pid_found.lock().unwrap()});
-        //                } else {
-        //                    resp = serde_json::json!({"status":"ERROR"});
-        //                }
-        //                resp
-        //            })
-        //            .map_err(|e| {
-        //                eprintln!("Error connecting websocket to node: {:?}", e);
-        //                io::Error::new(io::ErrorKind::Other, "Timed out connecting")
-        //            });
-
         Box::new(f)
     }
 
@@ -538,7 +490,7 @@ fn analyse_message(
     } else if method == "Runtime.exceptionThrown" {
         println!("TODO: Code {:?}", json);
     } else if method == "Runtime.executionContextDestroyed" {
-        //ws_handler.lock().unwrap().send_message(OwnedMessage::Close(None));
+        ws_handler.lock().unwrap().close();
     } else {
         panic!("Can't understand message: {:?}", json);
     }

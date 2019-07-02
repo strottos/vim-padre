@@ -108,6 +108,14 @@ impl WSHandler {
         }
     }
 
+    pub fn close(&self) {
+        let tx = self.ws_tx.clone();
+
+        tokio::spawn(tx.unwrap().send(OwnedMessage::Close(None)).map(|_| {}).map_err(|e| {
+            eprintln!("Error sending message: {:?}", e);
+        }));
+    }
+
     pub fn send_and_receive_message(
         &mut self,
         msg: OwnedMessage,
