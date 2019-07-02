@@ -179,7 +179,7 @@ impl Stream for TtyFileStdioStream {
                             // TODO: More efficient, this is crap, but works for now
                             let mut reserve = 0;
                             for (n, byte) in buffer.iter().enumerate() {
-                                if *byte != 0 {
+                                if *byte == 0 {
                                     reserve = n;
                                     break;
                                 }
