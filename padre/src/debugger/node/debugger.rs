@@ -81,7 +81,6 @@ impl Debugger for ImplDebugger {
             .spawn_async()
             .expect("Can't spawn node");
 
-        let mut node_stdin = cmd.stdin().take().unwrap();
         let node_stderr = cmd.stderr().take().unwrap();
 
         thread::spawn(move || {

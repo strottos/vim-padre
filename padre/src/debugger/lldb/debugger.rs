@@ -125,8 +125,7 @@ impl Debugger for ImplDebugger {
 
         let mut cmd = vec![self.debugger_cmd.clone(), "--".to_string()];
         cmd.extend(self.run_cmd.clone());
-        self.lldb_handler.lock().unwrap().pid =
-            Some(spawn_process(cmd, lldb_in_rx, lldb_out_tx));
+        self.lldb_handler.lock().unwrap().pid = Some(spawn_process(cmd, lldb_in_rx, lldb_out_tx));
 
         let lldb_handler = self.lldb_handler.clone();
 

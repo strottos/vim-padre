@@ -36,18 +36,6 @@ steps:
       RUST_BACKTRACE: 1
     displayName: Run Padre CLI and perf test for LLDB
 
-  - bash: |
-      cd padre
-      cargo run -- -d=node -t=node -- ./test_loop.js &
-      sleep 10
-      cd ../
-      python test/perf/setup.py
-      bzt test/perf/steptest.yml
-      kill $(jobs -p)
-    env:
-      RUST_BACKTRACE: 1
-    displayName: Run Padre CLI and perf test
-
   - task: PublishTestResults@2
     inputs:
       testResultsFormat: 'JUnit'
