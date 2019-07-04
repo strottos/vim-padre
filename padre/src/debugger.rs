@@ -1,5 +1,6 @@
 mod lldb;
 mod node;
+mod python;
 mod tty_process;
 
 use std::fmt::Debug;
@@ -38,6 +39,11 @@ pub fn get_debugger(
             run_cmd,
         )),
         "node" => Box::new(node::ImplDebugger::new(
+            notifier.clone(),
+            debugger_cmd,
+            run_cmd,
+        )),
+        "python" => Box::new(python::ImplDebugger::new(
             notifier.clone(),
             debugger_cmd,
             run_cmd,

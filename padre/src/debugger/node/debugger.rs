@@ -72,6 +72,11 @@ impl Debugger for ImplDebugger {
     }
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        self.notifier
+            .lock()
+            .unwrap()
+            .log_msg(LogLevel::INFO, "Launching process".to_string());
+
         let mut cmd = Command::new(self.debugger_cmd.clone())
             .arg(format!("--inspect-brk=0"))
             .arg("--")

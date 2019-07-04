@@ -2,6 +2,7 @@
 Test basic PADRE functions with behave
 """
 import asyncio
+import datetime
 import json
 import os
 import re
@@ -178,6 +179,8 @@ async def do_send_to_padre(future, writer, message, loop):
         future.cancel()
 
     loop.call_at(loop.time() + TIMEOUT, cancel)
+
+    message = message.replace("`pwd`", os.getcwd())
 
     async def do_write(writer, message):
         writer.write(message.encode())
@@ -659,7 +662,8 @@ def send_terminal_command(context, command):
 
         future.set_result(True)
 
-    loop.call_at(loop.time() + TIMEOUT, cancel)
+    cancel = loop.call_at(loop.time() + TIMEOUT, cancel)
+    print(cancel)
 
     loop.run_until_complete(write_terminal(context.padre,
                                            command,

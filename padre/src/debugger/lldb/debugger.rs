@@ -65,11 +65,11 @@ pub struct ImplDebugger {
 #[derive(Debug)]
 struct LLDBHandler {
     notifier: Arc<Mutex<Notifier>>,
-    lldb_status: Arc<Mutex<LLDBStatus>>,
+    status: Arc<Mutex<LLDBStatus>>,
     pid: Option<Pid>,
     process_status: Arc<Mutex<ProcessStatus>>,
     process_pid: Arc<Mutex<Option<Pid>>>,
-    lldb_in_tx: Option<Sender<Bytes>>,
+    in_tx: Option<Sender<Bytes>>,
     listener_tx: Arc<Mutex<Option<Sender<LLDBOutput>>>>,
 }
 
@@ -91,6 +91,8 @@ impl ImplDebugger {
 
 impl Debugger for ImplDebugger {
     fn setup(&mut self) {
+        // TODO: Time out if you give it something that isn't lldb as the debugger. Currently freezes.
+        // TODO: Test the not exists stuff
         let mut not_found = None;
 
         // Try getting the full path if the debugger doesn't exist
@@ -121,7 +123,7 @@ impl Debugger for ImplDebugger {
         let (lldb_in_tx, lldb_in_rx) = mpsc::channel(1);
         let (lldb_out_tx, lldb_out_rx) = mpsc::channel(32);
 
-        self.lldb_handler.lock().unwrap().lldb_in_tx = Some(lldb_in_tx);
+        self.lldb_handler.lock().unwrap().in_tx = Some(lldb_in_tx);
 
         let mut cmd = vec![self.debugger_cmd.clone(), "--".to_string()];
         cmd.extend(self.run_cmd.clone());
@@ -134,7 +136,7 @@ impl Debugger for ImplDebugger {
                 .for_each(move |output| {
                     let data = String::from_utf8_lossy(&output[..]);
                     let data = data.trim_matches(char::from(0));
-                    lldb_handler.lock().unwrap().analyse_lldb_output(data);
+                    lldb_handler.lock().unwrap().analyse_output(data);
 
                     Ok(())
                 })
@@ -155,7 +157,7 @@ impl Debugger for ImplDebugger {
         //                .map_err(|e| panic!("io error = {:?}", e))
         //        );
 
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         thread::spawn(move || {
             let mut lldb_in_tx = lldb_in_tx.clone().unwrap();
@@ -200,7 +202,7 @@ impl Debugger for ImplDebugger {
             .lldb_handler
             .lock()
             .unwrap()
-            .lldb_status
+            .status
             .lock()
             .unwrap()
             .clone();
@@ -216,22 +218,10 @@ impl Debugger for ImplDebugger {
                     }
                     None => (),
                 }
-                *self
-                    .lldb_handler
-                    .lock()
-                    .unwrap()
-                    .lldb_status
-                    .lock()
-                    .unwrap() = LLDBStatus::Quitting;
+                *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Quitting;
             }
             LLDBStatus::Working => {
-                *self
-                    .lldb_handler
-                    .lock()
-                    .unwrap()
-                    .lldb_status
-                    .lock()
-                    .unwrap() = LLDBStatus::Quitting;
+                *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Quitting;
             }
             LLDBStatus::Quitting => {}
         }
@@ -254,27 +244,14 @@ impl Debugger for ImplDebugger {
     }
 
     fn has_started(&self) -> bool {
-        match *self
-            .lldb_handler
-            .lock()
-            .unwrap()
-            .lldb_status
-            .lock()
-            .unwrap()
-        {
+        match *self.lldb_handler.lock().unwrap().status.lock().unwrap() {
             LLDBStatus::None => false,
             _ => true,
         }
     }
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self
-            .lldb_handler
-            .lock()
-            .unwrap()
-            .lldb_status
-            .lock()
-            .unwrap() = LLDBStatus::Working;
+        *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Working;
 
         self.notifier
             .lock()
@@ -282,7 +259,7 @@ impl Debugger for ImplDebugger {
             .log_msg(LogLevel::INFO, "Launching process".to_string());
 
         let lldb_handler = self.lldb_handler.clone();
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         let (tx, rx) = mpsc::channel(1);
         *lldb_handler.lock().unwrap().listener_tx.lock().unwrap() = Some(tx);
@@ -298,7 +275,7 @@ impl Debugger for ImplDebugger {
                 .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         let f = rx
             .take(1)
@@ -366,13 +343,7 @@ impl Debugger for ImplDebugger {
         file: String,
         line: u64,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self
-            .lldb_handler
-            .lock()
-            .unwrap()
-            .lldb_status
-            .lock()
-            .unwrap() = LLDBStatus::Working;
+        *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Working;
 
         self.notifier.lock().unwrap().log_msg(
             LogLevel::INFO,
@@ -383,7 +354,7 @@ impl Debugger for ImplDebugger {
         );
 
         let lldb_handler = self.lldb_handler.clone();
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         let (tx, rx) = mpsc::channel(1);
         *lldb_handler.lock().unwrap().listener_tx.lock().unwrap() = Some(tx);
@@ -403,23 +374,15 @@ impl Debugger for ImplDebugger {
             .into_future()
             .timeout(Duration::new(2, 0))
             .map(move |lldb_output| {
-                let resp;
-
                 let lldb_output = lldb_output.0.unwrap();
 
                 match lldb_output {
-                    LLDBOutput::Breakpoint(_, _) => {
-                        resp = serde_json::json!({"status":"OK"});
-                    }
-                    LLDBOutput::BreakpointPending => {
-                        resp = serde_json::json!({"status":"PENDING"});
-                    }
+                    LLDBOutput::Breakpoint(_, _) => serde_json::json!({"status":"OK"}),
+                    LLDBOutput::BreakpointPending => serde_json::json!({"status":"PENDING"}),
                     _ => {
                         panic!("Don't understand output {:?}", lldb_output);
                     }
-                };
-
-                resp
+                }
             })
             .map_err(|e| {
                 eprintln!("Error sending to LLDB: {:?}", e);
@@ -430,15 +393,9 @@ impl Debugger for ImplDebugger {
     }
 
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self
-            .lldb_handler
-            .lock()
-            .unwrap()
-            .lldb_status
-            .lock()
-            .unwrap() = LLDBStatus::Working;
+        *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Working;
 
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         let stmt = "thread step-in\n".to_string();
 
@@ -459,15 +416,9 @@ impl Debugger for ImplDebugger {
     }
 
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self
-            .lldb_handler
-            .lock()
-            .unwrap()
-            .lldb_status
-            .lock()
-            .unwrap() = LLDBStatus::Working;
+        *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Working;
 
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         let stmt = "thread step-over\n".to_string();
 
@@ -490,15 +441,9 @@ impl Debugger for ImplDebugger {
     fn continue_on(
         &mut self,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self
-            .lldb_handler
-            .lock()
-            .unwrap()
-            .lldb_status
-            .lock()
-            .unwrap() = LLDBStatus::Working;
+        *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Working;
 
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         let stmt = "thread continue\n".to_string();
 
@@ -522,16 +467,10 @@ impl Debugger for ImplDebugger {
         &mut self,
         variable: &str,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        *self
-            .lldb_handler
-            .lock()
-            .unwrap()
-            .lldb_status
-            .lock()
-            .unwrap() = LLDBStatus::Working;
+        *self.lldb_handler.lock().unwrap().status.lock().unwrap() = LLDBStatus::Working;
 
         let lldb_handler = self.lldb_handler.clone();
-        let lldb_in_tx = self.lldb_handler.lock().unwrap().lldb_in_tx.clone();
+        let lldb_in_tx = self.lldb_handler.lock().unwrap().in_tx.clone();
 
         let (tx, rx) = mpsc::channel(1);
         *lldb_handler.lock().unwrap().listener_tx.lock().unwrap() = Some(tx);
@@ -585,16 +524,16 @@ impl LLDBHandler {
     pub fn new(notifier: Arc<Mutex<Notifier>>) -> LLDBHandler {
         LLDBHandler {
             notifier,
-            lldb_in_tx: None,
+            in_tx: None,
             pid: None,
-            lldb_status: Arc::new(Mutex::new(LLDBStatus::None)),
+            status: Arc::new(Mutex::new(LLDBStatus::None)),
             process_pid: Arc::new(Mutex::new(None)),
             process_status: Arc::new(Mutex::new(ProcessStatus::None)),
             listener_tx: Arc::new(Mutex::new(None)),
         }
     }
 
-    fn analyse_lldb_output(&self, data: &str) {
+    fn analyse_output(&self, data: &str) {
         lazy_static! {
             static ref RE_PROCESS_STARTED: Regex =
                 Regex::new("^Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
@@ -628,14 +567,14 @@ impl LLDBHandler {
 
         if data.contains("(lldb) ") {
             // Check LLDB has started if we haven't already
-            let current_status = self.lldb_status.lock().unwrap().clone();
+            let current_status = self.status.lock().unwrap().clone();
             match current_status {
                 // LLDB Starting
                 LLDBStatus::None => {
                     self.lldb_startup();
                 }
                 LLDBStatus::Working => {
-                    *self.lldb_status.lock().unwrap() = LLDBStatus::Listening;
+                    *self.status.lock().unwrap() = LLDBStatus::Listening;
                 }
                 LLDBStatus::Listening | LLDBStatus::Quitting => {}
             }
@@ -723,7 +662,7 @@ impl LLDBHandler {
 
     // Setup LLDB when in startup
     fn lldb_startup(&self) {
-        let lldb_in_tx = self.lldb_in_tx.clone();
+        let lldb_in_tx = self.in_tx.clone();
 
         // Send messages to LLDB for startup
         tokio::spawn(
@@ -752,7 +691,7 @@ impl LLDBHandler {
                 .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
 
-        *self.lldb_status.lock().unwrap() = LLDBStatus::Listening;
+        *self.status.lock().unwrap() = LLDBStatus::Listening;
         self.notifier.lock().unwrap().signal_started();
         if !self.listener_tx.lock().unwrap().is_none() {
             let listener_tx = self.listener_tx.clone();
@@ -981,8 +920,8 @@ impl LLDBHandler {
     }
 
     fn process_running_warning(&self) {
-        let lldb_status_current = self.lldb_status.lock().unwrap().clone();
-        let lldb_in_tx = self.lldb_in_tx.clone();
+        let lldb_status_current = self.status.lock().unwrap().clone();
+        let lldb_in_tx = self.in_tx.clone();
         match lldb_status_current {
             LLDBStatus::Listening | LLDBStatus::Working => {
                 tokio::spawn(
