@@ -44,7 +44,7 @@ class JavaDebugger extends eventEmitter {
       this.emit('padre_log', level, str)
     })
 
-    for (let dir of ['./', '/Users/stevent/code/third_party/java', '/Users/stevent/code/third_party/apache-maven-3.5.4']) {
+    for (let dir of ['./', '/Users/stevent@kainos.com/code/third_party/java']) {
       walk.filesSync(dir, (basedir, filename) => {
         this.allJavaFiles.add(path.normalize(`${basedir}/${filename}`))
       })
