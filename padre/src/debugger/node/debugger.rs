@@ -2,19 +2,20 @@
 
 use std::io;
 use std::path::Path;
-use std::process::{exit, Command, Stdio};
+use std::process::{exit, Command};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use crate::debugger::node::ws::WSHandler;
+use crate::debugger::tty_process::spawn_process;
 use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
 
+use bytes::Bytes;
 use regex::Regex;
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
-use tokio_process::CommandExt;
 use websocket::OwnedMessage;
 
 #[derive(Debug)]
@@ -77,18 +78,51 @@ impl Debugger for ImplDebugger {
             .unwrap()
             .log_msg(LogLevel::INFO, "Launching process".to_string());
 
-        let mut cmd = Command::new(self.debugger_cmd.clone())
-            .arg(format!("--inspect-brk=0"))
-            .arg("--")
-            .args(self.run_cmd.clone())
-            .stdin(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn_async()
-            .expect("Can't spawn node");
+        // Stdin and Stdout/Stderr of Python
+        let (node_in_tx, node_in_rx) = mpsc::channel(1);
+        let (node_out_tx, node_out_rx) = mpsc::channel(1);
 
-        let node_stderr = cmd.stderr().take().unwrap();
+        let mut cmd = vec![
+            self.debugger_cmd.clone(),
+            "--inspect-brk=0".to_string(),
+            "--".to_string(),
+        ];
+        cmd.extend(self.run_cmd.clone());
 
+        spawn_process(cmd, node_in_rx, node_out_tx);
+
+        let (has_started_tx, has_started_rx) = mpsc::channel(1);
+
+        tokio::spawn(
+            node_out_rx
+                .for_each(move |output| {
+                    let data = String::from_utf8_lossy(&output[..]);
+                    let data = data.trim_matches(char::from(0));
+                    for line in data.split("\r\n") {
+                        match check_line_debugger_started(line.to_string()) {
+                            Some(debugger_uri) => {
+                                tokio::spawn(
+                                    has_started_tx
+                                        .clone()
+                                        .send(debugger_uri)
+                                        .map(|_| {})
+                                        .map_err(|e| {
+                                            eprintln!("Error spawning node: {:?}", e);
+                                        }),
+                                );
+                            }
+                            None => {}
+                        };
+                    }
+
+                    Ok(())
+                })
+                .map_err(|e| panic!("Error receiving from node: {}", e)),
+        );
+
+        // Example here states we need a separate thread: https://github.com/tokio-rs/tokio/blob/master/tokio/examples/connect.rs
         thread::spawn(move || {
+            let mut node_in_tx = node_in_tx.clone();
             let mut stdin = io::stdin();
             loop {
                 let mut buf = vec![0; 1024];
@@ -97,51 +131,13 @@ impl Debugger for ImplDebugger {
                     Ok(n) => n,
                 };
                 buf.truncate(n);
+                let bytes = Bytes::from(buf);
+                node_in_tx = match node_in_tx.send(bytes).wait() {
+                    Ok(tx) => tx,
+                    Err(_) => break,
+                };
             }
         });
-
-        let reader = io::BufReader::new(node_stderr);
-        let lines = tokio::io::lines(reader);
-        let (has_started_tx, has_started_rx) = mpsc::channel(1);
-
-        tokio::spawn(
-            lines
-                .for_each(move |line| {
-                    eprintln!("{}", line);
-
-                    match check_line_debugger_started(line) {
-                        Some(debugger_uri) => {
-                            tokio::spawn(
-                                has_started_tx
-                                    .clone()
-                                    .send(debugger_uri)
-                                    .map(|_| {})
-                                    .map_err(|e| {
-                                        eprintln!("Error spawning node: {:?}", e);
-                                    }),
-                            );
-                        }
-                        None => {}
-                    };
-
-                    Ok(())
-                })
-                .map_err(|e| println!("stderr err: {:?}", e)),
-        );
-
-        let notifier = self.notifier.clone();
-
-        tokio::spawn(
-            cmd.map(move |exit_status| {
-                notifier
-                    .lock()
-                    .unwrap()
-                    .signal_exited(0, exit_status.code().unwrap() as i64);
-            })
-            .map_err(|e| {
-                eprintln!("Error spawning node: {}", e);
-            }),
-        );
 
         let scripts = self.scripts.clone();
         let pending_breakpoints = self.pending_breakpoints.clone();
@@ -493,6 +489,13 @@ fn analyse_message(
         println!("TODO: Code {:?}", json);
     } else if method == "Runtime.executionContextDestroyed" {
         ws_handler.lock().unwrap().close();
+        // TODO: Report exited with exit code, can't get this out
+        // of tty_process or nix atm.
+        //
+        //notifier
+        //    .lock()
+        //    .unwrap()
+        //    .signal_exited(0, 0);
     } else {
         panic!("Can't understand message: {:?}", json);
     }

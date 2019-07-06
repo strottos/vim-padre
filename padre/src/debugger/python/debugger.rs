@@ -12,8 +12,8 @@ use crate::debugger::Debugger;
 use crate::notifier::{LogLevel, Notifier};
 
 use bytes::Bytes;
-use nix::unistd::Pid;
 use nix::sys::signal::{kill, Signal};
+use nix::unistd::Pid;
 use regex::Regex;
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
@@ -277,20 +277,16 @@ impl Debugger for ImplDebugger {
             .unwrap()
             .send_and_receive(PDBInput::PrintVariable(variable.clone()));
 
-        Box::new(
-            f.map(move |value| {
-                match value {
-                    PDBOutput::PrintVariable(value) => serde_json::json!({
-                        "status": "OK",
-                        "variable": variable,
-                        "value": value,
-                    }),
-                    _ => {
-                        unreachable!();
-                    }
-                }
-            })
-        )
+        Box::new(f.map(move |value| match value {
+            PDBOutput::PrintVariable(value) => serde_json::json!({
+                "status": "OK",
+                "variable": variable,
+                "value": value,
+            }),
+            _ => {
+                unreachable!();
+            }
+        }))
     }
 }
 
@@ -362,7 +358,10 @@ impl PdbHandler {
                 self.status = PDBStatus::Printing(var);
             }
             PDBStatus::Printing(var) => {
-                let listener_tx = self.listener_senders.remove(&PDBInput::PrintVariable(var)).unwrap();
+                let listener_tx = self
+                    .listener_senders
+                    .remove(&PDBInput::PrintVariable(var))
+                    .unwrap();
                 let to = data.len() - 2;
                 tokio::spawn(
                     listener_tx
@@ -422,7 +421,7 @@ impl PdbHandler {
         match msg {
             PDBInput::Breakpoint(file, line_num) => {
                 self.send(&format!("break {}:{}", file, line_num));
-            },
+            }
             PDBInput::PrintVariable(variable) => {
                 self.send(&format!("print({})", variable));
             }

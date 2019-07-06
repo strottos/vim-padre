@@ -695,10 +695,11 @@ def terminate_program(context):
     Close PADRE
     """
     subprocess.run(["kill", "-SIGINT", "{}".format(context.padre.process.pid)],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=True,
-                    cwd=os.getcwd())
+                   stdout=subprocess.PIPE,
+                   stderr=subprocess.PIPE,
+                   check=True,
+                   cwd=os.getcwd())
+
     async def wait_process(loop):
         await context.padre.process.wait()
 

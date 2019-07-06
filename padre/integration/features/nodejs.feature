@@ -44,6 +44,5 @@ Feature: NodeJS
         When I send a request to PADRE '{"cmd":"continue"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                     | args       |
-            | padre#debugger#ProcessExited | [0,"\\d+"] |
         When I terminate padre
         Then padre is not running

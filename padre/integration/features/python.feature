@@ -2,7 +2,7 @@ Feature: Python
     Debug with PADRE a Python program
 
     Scenario: Debug a basic program with Python using the Python debugger command line
-        Given that we have a test program './test_files/test_prog.py' that runs with 'python' debugger of type 'python'
+        Given that we have a test program './test_files/test_prog.py' that runs with 'python3' debugger of type 'python'
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |
@@ -37,7 +37,7 @@ Feature: Python
         Then padre is not running
 
     Scenario: Debug a basic program with Python using the PADRE interface
-        Given that we have a test program './test_files/test_prog.py' that runs with 'python' debugger of type 'python'
+        Given that we have a test program './test_files/test_prog.py' that runs with 'python3' debugger of type 'python'
         When I debug the program with PADRE
         Then I expect to be called with
             | function                          | args |

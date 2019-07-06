@@ -176,7 +176,6 @@ impl Stream for TtyFileStdioStream {
                     let mut buffer: [u8; 512] = [0; 512];
                     match self.io.read(&mut buffer) {
                         Ok(_) => {
-                            // TODO: More efficient, this is crap, but works for now
                             let mut reserve = 0;
                             for (n, byte) in buffer.iter().enumerate() {
                                 if *byte == 0 {
