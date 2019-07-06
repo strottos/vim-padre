@@ -489,13 +489,13 @@ fn analyse_message(
         println!("TODO: Code {:?}", json);
     } else if method == "Runtime.executionContextDestroyed" {
         ws_handler.lock().unwrap().close();
-        // TODO: Report exited with exit code, can't get this out
-        // of tty_process or nix atm.
-        //
-        //notifier
-        //    .lock()
-        //    .unwrap()
-        //    .signal_exited(0, 0);
+    // TODO: Report exited with exit code, can't get this out
+    // of tty_process or nix atm.
+    //
+    //notifier
+    //    .lock()
+    //    .unwrap()
+    //    .signal_exited(0, 0);
     } else {
         panic!("Can't understand message: {:?}", json);
     }
