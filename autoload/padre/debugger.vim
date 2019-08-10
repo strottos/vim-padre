@@ -42,6 +42,7 @@ function! padre#debugger#Debug(...)
 
   let l:program = ''
   let l:debugger = 'lldb'
+  let l:debugger_type = 'lldb'
 
   let l:args = a:000
   let l:process_vim_args = 1
@@ -50,15 +51,27 @@ function! padre#debugger#Debug(...)
     let l:arg = l:args[0]
     let l:args = l:args[1:]
 
-    let l:match = matchlist(l:arg, '^--debugger=\([a-z]*\)$')
+    let l:match = matchlist(l:arg, '^--debugger=\([^ ]*\)$')
     if !empty(l:match) && l:process_vim_args == 1
       let l:debugger = l:match[1]
       continue
     endif
 
-    let l:match = matchlist(l:arg, '^-d=\([a-z]*\)$')
+    let l:match = matchlist(l:arg, '^-d=\([^ ]*\)$')
     if !empty(l:match) && l:process_vim_args == 1
       let l:debugger = l:match[1]
+      continue
+    endif
+
+    let l:match = matchlist(l:arg, '^--type=\([^ ]*\)$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:debugger_type = l:match[1]
+      continue
+    endif
+
+    let l:match = matchlist(l:arg, '^-t=\([^ ]*\)$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:debugger_type = l:match[1]
       continue
     endif
 
@@ -103,7 +116,7 @@ function! padre#debugger#Debug(...)
   wincmd b
 
   " TODO: Check for errors and report
-  let l:command = s:PluginRoot . '/padre/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' -- ' . l:program
+  let l:command = s:PluginRoot . '/padre/target/debug/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' --type=' . l:debugger_type . ' -- ' . l:program
   if has('terminal')
     execute 'terminal ++curwin ' . l:command
   else
@@ -123,7 +136,7 @@ function! padre#debugger#Run()
     echoerr 'PADRE is not running'
   endif
 
-  call padre#socket#Send('run', function('padre#debugger#RunCallback'))
+  call padre#socket#Send({"cmd": "run"}, function('padre#debugger#RunCallback'))
 endfunction
 
 function! padre#debugger#Stop()
@@ -137,7 +150,7 @@ function! padre#debugger#Stop()
 endfunction
 
 function! s:SetBreakpointInDebugger(line, file)
-  call padre#socket#Send('breakpoint file=' . a:file . ' line=' . a:line, function('padre#debugger#BreakpointCallback'))
+  call padre#socket#Send({"cmd": "breakpoint", "file": a:file, "line": str2nr(a:line)}, function('padre#debugger#BreakpointCallback'))
 endfunction
 
 function! padre#debugger#Breakpoint()
@@ -149,19 +162,19 @@ function! padre#debugger#Breakpoint()
 endfunction
 
 function! padre#debugger#StepIn()
-  call padre#socket#Send('stepIn', function('padre#debugger#StepInCallback'))
+  call padre#socket#Send({"cmd": "stepIn"}, function('padre#debugger#StepInCallback'))
 endfunction
 
 function! padre#debugger#StepOver()
-  call padre#socket#Send('stepOver', function('padre#debugger#StepOverCallback'))
+  call padre#socket#Send({"cmd": "stepOver"}, function('padre#debugger#StepOverCallback'))
 endfunction
 
 function! padre#debugger#PrintVariable(variable)
-  call padre#socket#Send('print variable=' . a:variable, function('padre#debugger#PrintVariableCallback'))
+  call padre#socket#Send({"cmd": "print", "variable": a:variable}, function('padre#debugger#PrintVariableCallback'))
 endfunction
 
 function! padre#debugger#Continue()
-  call padre#socket#Send('continue', function('padre#debugger#ContinueCallback'))
+  call padre#socket#Send({"cmd": "continue"}, function('padre#debugger#ContinueCallback'))
 endfunction
 
 function! padre#debugger#AddDataWindow()
@@ -220,67 +233,57 @@ function! padre#debugger#StderrCallback(jobId, data, args)
 endfunction
 
 function! padre#debugger#RunCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK pid=\(\d\+\)$')
-  if !empty(l:match)
-    let l:msg = 'Process ' . l:match[1] . ' Running'
-    call padre#debugger#Log(4, l:msg)
-  else
-    call padre#debugger#Log(1, 'Cannot understand: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
+    return
+  endif
+
+  if has_key(a:data, 'pid')
+    call padre#debugger#Log(4, 'Process ' . a:data['pid'] . ' Running')
   endif
 endfunction
 
 function! padre#debugger#BreakpointCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if empty(l:match)
-    call padre#debugger#Log(1, 'Cannot understand breakpoint response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
 function! padre#debugger#BreakpointSet(fileName, lineNum)
-  let l:msg = 'Breakpoint set file=' . a:fileName . ' line=' . a:lineNum
+  let l:msg = 'Breakpoint set file=' . a:fileName . ', line=' . a:lineNum
   call padre#debugger#Log(4, l:msg)
 endfunction
 
 function! padre#debugger#StepInCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if !empty(l:match)
-    call padre#debugger#Log(4, 'Step In')
-  else
-    call padre#debugger#Log(1, 'Cannot understand step in response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
 function! padre#debugger#StepOverCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if !empty(l:match)
-    call padre#debugger#Log(4, 'Step Over')
-  else
-    call padre#debugger#Log(1, 'Cannot understand step over response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
 function! padre#debugger#ContinueCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK$')
-  if !empty(l:match)
-    call padre#debugger#Log(4, 'Continuing')
-  else
-    call padre#debugger#Log(1, 'Cannot understand continue response: ' . a:data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
 endfunction
 
 function! padre#debugger#PrintVariableCallback(channel_id, data)
-  let l:match = matchlist(a:data, '^OK variable=\(.*\) value=\(.*\) type=\(.*\)$')
-  if !empty(l:match)
-    if (match[3] == 'JSON')
-      execute "let l:json = system('python -m json.tool', " . l:match[2] . ")"
-      let l:msg = 'Variable ' . l:match[1] . '=' . l:json
-    else
-      let l:msg = 'Variable ' . l:match[1] . '=' . l:match[2]
-    endif
-    call padre#debugger#Log(4, l:msg)
-  else
-    call padre#debugger#Log(2, "Don't understand: " . a:data)
+  let l:status = remove(a:data, 'status')
+  if l:status != 'OK'
+    call padre#debugger#Log(2, 'Error printing variable')
+    return
   endif
+
+  let l:variable_name = remove(a:data, 'variable')
+
+  execute "let l:json = system('python -m json.tool', '" . substitute(json_encode(a:data), "'", "''", "g") . "')"
+  let l:msg = 'Variable ' . l:variable_name . '=' . l:json
+  call padre#debugger#Log(4, l:msg)
 endfunction
 
 function! padre#debugger#JumpToPosition(file, line)
@@ -309,11 +312,14 @@ function! padre#debugger#JumpToPosition(file, line)
       execute s:CurrentFileBufWindow . 'wincmd w'
       call padre#buffer#UnsetPadreKeyBindings(bufname('%'))
     endif
-    execute 'edit ' . l:fileToLoad
 
-    call padre#buffer#SetMainPadreKeyBindings(l:fileToLoad)
+    if filereadable(l:fileToLoad)
+      execute 'view ' . l:fileToLoad
 
-    let s:CurrentFileLoaded = l:fileToLoad
+      let s:CurrentFileLoaded = l:fileToLoad
+    endif
+
+    call padre#buffer#SetMainPadreKeyBindings(s:CurrentFileLoaded)
   endif
 
   let s:CurrentFileBufWindow = winnr()

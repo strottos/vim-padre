@@ -1,0 +1,36 @@
+trigger:
+- master
+- feature/*
+
+jobs:
+- job: rustfmt
+  pool:
+    vmImage: 'ubuntu-latest'
+  timeoutInMinutes: 5
+
+  steps:
+  - template: ci/rustfmt.yml
+
+- job: padre_tests
+  pool:
+    vmImage: 'ubuntu-latest'
+  timeoutInMinutes: 20
+
+  steps:
+  - template: ci/padre-tests.yml
+
+- job: perf_tests
+  pool:
+    vmImage: 'ubuntu-latest'
+  timeoutInMinutes: 20
+
+  steps:
+  - template: ci/perf-tests.yml
+
+- job: vim_tests
+  pool:
+    vmImage: 'ubuntu-latest'
+  timeoutInMinutes: 10
+
+  steps:
+  - template: ci/vim-tests.yml

@@ -3,11 +3,11 @@
 Execute(Test jobs are created and output exists):
   let t:job_id = padre#job#Start('test/pythonx/test_prog.py', {})
 
-  sleep 100ms
+  sleep 200ms
 
   AssertEqual padre#job#IsRunning(t:job_id), 1
 
-  sleep 600ms
+  sleep 500ms
 
   AssertEqual padre#job#IsRunning(t:job_id), 0
   AssertEqual padre#job#Stdout(t:job_id), ['Test stdout vimscript jobs', 'Testing done']
