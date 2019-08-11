@@ -12,13 +12,7 @@ endfunction
 if exists( 'g:loaded_padre_plugin' )
   call s:restore_cpo()
   finish
-elseif !(has('python') || has('python3'))
-  echohl WarningMsg |
-        \ echomsg 'Plugin requires vim compiled with python or python3' |
-        \ echohl None
-  call s:restore_cpo()
-  finish
-elseif !(has('job') && has('timers'))
+elseif !has('job')
   echohl WarningMsg |
         \ echomsg 'Plugin requires vim compiled with features `job` and `timers`' |
         \ echohl None

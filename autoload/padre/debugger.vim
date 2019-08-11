@@ -23,9 +23,6 @@ function! padre#debugger#Setup()
   " call padre#buffer#Create('PADRE_Preprocessing', 'PADRE_Preprocessing', 1)
 
   call padre#buffer#SetMainPadreKeyBindings('PADRE_Main')
-  if !has('terminal')
-    call padre#buffer#SetOnlyWriteableAtBottom('PADRE_Stdio')
-  endif
 
   let s:DataItems = ['PADRE_Stdio']
 
@@ -41,6 +38,8 @@ function! padre#debugger#Debug(...)
   let s:NumDataWindows = 0
 
   let l:program = ''
+  let l:padre_host = 'localhost'
+  let l:padre_port = 0
   let l:debugger = 'lldb'
   let l:debugger_type = 'lldb'
 
@@ -75,6 +74,13 @@ function! padre#debugger#Debug(...)
       continue
     endif
 
+    let l:match = matchlist(l:arg, '^--connect=\([^ ]*\):\([0-9]*\)$')
+    if !empty(l:match) && l:process_vim_args == 1
+      let l:padre_host = match[1]
+      let l:padre_port = match[2]
+      continue
+    endif
+
     let l:match = matchlist(l:arg, '^--$')
     if !empty(l:match) && l:process_vim_args == 1
       let l:process_vim_args = 0
@@ -88,7 +94,7 @@ function! padre#debugger#Debug(...)
     endif
   endwhile
 
-  if l:program == ''
+  if l:program == '' && l:padre_port == 0
     if s:PadreDebugProgram != ''
       let l:program = s:PadreDebugProgram
     elseif get(g:, 'PadreDebugProgram', '') != ''
@@ -99,34 +105,37 @@ function! padre#debugger#Debug(...)
     endif
   endif
 
-  if !has('terminal')
-    call padre#buffer#ClearBuffer('PADRE_Stdio')
-
-    if s:JobId != 0
-      call padre#job#Stop(s:JobId)
-    endif
-  endif
-
   call padre#layout#OpenTabWithBuffer('PADRE_Main', 0)
 
-  let l:padrePort = padre#util#GetUnusedLocalhostPort()
+  if l:padre_port == 0
+    " call padre#debugger#AddDataWindow()
+    call padre#layout#AddWindowToTab('b', 10, 'PADRE_Stdio', 0)
+    wincmd b
 
-  " call padre#debugger#AddDataWindow()
-  call padre#layout#AddWindowToTab('b', 10, 'PADRE_Stdio', 0)
-  wincmd b
-
-  " TODO: Check for errors and report
-  let l:command = s:PluginRoot . '/padre/target/debug/padre --port=' . l:padrePort . ' --debugger=' . l:debugger . ' --type=' . l:debugger_type . ' -- ' . l:program
-  if has('terminal')
+    " TODO: Check for errors and report
+    let l:command = s:PluginRoot . '/padre/target/debug/padre --debugger=' . l:debugger . ' --type=' . l:debugger_type . ' -- ' . l:program
     execute 'terminal ++curwin ' . l:command
-  else
-    let l:jobOptions = {'out_cb': function('padre#debugger#StdoutCallback'), 'err_cb': function('padre#debugger#StderrCallback')}
-    let s:JobId = padre#job#Start(l:command, l:jobOptions)
+
+    sleep 200ms
+
+    let l:connection_line = ''
+
+    for l:terminal in term_list()
+      let l:connection_line = term_getline(l:terminal, 1)
+      let l:match = matchlist(l:connection_line, '^Listening on \([^ ]*\):\([0-9]*\)$')
+      if !empty(l:match)
+        let l:padre_host = l:match[1]
+        let l:padre_port = l:match[2]
+      endif
+    endfor
   endif
 
-  sleep 200ms
+  if l:padre_port == 0
+    echom "Can't connect to PADRE, unknown port"
+    return
+  endif
 
-  call padre#socket#Connect('localhost', l:padrePort)
+  call padre#socket#Connect(l:padre_host, l:padre_port)
 
   wincmd k
 endfunction
