@@ -29,10 +29,6 @@ function! padre#debugger#Setup()
   let s:PresentDirectory = expand('%:p:h')
 endfunction
 
-function! padre#debugger#IsRunning()
-  return s:Running
-endfunction
-
 function! padre#debugger#Debug(...)
   call padre#layout#CloseTabsWithBuffer('PADRE_Main')
   let s:NumDataWindows = 0

@@ -3,29 +3,27 @@
 //! Responsible for setting default config, reading configs and setting.
 //!
 //! The following config items can be set:
-//!  - ErrorWhenQueued: Set to true if we should respond with an error when a request is already
-//!         in the queue or false. Defaults to false.
-//!  - HaltOnUnknownPosition: Set to true if we should halt when we reach an unknown position or
-//!         false if we should carry on. Default to false.
-//!  - StepInOnUnknownPosition: Set to true if we should step in when at an unknown position or
-//!         false if we should step over until we reach a known position. Assumes
-//!         HaltOnUnknownPosition is true or has no effect. Defaults to false.
+//!  - BackPressure: Set the backpressure of the queue to build up. 0 means it errors on any
+//!    request when one is in progress. Defaults to 20.
+//!  - UnknownPosition: Set to the following:
+//!    0: if we should halt when we reach an unknown position
+//!    1: if we should carry on stepping over until we reach a known position.
+//!    2: if we should carry on stepping in until we reach a known position.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 lazy_static! {
-    static ref CONFIG: Mutex<HashMap<&'static str, bool>> = {
+    static ref CONFIG: Mutex<HashMap<&'static str, i64>> = {
         let mut m = HashMap::new();
-        m.insert("ErrorWhenQueued", false);
-        m.insert("HaltOnUnknownPosition", false);
-        m.insert("StepInOnUnknownPosition", false);
+        m.insert("BackPressure", 20);
+        m.insert("UnknownPosition", 0);
         Mutex::new(m)
     };
 }
 
 /// Get a config items value, either true or false
-pub fn get_bool_config(cfg: &str) -> Option<bool> {
+pub fn get_config(cfg: &str) -> Option<i64> {
     match CONFIG.lock().unwrap().get(cfg) {
         Some(s) => Some(*s),
         None => None,
@@ -33,44 +31,27 @@ pub fn get_bool_config(cfg: &str) -> Option<bool> {
 }
 
 /// Set a config items value, either true or false
-pub fn set_bool_config(cfg: &str, value: bool) {
-    let bad;
+pub fn set_config(cfg: &str, value: i64) {
     match CONFIG.lock().unwrap().get_mut(cfg) {
         Some(s) => {
             *s = value;
-            bad = false;
-        },
-        None => {
-            bad = true;
+            return;
         }
-    }
-    if bad {
-        panic!("Trying to set config item that doesn't exist {}", cfg);
+        None => {} // TODO: Notify
     }
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn check_get_default_config_item() {
-        super::set_bool_config("ErrorWhenQueued", false);
-        assert_eq!(super::get_bool_config("ErrorWhenQueued"), Some(false));
+    fn check_set_and_get_config_item() {
+        assert_eq!(super::get_config("BackPressure"), Some(20));
+        super::set_config("BackPressure", 0);
+        assert_eq!(super::get_config("BackPressure"), Some(0));
     }
 
     #[test]
     fn check_get_non_existent_config_item() {
-        assert_eq!(super::get_bool_config("NotExists"), None);
-    }
-
-    #[test]
-    fn check_set_config_item() {
-        super::set_bool_config("ErrorWhenQueued", true);
-        assert_eq!(super::get_bool_config("ErrorWhenQueued"), Some(true));
-    }
-
-    #[test]
-    #[should_panic]
-    fn check_set_non_existent_config_item() {
-        super::set_bool_config("NotExists", true);
+        assert_eq!(super::get_config("NotExists"), None);
     }
 }

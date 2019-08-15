@@ -12,10 +12,16 @@
 //!            - python
 //!   -d/--debugger
 //!
-//! The debug command should be specified as an addendum when running the command
+//! The debug command should be specified as an addendum when running the command, e.g.
+//! ```
+//! padre -t=lldb -d=lldb -- my_program arg1 arg2 3 4
+//! ```
+//! will run the program `my_program arg1 arg2 3 4` in an `lldb` session.
 
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate serde_derive;
 
 use std::io;
 use std::net::SocketAddr;
@@ -31,9 +37,11 @@ use tokio_signal::unix::{Signal, SIGINT, SIGQUIT, SIGTERM};
 
 mod config;
 mod notifier;
+mod server;
 mod util;
+mod vimcodec;
 
-fn get_config<'a>() -> ArgMatches<'a> {
+fn get_app_args<'a>() -> ArgMatches<'a> {
     App::new("VIM Padre")
         .version("0.1.0")
         .author("Steven Trotter <stevetrot@gmail.com>")
@@ -85,18 +93,19 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
 }
 
 fn exit_padre() {
-    let when = Instant::now() + Duration::new(5, 0);
-
-    tokio::spawn({
-        Delay::new(when)
-            .map_err(|e| panic!("timer failed; err={:?}", e))
-            .and_then(|_| {
-                println!("Timed out exiting!");
-                exit(-1);
-                #[allow(unreachable_code)]
-                Ok(())
-            })
-    });
+    //    let when = Instant::now() + Duration::new(5, 0);
+    //
+    //    tokio::spawn({
+    //        Delay::new(when)
+    //            .map_err(|e| panic!("timer failed; err={:?}", e))
+    //            .and_then(|_| {
+    //                println!("Timed out exiting!");
+    //                exit(-1);
+    //                #[allow(unreachable_code)]
+    //                Ok(())
+    //            })
+    //    });
+    exit(0);
 }
 
 struct Runner {}
@@ -106,7 +115,7 @@ impl Future for Runner {
     type Error = ();
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let args = get_config();
+        let args = get_app_args();
 
         let connection_addr = get_connection(&args);
         let listener = TcpListener::bind(&connection_addr)
@@ -157,9 +166,10 @@ impl Future for Runner {
                 .incoming()
                 .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
                 .for_each(move |socket| {
-                    println!("socket {:?}", socket);
+                    server::process_connection(socket);
+
                     Ok(())
-                })
+                }),
         );
 
         Ok(Async::Ready(()))

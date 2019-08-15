@@ -56,33 +56,6 @@ Feature: Basics
         When I terminate padre
         Then padre is not running
 
-    Scenario: Check we can handle terminating connections
-        Given that we have a file 'test_prog.c'
-        And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
-        And that we have a test program 'test_prog' that runs with 'lldb' debugger
-        When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
-        When I terminate connection 0
-        When I open another connection to PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
-        When I open another connection to PADRE
-        Then I expect to be called on connection 1 with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
-        When I send a request to PADRE '{"cmd":"pings"}' on connection 0
-        Then I receive both a response '{"status":"OK"}' and I expect to be called on connection 0 with
-            | function           | args       |
-            | padre#debugger#Log | [4,"pong"] |
-        And I expect to be called on connection 1 with
-            | function           | args       |
-            | padre#debugger#Log | [4,"pong"] |
-        When I terminate padre
-        Then padre is not running
-
     Scenario: Check we can handle badly sent data and it will log errors appropriately.
         Given that we have a file 'test_prog.c'
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
