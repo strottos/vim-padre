@@ -18,7 +18,7 @@ lazy_static! {
 /// Log level to log at, clients can choose to filter messages at certain log
 /// levels
 ///
-/// TODO: Just don't get sent at a certain point?
+/// TODO: Allow each socket to configure it's own log level
 #[derive(Debug)]
 pub enum LogLevel {
     CRITICAL = 1,
@@ -132,6 +132,7 @@ pub fn breakpoint_set(file: String, line: u64) {
     NOTIFIER.lock().unwrap().send_msg(msg);
 }
 
+#[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use tokio::sync::mpsc;

@@ -13,6 +13,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::notifier::{log_msg, LogLevel};
+
 lazy_static! {
     static ref CONFIG: Mutex<HashMap<&'static str, i64>> = {
         let mut m = HashMap::new();
@@ -30,14 +32,19 @@ pub fn get_config(cfg: &str) -> Option<i64> {
     }
 }
 
-/// Set a config items value, either true or false
+/// Set a config items value to an integer
 pub fn set_config(cfg: &str, value: i64) {
     match CONFIG.lock().unwrap().get_mut(cfg) {
         Some(s) => {
             *s = value;
             return;
         }
-        None => {} // TODO: Notify
+        None => {
+            log_msg(
+                LogLevel::WARN,
+                format!("Couldn't set unfound config item: {}", cfg),
+            );
+        }
     }
 }
 

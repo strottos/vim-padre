@@ -26,6 +26,7 @@ extern crate serde_derive;
 use std::io;
 use std::net::SocketAddr;
 use std::process::exit;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use clap::{App, Arg, ArgMatches};
@@ -36,6 +37,7 @@ use tokio::timer::Delay;
 use tokio_signal::unix::{Signal, SIGINT, SIGQUIT, SIGTERM};
 
 mod config;
+mod debugger;
 mod notifier;
 mod server;
 mod util;
@@ -117,6 +119,18 @@ impl Future for Runner {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let args = get_app_args();
 
+        let debug_cmd: Vec<String> = args
+            .values_of("debug_cmd")
+            .expect("Can't find program to debug, please rerun with correct parameters")
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+
+        let debugger = Arc::new(Mutex::new(debugger::get_debugger(
+            args.value_of("debugger"),
+            args.value_of("type"),
+            debug_cmd,
+        )));
+
         let connection_addr = get_connection(&args);
         let listener = TcpListener::bind(&connection_addr)
             .map(|listener| {
@@ -166,7 +180,7 @@ impl Future for Runner {
                 .incoming()
                 .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
                 .for_each(move |socket| {
-                    server::process_connection(socket);
+                    server::process_connection(socket, debugger.clone());
 
                     Ok(())
                 }),

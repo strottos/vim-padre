@@ -4,8 +4,11 @@
 //! padre and debuggers for actioning.
 
 use std::io;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use crate::notifier::{add_listener, remove_listener, log_msg, LogLevel};
+use crate::debugger::Debugger;
+use crate::notifier::{add_listener, log_msg, remove_listener, LogLevel};
 use crate::vimcodec::VimCodec;
 
 use tokio::codec::Decoder;
@@ -18,8 +21,17 @@ use tokio::sync::mpsc;
 /// File location
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 pub struct FileLocation {
-    line_num: u32,
+    line_num: u64,
     file_name: String,
+}
+
+impl FileLocation {
+    pub fn new(line_num: u64, file_name: String) -> Self {
+        FileLocation {
+            line_num,
+            file_name,
+        }
+    }
 }
 
 /// Variable name
@@ -123,7 +135,7 @@ impl Response {
 /// A notification to be sent to all listeners of an event
 ///
 /// Takes a String as the command and a vector of JSON values as arguments. For example, a
-/// `Notication` with a command `call` and vector arguments TODO...
+/// `Notication` with a command `execute` and vector arguments TODO...
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Notification {
     cmd: String,
@@ -138,7 +150,7 @@ impl Notification {
 
     /// Return the notification cmd
     pub fn cmd(&self) -> &str {
-        &self.cmd[..]
+        self.cmd.as_ref()
     }
 
     /// Return the response values
@@ -163,7 +175,7 @@ pub enum PadreSend {
 /// Process a TCP socket connection.
 ///
 /// Fully sets up a new socket connection including listening for requests and sending responses.
-pub fn process_connection(socket: TcpStream) {
+pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Box<dyn Debugger + Send>>>) {
     let addr = socket.peer_addr().unwrap();
 
     let (request_tx, request_rx) = VimCodec::new().framed(socket).split();
@@ -191,7 +203,7 @@ pub fn process_connection(socket: TcpStream) {
 
     tokio::spawn(
         request_rx
-            .and_then(move |req| respond(req))
+            .and_then(move |req| respond(req, debugger.clone()))
             .for_each(move |resp| {
                 tokio::spawn(
                     connection_tx_2
@@ -232,24 +244,53 @@ pub fn process_connection(socket: TcpStream) {
 /// Process a PadreRequest.
 ///
 /// Forwards the request to the appropriate place to handle it and responds appropriately.
-fn respond(request: PadreRequest) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
-    let json_response = match request.cmd() {
-        RequestCmd::RequestPadreCmd(cmd) => match cmd {
-            PadreCmd::Ping => ping(),
-            PadreCmd::Pings => pings(),
-            PadreCmd::SetConfig => Ok(serde_json::json!({"status":"unimplemented"})),
-        },
-        RequestCmd::RequestDebuggerCmd(cmd) => Ok(serde_json::json!({"status":"unimplemented"})),
-    };
+fn respond(
+    request: PadreRequest,
+    debugger: Arc<Mutex<Box<dyn Debugger + Send>>>,
+) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
+    match request.cmd() {
+        RequestCmd::RequestPadreCmd(cmd) => {
+            let json_response = match cmd {
+                PadreCmd::Ping => ping(),
+                PadreCmd::Pings => pings(),
+                PadreCmd::SetConfig => Ok(serde_json::json!({"status":"unimplemented"})),
+            };
 
-    let f = future::lazy(move || match json_response {
-        Ok(args) => Ok(Response::new(request.id(), args)),
-        Err(_) => {
-            unreachable!();
+            Box::new(future::lazy(move || match json_response {
+                Ok(args) => Ok(Response::new(request.id(), args)),
+                Err(e) => {
+                    log_msg(LogLevel::ERROR, format!("{}", e));
+                    let resp = serde_json::json!({"status":"ERROR"});
+                    Ok(Response::new(request.id(), resp))
+                }
+            }))
         }
-    });
+        RequestCmd::RequestDebuggerCmd(cmd) => {
+            let f = match cmd {
+                DebuggerCmd::Run => debugger.lock().unwrap().run(),
+                DebuggerCmd::Breakpoint(f) => debugger
+                    .lock()
+                    .unwrap()
+                    .breakpoint(&f.file_name, f.line_num),
+                DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
+                DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
+                DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
+                DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
+            };
 
-    Box::new(f)
+            Box::new(
+                f.timeout(Duration::new(30, 0))
+                    .then(move |resp| match resp {
+                        Ok(s) => Ok(Response::new(request.id(), s)),
+                        Err(e) => {
+                            log_msg(LogLevel::ERROR, format!("{}", e));
+                            let resp = serde_json::json!({"status":"ERROR"});
+                            Ok(Response::new(request.id(), resp))
+                        }
+                    })
+            )
+        }
+    }
 }
 
 fn ping() -> Result<serde_json::Value, io::Error> {

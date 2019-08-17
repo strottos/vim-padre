@@ -5,7 +5,8 @@
 use std::collections::HashMap;
 use std::io;
 
-use crate::server::{DebuggerCmd, PadreCmd, PadreRequest, PadreSend, RequestCmd};
+use crate::server::{DebuggerCmd, FileLocation, PadreCmd, PadreRequest, PadreSend, RequestCmd};
+use crate::util;
 
 use bytes::{BufMut, BytesMut};
 use tokio::codec::{Decoder, Encoder};
@@ -40,11 +41,36 @@ impl Decoder for VimCodec {
         }
 
         let mut stream = serde_json::Deserializer::from_slice(src).into_iter::<serde_json::Value>();
+        let req = &src.clone()[..];
 
         let mut v = match stream.next() {
             Some(s) => match s {
                 Ok(t) => t,
                 Err(e) => {
+                    match e.classify() {
+                        serde_json::error::Category::Io => {
+                            println!("IO: {:?}", req);
+                        }
+                        serde_json::error::Category::Syntax => {}
+                        serde_json::error::Category::Data => {
+                            println!("Data: {:?}", req);
+                        }
+                        serde_json::error::Category::Eof => {
+                            return Ok(None);
+                        }
+                    };
+
+                    src.split_to(src.len());
+
+                    util::send_error_and_debug(
+                        "Must be valid JSON".to_string(),
+                        format!(
+                            "Can't read '{}': {}",
+                            String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)),
+                            e
+                        ),
+                    );
+
                     return Ok(None);
                 }
             },
@@ -55,10 +81,37 @@ impl Decoder for VimCodec {
 
         src.split_to(src.len());
 
+        if !v.is_array() {
+            util::send_error_and_debug(
+                "Can't read JSON".to_string(),
+                format!(
+                    "Can't read '{}': Must be an array",
+                    String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))
+                ),
+            );
+            return Ok(None);
+        }
+
+        if v.as_array().unwrap().len() != 2 {
+            util::send_error_and_debug(
+                "Can't read JSON".to_string(),
+                format!(
+                    "Can't read '{}': Array should have 2 elements",
+                    String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))
+                ),
+            );
+            return Ok(None);
+        }
+
         let id = v[0].take();
         let id: u64 = match serde_json::from_value(id.clone()) {
             Ok(s) => s,
             Err(e) => {
+                util::send_error_and_debug(
+                    "Can't read id".to_string(),
+                    format!("Can't read '{}': {}", id, e),
+                );
+
                 return Ok(None);
             }
         };
@@ -67,6 +120,14 @@ impl Decoder for VimCodec {
             match serde_json::from_str(&v[1].take().to_string()) {
                 Ok(args) => args,
                 Err(e) => {
+                    util::send_error_and_debug(
+                        "Can't read JSON".to_string(),
+                        format!(
+                            "Can't read '{}': {}",
+                            String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)),
+                            e
+                        ),
+                    );
                     return Ok(None);
                 }
             };
@@ -74,54 +135,67 @@ impl Decoder for VimCodec {
         let cmd: String = match args.remove("cmd") {
             Some(s) => match serde_json::from_value(s) {
                 Ok(s) => s,
-                Err(e) => return Ok(None),
+                Err(e) => {
+                    util::send_error_and_debug(
+                        "Can't find command".to_string(),
+                        format!(
+                            "Can't find command '{}': {}",
+                            String::from_utf8_lossy(&req[..]).trim_matches(char::from(0)),
+                            e
+                        ),
+                    );
+                    return Ok(None);
+                }
             },
             None => {
+                util::send_error_and_debug(
+                    "Can't find command".to_string(),
+                    format!(
+                        "Can't find command '{}': Need a cmd in 2nd object",
+                        String::from_utf8_lossy(&req[..]).trim_matches(char::from(0))
+                    ),
+                );
                 return Ok(None);
             }
         };
 
         match &cmd[..] {
-            "ping" => {
-                return Ok(Some(PadreRequest::new(
-                    id,
-                    RequestCmd::RequestPadreCmd(PadreCmd::Ping),
-                )))
+            "ping" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::RequestPadreCmd(PadreCmd::Ping),
+            ))),
+            "pings" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::RequestPadreCmd(PadreCmd::Pings),
+            ))),
+            "run" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::Run),
+            ))),
+            "stepOver" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::StepOver),
+            ))),
+            "stepIn" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::StepIn),
+            ))),
+            "continue" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::Continue),
+            ))),
+            "breakpoint" => {
+                let file_location = get_file_location(args);
+                match file_location {
+                    Some(fl) => Ok(Some(PadreRequest::new(
+                        id,
+                        RequestCmd::RequestDebuggerCmd(DebuggerCmd::Breakpoint(fl)),
+                    ))),
+                    None => Ok(None),
+                }
             }
-            "pings" => {
-                return Ok(Some(PadreRequest::new(
-                    id,
-                    RequestCmd::RequestPadreCmd(PadreCmd::Pings),
-                )))
-            }
-            "run" => {
-                return Ok(Some(PadreRequest::new(
-                    id,
-                    RequestCmd::RequestDebuggerCmd(DebuggerCmd::Run),
-                )))
-            }
-            "stepOver" => {
-                return Ok(Some(PadreRequest::new(
-                    id,
-                    RequestCmd::RequestDebuggerCmd(DebuggerCmd::StepOver),
-                )))
-            }
-            "stepIn" => {
-                return Ok(Some(PadreRequest::new(
-                    id,
-                    RequestCmd::RequestDebuggerCmd(DebuggerCmd::StepIn),
-                )))
-            }
-            "continue" => {
-                return Ok(Some(PadreRequest::new(
-                    id,
-                    RequestCmd::RequestDebuggerCmd(DebuggerCmd::Continue),
-                )))
-            }
-            _ => {}
-        };
-
-        return Ok(None);
+            _ => Ok(None),
+        }
     }
 }
 
@@ -150,6 +224,52 @@ impl Encoder for VimCodec {
 
         Ok(())
     }
+}
+
+/// Get a file location from the arguments
+fn get_file_location(mut args: HashMap<String, serde_json::Value>) -> Option<FileLocation> {
+    match args.remove("file") {
+        Some(s) => match s {
+            serde_json::Value::String(s) => match args.remove("line") {
+                Some(t) => match t {
+                    serde_json::Value::Number(t) => {
+                        let t: u64 = match t.as_u64() {
+                            Some(t) => t,
+                            None => {
+                                util::send_error_and_debug(
+                                    format!("Badly specified 'line'"),
+                                    format!("Badly specified 'line': {}", t),
+                                );
+                                return None;
+                            }
+                        };
+                        return Some(FileLocation::new(t, s));
+                    }
+                    _ => {
+                        util::send_error_and_debug(
+                            "Can't read 'line' argument".to_string(),
+                            format!("Can't understand 'line': {}", t),
+                        );
+                    }
+                },
+                None => {
+                    util::send_error_and_debug(
+                        "Can't read 'line' for file location when 'file' specified".to_string(),
+                        format!("Can't understand command with file but no line"),
+                    );
+                }
+            },
+            _ => {
+                util::send_error_and_debug(
+                    format!("Can't read 'file' argument"),
+                    format!("Can't understand 'file': {}", s),
+                );
+            }
+        },
+        None => {}
+    };
+
+    return None;
 }
 
 #[cfg(test)]
