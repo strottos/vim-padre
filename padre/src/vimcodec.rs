@@ -5,7 +5,8 @@
 use std::collections::HashMap;
 use std::io;
 
-use crate::server::{DebuggerCmd, FileLocation, PadreCmd, PadreRequest, PadreSend, RequestCmd};
+use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation};
+use crate::server::{PadreCmd, PadreRequest, PadreSend, RequestCmd};
 use crate::util;
 
 use bytes::{BufMut, BytesMut};
@@ -170,26 +171,26 @@ impl Decoder for VimCodec {
             ))),
             "run" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::RequestDebuggerCmd(DebuggerCmd::Run),
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run)),
             ))),
             "stepOver" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::RequestDebuggerCmd(DebuggerCmd::StepOver),
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::StepOver)),
             ))),
             "stepIn" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::RequestDebuggerCmd(DebuggerCmd::StepIn),
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::StepIn)),
             ))),
             "continue" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::RequestDebuggerCmd(DebuggerCmd::Continue),
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Continue)),
             ))),
             "breakpoint" => {
                 let file_location = get_file_location(args);
                 match file_location {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
-                        RequestCmd::RequestDebuggerCmd(DebuggerCmd::Breakpoint(fl)),
+                        RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(fl))),
                     ))),
                     None => Ok(None),
                 }
@@ -243,7 +244,7 @@ fn get_file_location(mut args: HashMap<String, serde_json::Value>) -> Option<Fil
                                 return None;
                             }
                         };
-                        return Some(FileLocation::new(t, s));
+                        return Some(FileLocation::new(s, t));
                     }
                     _ => {
                         util::send_error_and_debug(
@@ -274,9 +275,8 @@ fn get_file_location(mut args: HashMap<String, serde_json::Value>) -> Option<Fil
 
 #[cfg(test)]
 mod tests {
-    use crate::server::{
-        DebuggerCmd, Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response,
-    };
+    use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation};
+    use crate::server::{Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response};
 
     use bytes::{BufMut, BytesMut};
     use tokio::codec::{Decoder, Encoder};
@@ -291,7 +291,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::Run)),
+            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))),
             padre_request
         );
     }
@@ -306,7 +306,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::Run)),
+            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))),
             padre_request
         );
 
@@ -339,7 +339,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::Run)),
+            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))),
             padre_request
         );
     }

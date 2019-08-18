@@ -3,11 +3,18 @@
 //! Various simple utilities for use in PADRE
 
 use std::env;
+use std::io::{self, BufRead};
+use std::mem;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::notifier::{log_msg, LogLevel};
+
+use tokio::prelude::*;
+use tokio::io::AsyncRead;
+
+const BUFSIZE: usize = 4096;
 
 /// Get an unused port on the local system and return it. This port
 /// can subsequently be used.
@@ -87,6 +94,64 @@ fn get_file_type(cmd: &str) -> String {
         .expect(&format!("Can't run file on {} to find file type", cmd));
 
     String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+// The following largely taken from tokio::io::lines code.
+
+/// Combinator created by `read_output` method which is a stream over text on an I/O object.
+#[derive(Debug)]
+pub struct ReadOutput<A> {
+    io: A,
+    text: String,
+}
+
+/// Creates a new stream from the I/O object
+///
+/// This method takes an asynchronous I/O object, `a`, and returns a `Stream` of text that the
+/// object contains. The returned stream will reach its end once `a` reaches EOF.
+pub fn read_output<A>(a: A) -> ReadOutput<A>
+where
+    A: AsyncRead + BufRead,
+{
+    ReadOutput {
+        io: a,
+        text: String::new(),
+    }
+}
+
+impl<A> Stream for ReadOutput<A>
+where
+    A: AsyncRead + BufRead,
+{
+    type Item = String;
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Option<String>, io::Error> {
+        let mut buf = [0; BUFSIZE];
+        loop {
+            let n = match self.io.read(&mut buf) {
+                Ok(t) => t,
+                Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {
+                    return Ok(Async::NotReady);
+                }
+                Err(e) => {
+                    return Err(e.into())
+                },
+            };
+            if n == BUFSIZE {
+                let s = std::str::from_utf8(&buf[0..n]).unwrap();
+                self.text.push_str(s);
+                continue;
+            }
+            if n == 0 && self.text.len() == 0 {
+                return Ok(None.into());
+            }
+            let s = std::str::from_utf8(&buf[0..n]).unwrap();
+            self.text.push_str(s);
+            break;
+        }
+        Ok(Some(mem::replace(&mut self.text, String::new())).into())
+    }
 }
 
 #[cfg(test)]

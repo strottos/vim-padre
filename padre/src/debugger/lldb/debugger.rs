@@ -1,33 +1,63 @@
 //! lldb client debugger
 
 use std::io;
+use std::sync::{Arc, Mutex};
 
-use crate::debugger::Debugger;
+use crate::notifier::{LogLevel, log_msg};
+use crate::debugger::DebuggerV1;
+use super::process::{LLDBProcess, LLDBListener, LLDBEvent};
 
+use bytes::Bytes;
 use tokio::prelude::*;
+use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct ImplDebugger {
-    debugger_cmd: String,
-    run_cmd: Vec<String>,
+    process: Arc<Mutex<LLDBProcess>>,
 }
 
 impl ImplDebugger {
     pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> ImplDebugger {
         ImplDebugger {
-            debugger_cmd,
-            run_cmd,
+            process: Arc::new(Mutex::new(LLDBProcess::new(debugger_cmd, run_cmd))),
         }
     }
 }
 
-impl Debugger for ImplDebugger {
+impl DebuggerV1 for ImplDebugger {
+    /// Perform any initial setup including
+    /// - startup lldb
     fn setup(&mut self) {
+        let (tx, rx) = mpsc::channel(1);
+
+        self.process.lock().unwrap().add_listener(LLDBListener::LLDBLaunched, tx);
+
+        let process = self.process.clone();
+
+        tokio::spawn(
+            rx.take(1)
+                .for_each(move |a| {
+                    // TODO
+                    process.lock().unwrap().write_stdin(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]));
+                    //process.write_stdin(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]));
+                    //process.write_stdin(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]));
+                    Ok(())
+                })
+                .map_err(|e| {
+                    eprintln!("Reading stdin error {:?}", e);
+                })
+        );
+
+        self.process.lock().unwrap().setup();
     }
 
     fn teardown(&mut self) {}
 
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        log_msg(LogLevel::INFO, "Launching process".to_string());
+
+        self.process.lock().unwrap().write_stdin(Bytes::from("process launch\n"));
+
         let f = future::lazy(move || {
             let resp = serde_json::json!({"status":"OK"});
             Ok(resp)

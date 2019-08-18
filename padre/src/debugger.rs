@@ -12,8 +12,74 @@ use tokio::prelude::*;
 
 mod lldb;
 
+/// File location
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub struct FileLocation {
+    file_name: String,
+    line_num: u64,
+}
+
+impl FileLocation {
+    pub fn new(file_name: String, line_num: u64) -> Self {
+        FileLocation {
+            file_name,
+            line_num,
+        }
+    }
+}
+
+/// Variable name
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub struct Variable {
+    variable_name: String,
+    variable_type: Option<String>,
+    variable_value: Option<String>,
+}
+
+impl Variable {
+    pub fn new(variable_name: String) -> Self {
+        Variable {
+            variable_name,
+            variable_type: None,
+            variable_value: None,
+        }
+    }
+}
+
+/// All debugger commands
+#[derive(Clone, Deserialize, Debug, PartialEq)]
+pub enum DebuggerCmd {
+    V1(DebuggerCmdV1),
+}
+
+/// All V1 debugger commands
+#[derive(Clone, Deserialize, Debug, PartialEq)]
+pub enum DebuggerCmdV1 {
+    Run,
+    Breakpoint(FileLocation),
+    StepIn,
+    StepOver,
+    Continue,
+    Variable(Variable),
+}
+
+#[derive(Debug)]
+pub struct Debugger {
+    debugger: Box<dyn DebuggerV1 + Send>,
+}
+
+impl Debugger {
+    pub fn new(debugger: Box<dyn DebuggerV1 + Send>) -> Debugger {
+        Debugger { debugger }
+    }
+
+    pub fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        self.debugger.run()
+    }
+}
+
 /// Debugger trait that implements the basics
-pub trait Debugger: Debug {
+pub trait DebuggerV1: Debug {
     fn setup(&mut self);
     fn teardown(&mut self);
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
@@ -39,7 +105,7 @@ pub fn get_debugger(
     debugger_cmd: Option<&str>,
     debugger_type: Option<&str>,
     run_cmd: Vec<String>,
-) -> Box<dyn Debugger + Send> {
+) -> Debugger {
     let debugger_type = match debugger_type {
         Some(s) => s.to_string(),
         None => match debugger_cmd {
@@ -53,7 +119,7 @@ pub fn get_debugger(
         None => debugger_type.clone(),
     };
 
-    let mut debugger: Box<dyn Debugger + Send> = match debugger_type.to_ascii_lowercase().as_ref() {
+    let mut debugger: Box<dyn DebuggerV1 + Send> = match debugger_type.to_ascii_lowercase().as_ref() {
         "lldb" => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
         //        "node" => Box::new(node::ImplDebugger::new(
         //            debugger_cmd,
@@ -68,7 +134,7 @@ pub fn get_debugger(
 
     debugger.setup();
 
-    debugger
+    Debugger::new(debugger)
 }
 
 /// Guesses the debugger type

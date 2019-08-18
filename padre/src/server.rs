@@ -7,7 +7,7 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::debugger::Debugger;
+use crate::debugger::{Debugger,  DebuggerCmd};
 use crate::notifier::{add_listener, log_msg, remove_listener, LogLevel};
 use crate::vimcodec::VimCodec;
 
@@ -18,45 +18,12 @@ use tokio::sync::mpsc;
 
 // TODO: Get some of this out of pub use and just in this module?
 
-/// File location
-#[derive(Clone, Deserialize, Debug, PartialEq)]
-pub struct FileLocation {
-    line_num: u64,
-    file_name: String,
-}
-
-impl FileLocation {
-    pub fn new(line_num: u64, file_name: String) -> Self {
-        FileLocation {
-            line_num,
-            file_name,
-        }
-    }
-}
-
-/// Variable name
-#[derive(Clone, Deserialize, Debug, PartialEq)]
-pub struct Variable {
-    variable_name: String,
-}
-
 /// All padre commands
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 pub enum PadreCmd {
     Ping,
     Pings,
     SetConfig, // TODO: (HashMap<>),
-}
-
-/// All debugger commands
-#[derive(Clone, Deserialize, Debug, PartialEq)]
-pub enum DebuggerCmd {
-    Run,
-    Breakpoint(FileLocation),
-    StepIn,
-    StepOver,
-    Continue,
-    Variable(Variable),
 }
 
 /// Contains command details of a request, either a `PadreCmd` or a `DebuggerCmd`
@@ -175,7 +142,7 @@ pub enum PadreSend {
 /// Process a TCP socket connection.
 ///
 /// Fully sets up a new socket connection including listening for requests and sending responses.
-pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Box<dyn Debugger + Send>>>) {
+pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
     let addr = socket.peer_addr().unwrap();
 
     let (request_tx, request_rx) = VimCodec::new().framed(socket).split();
@@ -246,7 +213,7 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Box<dyn Debugge
 /// Forwards the request to the appropriate place to handle it and responds appropriately.
 fn respond(
     request: PadreRequest,
-    debugger: Arc<Mutex<Box<dyn Debugger + Send>>>,
+    debugger: Arc<Mutex<Debugger>>,
 ) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
     match request.cmd() {
         RequestCmd::RequestPadreCmd(cmd) => {
@@ -267,15 +234,16 @@ fn respond(
         }
         RequestCmd::RequestDebuggerCmd(cmd) => {
             let f = match cmd {
-                DebuggerCmd::Run => debugger.lock().unwrap().run(),
-                DebuggerCmd::Breakpoint(f) => debugger
-                    .lock()
-                    .unwrap()
-                    .breakpoint(&f.file_name, f.line_num),
-                DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
-                DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
-                DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
-                DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
+                _ => debugger.lock().unwrap().run(),
+//                DebuggerCmd::Run => debugger.lock().unwrap().run(),
+//                DebuggerCmd::Breakpoint(f) => debugger
+//                    .lock()
+//                    .unwrap()
+//                    .breakpoint(&f.file_name, f.line_num),
+//                DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
+//                DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
+//                DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
+//                DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
             };
 
             Box::new(
