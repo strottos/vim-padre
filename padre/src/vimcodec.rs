@@ -190,7 +190,9 @@ impl Decoder for VimCodec {
                 match file_location {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
-                        RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(fl))),
+                        RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(
+                            fl,
+                        ))),
                     ))),
                     None => Ok(None),
                 }
@@ -291,7 +293,10 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))),
+            PadreRequest::new(
+                123,
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))
+            ),
             padre_request
         );
     }
@@ -306,7 +311,10 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))),
+            PadreRequest::new(
+                123,
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))
+            ),
             padre_request
         );
 
@@ -339,7 +347,10 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(123, RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))),
+            PadreRequest::new(
+                123,
+                RequestCmd::RequestDebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))
+            ),
             padre_request
         );
     }

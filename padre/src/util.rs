@@ -11,8 +11,8 @@ use std::process::Command;
 
 use crate::notifier::{log_msg, LogLevel};
 
-use tokio::prelude::*;
 use tokio::io::AsyncRead;
+use tokio::prelude::*;
 
 const BUFSIZE: usize = 4096;
 
@@ -134,9 +134,7 @@ where
                 Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {
                     return Ok(Async::NotReady);
                 }
-                Err(e) => {
-                    return Err(e.into())
-                },
+                Err(e) => return Err(e.into()),
             };
             if n == BUFSIZE {
                 let s = std::str::from_utf8(&buf[0..n]).unwrap();

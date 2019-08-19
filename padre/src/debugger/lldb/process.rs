@@ -7,14 +7,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::debugger::{FileLocation, Variable};
-use crate::notifier::{LogLevel, log_msg, signal_exited, breakpoint_set, jump_to_position};
+use crate::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
 use crate::util::read_output;
 
 use bytes::Bytes;
 use regex::Regex;
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
-use tokio_process::{Child, ChildStdin, ChildStdout, ChildStderr, CommandExt};
+use tokio_process::{Child, ChildStderr, ChildStdin, ChildStdout, CommandExt};
 
 #[derive(Debug, Clone)]
 enum LLDBStatus {
@@ -96,24 +96,45 @@ impl LLDBProcess {
             .spawn_async()
             .expect("Failed to spawn LLDB");
 
-        self.setup_stdout(lldb_process.stdout().take().expect("LLDB process did not have a handle to stdout"));
-        self.setup_stderr(lldb_process.stderr().take().expect("LLDB process did not have a handle to stderr"));
-
-        self.setup_stdin(lldb_process.stdin().take().expect("LLDB process did not have a handle to stdin"));
+        self.setup_stdout(
+            lldb_process
+                .stdout()
+                .take()
+                .expect("LLDB process did not have a handle to stdout"),
+        );
+        self.setup_stderr(
+            lldb_process
+                .stderr()
+                .take()
+                .expect("LLDB process did not have a handle to stderr"),
+        );
+        self.setup_stdin(
+            lldb_process
+                .stdin()
+                .take()
+                .expect("LLDB process did not have a handle to stdin"),
+        );
 
         self.lldb_process = Some(lldb_process);
     }
 
     /// Send a message to write to stdin
     pub fn write_stdin(&mut self, bytes: Bytes) {
-        println!("HERE1");
-        let tx = self.lldb_stdin_tx.take().unwrap().send(bytes).wait().unwrap();
-        println!("HERE2");
-        self.lldb_stdin_tx = Some(tx);
+        let tx = self.lldb_stdin_tx.clone();
+        tokio::spawn(
+            tx.clone()
+                .unwrap()
+                .send(bytes)
+                .map(|_| {})
+                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+        );
     }
 
     pub fn add_listener(&mut self, kind: LLDBListener, sender: Sender<LLDBEvent>) {
-        self.lldb_analyser.lock().unwrap().add_listener(kind, sender);
+        self.lldb_analyser
+            .lock()
+            .unwrap()
+            .add_listener(kind, sender);
     }
 
     /// Perform setup of listening and forwarding of stdin and setup ability to send to
@@ -141,26 +162,24 @@ impl LLDBProcess {
         // Current implementation needs a kick, this is all liable to change with
         // upcoming versions of tokio anyway so living with it for now.
         match stdin.write(&[13]) {
-            Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {},
+            Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {}
             _ => unreachable!(),
         }
 
         tokio::spawn(
             stdin_rx
                 .for_each(move |text| {
-                    println!("HERE3 {:?}", text);
                     match stdin.write(&text) {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(e) => {
                             panic!("Writing LLDB stdin err e: {}", e);
-                        },
+                        }
                     };
-                    println!("HERE4");
                     Ok(())
                 })
                 .map_err(|e| {
                     eprintln!("Reading stdin error {:?}", e);
-                })
+                }),
         );
 
         self.lldb_stdin_tx = Some(stdin_tx);
@@ -176,7 +195,7 @@ impl LLDBProcess {
                     lldb_analyser.lock().unwrap().analyse_text(&text);
                     Ok(())
                 })
-                .map_err(|e| eprintln!("Err reading LLDB stdout: {}", e))
+                .map_err(|e| eprintln!("Err reading LLDB stdout: {}", e)),
         );
     }
 
@@ -188,7 +207,7 @@ impl LLDBProcess {
                     eprint!("STDERR: {}", text);
                     Ok(())
                 })
-                .map_err(|e| eprintln!("Err reading LLDB stderr: {}", e))
+                .map_err(|e| eprintln!("Err reading LLDB stderr: {}", e)),
         );
     }
 }
@@ -320,8 +339,8 @@ impl LLDBAnalyser {
         match self.listeners.remove(&LLDBListener::LLDBLaunched) {
             Some(listener) => {
                 listener.send(LLDBEvent::LLDBLaunched).wait().unwrap();
-            },
-            None => {},
+            }
+            None => {}
         }
     }
 
@@ -329,9 +348,12 @@ impl LLDBAnalyser {
         self.process_status = ProcessStatus::Running;
         match self.listeners.remove(&LLDBListener::ProcessLaunched) {
             Some(listener) => {
-                listener.send(LLDBEvent::ProcessLaunched(pid)).wait().unwrap();
-            },
-            None => {},
+                listener
+                    .send(LLDBEvent::ProcessLaunched(pid))
+                    .wait()
+                    .unwrap();
+            }
+            None => {}
         }
     }
 
@@ -340,9 +362,12 @@ impl LLDBAnalyser {
         signal_exited(pid, exit_code);
         match self.listeners.remove(&LLDBListener::ProcessExited) {
             Some(listener) => {
-                listener.send(LLDBEvent::ProcessExited(pid, exit_code)).wait().unwrap();
-            },
-            None => {},
+                listener
+                    .send(LLDBEvent::ProcessExited(pid, exit_code))
+                    .wait()
+                    .unwrap();
+            }
+            None => {}
         }
     }
 
@@ -351,9 +376,12 @@ impl LLDBAnalyser {
         let file_location = FileLocation::new(file, line);
         match self.listeners.remove(&LLDBListener::BreakpointSet) {
             Some(listener) => {
-                listener.send(LLDBEvent::BreakpointSet(file_location)).wait().unwrap();
-            },
-            None => {},
+                listener
+                    .send(LLDBEvent::BreakpointSet(file_location))
+                    .wait()
+                    .unwrap();
+            }
+            None => {}
         }
     }
 
@@ -361,8 +389,8 @@ impl LLDBAnalyser {
         match self.listeners.remove(&LLDBListener::BreakpointSet) {
             Some(listener) => {
                 listener.send(LLDBEvent::BreakpointMultiple).wait().unwrap();
-            },
-            None => {},
+            }
+            None => {}
         }
     }
 
@@ -370,8 +398,8 @@ impl LLDBAnalyser {
         match self.listeners.remove(&LLDBListener::BreakpointSet) {
             Some(listener) => {
                 listener.send(LLDBEvent::BreakpointPending).wait().unwrap();
-            },
-            None => {},
+            }
+            None => {}
         }
     }
 
@@ -380,9 +408,12 @@ impl LLDBAnalyser {
         let file_location = FileLocation::new(file, line);
         match self.listeners.remove(&LLDBListener::ProcessPaused) {
             Some(listener) => {
-                listener.send(LLDBEvent::JumpToPosition(file_location)).wait().unwrap();
-            },
-            None => {},
+                listener
+                    .send(LLDBEvent::JumpToPosition(file_location))
+                    .wait()
+                    .unwrap();
+            }
+            None => {}
         }
     }
 
@@ -391,8 +422,8 @@ impl LLDBAnalyser {
         match self.listeners.remove(&LLDBListener::ProcessPaused) {
             Some(listener) => {
                 listener.send(LLDBEvent::UnknownPosition).wait().unwrap();
-            },
-            None => {},
+            }
+            None => {}
         }
     }
 }

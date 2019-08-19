@@ -3,9 +3,9 @@
 use std::io;
 use std::sync::{Arc, Mutex};
 
-use crate::notifier::{LogLevel, log_msg};
+use super::process::{LLDBEvent, LLDBListener, LLDBProcess};
 use crate::debugger::DebuggerV1;
-use super::process::{LLDBProcess, LLDBListener, LLDBEvent};
+use crate::notifier::{log_msg, LogLevel};
 
 use bytes::Bytes;
 use tokio::prelude::*;
@@ -30,7 +30,10 @@ impl DebuggerV1 for ImplDebugger {
     fn setup(&mut self) {
         let (tx, rx) = mpsc::channel(1);
 
-        self.process.lock().unwrap().add_listener(LLDBListener::LLDBLaunched, tx);
+        self.process
+            .lock()
+            .unwrap()
+            .add_listener(LLDBListener::LLDBLaunched, tx);
 
         let process = self.process.clone();
 
@@ -39,8 +42,8 @@ impl DebuggerV1 for ImplDebugger {
                 .for_each(move |a| {
                     // TODO
                     process.lock().unwrap().write_stdin(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]));
-                    //process.write_stdin(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]));
-                    //process.write_stdin(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]));
+                    process.lock().unwrap().write_stdin(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]));
+                    process.lock().unwrap().write_stdin(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]));
                     Ok(())
                 })
                 .map_err(|e| {
@@ -56,7 +59,10 @@ impl DebuggerV1 for ImplDebugger {
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         log_msg(LogLevel::INFO, "Launching process".to_string());
 
-        self.process.lock().unwrap().write_stdin(Bytes::from("process launch\n"));
+        self.process
+            .lock()
+            .unwrap()
+            .write_stdin(Bytes::from("process launch\n"));
 
         let f = future::lazy(move || {
             let resp = serde_json::json!({"status":"OK"});
@@ -120,5 +126,4 @@ impl DebuggerV1 for ImplDebugger {
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

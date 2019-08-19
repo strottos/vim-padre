@@ -7,7 +7,7 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::debugger::{Debugger,  DebuggerCmd};
+use crate::debugger::{Debugger, DebuggerCmd};
 use crate::notifier::{add_listener, log_msg, remove_listener, LogLevel};
 use crate::vimcodec::VimCodec;
 
@@ -235,15 +235,15 @@ fn respond(
         RequestCmd::RequestDebuggerCmd(cmd) => {
             let f = match cmd {
                 _ => debugger.lock().unwrap().run(),
-//                DebuggerCmd::Run => debugger.lock().unwrap().run(),
-//                DebuggerCmd::Breakpoint(f) => debugger
-//                    .lock()
-//                    .unwrap()
-//                    .breakpoint(&f.file_name, f.line_num),
-//                DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
-//                DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
-//                DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
-//                DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
+                //                DebuggerCmd::Run => debugger.lock().unwrap().run(),
+                //                DebuggerCmd::Breakpoint(f) => debugger
+                //                    .lock()
+                //                    .unwrap()
+                //                    .breakpoint(&f.file_name, f.line_num),
+                //                DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
+                //                DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
+                //                DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
+                //                DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
             };
 
             Box::new(
@@ -255,7 +255,7 @@ fn respond(
                             let resp = serde_json::json!({"status":"ERROR"});
                             Ok(Response::new(request.id(), resp))
                         }
-                    })
+                    }),
             )
         }
     }

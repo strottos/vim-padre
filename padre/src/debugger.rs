@@ -119,7 +119,8 @@ pub fn get_debugger(
         None => debugger_type.clone(),
     };
 
-    let mut debugger: Box<dyn DebuggerV1 + Send> = match debugger_type.to_ascii_lowercase().as_ref() {
+    let mut debugger: Box<dyn DebuggerV1 + Send> = match debugger_type.to_ascii_lowercase().as_ref()
+    {
         "lldb" => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
         //        "node" => Box::new(node::ImplDebugger::new(
         //            debugger_cmd,
