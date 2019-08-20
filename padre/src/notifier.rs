@@ -106,7 +106,7 @@ pub fn signal_exited(pid: u64, exit_code: i64) {
 }
 
 /// Send a log message
-pub fn log_msg(level: LogLevel, msg: String) {
+pub fn log_msg(level: LogLevel, msg: &str) {
     let msg = Notification::new(
         "padre#debugger#Log".to_string(),
         vec![serde_json::json!(level as u8), serde_json::json!(msg)],
@@ -115,7 +115,7 @@ pub fn log_msg(level: LogLevel, msg: String) {
 }
 
 /// Notify about a code position change
-pub fn jump_to_position(file: String, line: u64) {
+pub fn jump_to_position(file: &str, line: u64) {
     let msg = Notification::new(
         "padre#debugger#JumpToPosition".to_string(),
         vec![serde_json::json!(file), serde_json::json!(line)],
@@ -124,7 +124,7 @@ pub fn jump_to_position(file: String, line: u64) {
 }
 
 /// Notify that a breakpoint has been set
-pub fn breakpoint_set(file: String, line: u64) {
+pub fn breakpoint_set(file: &str, line: u64) {
     let msg = Notification::new(
         "padre#debugger#BreakpointSet".to_string(),
         vec![serde_json::json!(file), serde_json::json!(line)],

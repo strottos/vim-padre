@@ -73,8 +73,18 @@ impl Debugger {
         Debugger { debugger }
     }
 
-    pub fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        self.debugger.run()
+    pub fn stop(&mut self) {
+        self.debugger.teardown();
+    }
+
+    pub fn handle_v1_cmd(
+        &mut self,
+        cmd: &DebuggerCmdV1,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        match cmd {
+            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl),
+            _ => self.debugger.run(),
+        }
     }
 }
 
@@ -85,15 +95,14 @@ pub trait DebuggerV1: Debug {
     fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn breakpoint(
         &mut self,
-        file: &str,
-        line_num: u64,
+        file_location: &FileLocation,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn print(
         &mut self,
-        variable: &str,
+        variable: &mut Variable,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
 }
 

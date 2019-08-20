@@ -42,7 +42,7 @@ pub fn set_config(cfg: &str, value: i64) {
         None => {
             log_msg(
                 LogLevel::WARN,
-                format!("Couldn't set unfound config item: {}", cfg),
+                &format!("Couldn't set unfound config item: {}", cfg),
             );
         }
     }

@@ -24,7 +24,7 @@ pub fn get_unused_localhost_port() -> u16 {
 }
 
 /// Log an error and a debug message, commonly used in the code base
-pub fn send_error_and_debug(err_msg: String, debug_msg: String) {
+pub fn send_error_and_debug(err_msg: &str, debug_msg: &str) {
     log_msg(LogLevel::ERROR, err_msg);
     log_msg(LogLevel::DEBUG, debug_msg);
 }

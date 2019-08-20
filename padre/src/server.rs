@@ -40,8 +40,8 @@ pub enum PadreCmd {
 /// ```
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 pub enum RequestCmd {
-    RequestPadreCmd(PadreCmd),
-    RequestDebuggerCmd(DebuggerCmd),
+    PadreCmd(PadreCmd),
+    DebuggerCmd(DebuggerCmd),
 }
 
 /// Contains full details of a request including an id to respond to and a `RequestCmd`
@@ -216,7 +216,7 @@ fn respond(
     debugger: Arc<Mutex<Debugger>>,
 ) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
     match request.cmd() {
-        RequestCmd::RequestPadreCmd(cmd) => {
+        RequestCmd::PadreCmd(cmd) => {
             let json_response = match cmd {
                 PadreCmd::Ping => ping(),
                 PadreCmd::Pings => pings(),
@@ -226,24 +226,31 @@ fn respond(
             Box::new(future::lazy(move || match json_response {
                 Ok(args) => Ok(Response::new(request.id(), args)),
                 Err(e) => {
-                    log_msg(LogLevel::ERROR, format!("{}", e));
+                    log_msg(LogLevel::ERROR, &format!("{}", e));
                     let resp = serde_json::json!({"status":"ERROR"});
                     Ok(Response::new(request.id(), resp))
                 }
             }))
         }
-        RequestCmd::RequestDebuggerCmd(cmd) => {
+        RequestCmd::DebuggerCmd(cmd) => {
             let f = match cmd {
-                _ => debugger.lock().unwrap().run(),
-                //                DebuggerCmd::Run => debugger.lock().unwrap().run(),
-                //                DebuggerCmd::Breakpoint(f) => debugger
-                //                    .lock()
-                //                    .unwrap()
-                //                    .breakpoint(&f.file_name, f.line_num),
-                //                DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
-                //                DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
-                //                DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
-                //                DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
+                DebuggerCmd::V1(v1cmd) => {
+                    debugger.lock().unwrap().handle_v1_cmd(v1cmd)
+                    //match v1cmd {
+                    //    DebuggerCmdV1::Breakpoint(fl) => {
+                    //        debugger
+                    //            .lock()
+                    //            .unwrap()
+                    //            .breakpoint(&fl.file_name, fl.line_num),
+                    //    }
+                    //    DebuggerCmd::Run => debugger.lock().unwrap().run(),
+                    //    DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
+                    //    DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
+                    //    DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
+                    //    DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
+                    //    _ => debugger.lock().unwrap().run(),
+                    //}
+                }
             };
 
             Box::new(
@@ -251,7 +258,7 @@ fn respond(
                     .then(move |resp| match resp {
                         Ok(s) => Ok(Response::new(request.id(), s)),
                         Err(e) => {
-                            log_msg(LogLevel::ERROR, format!("{}", e));
+                            log_msg(LogLevel::ERROR, &format!("{}", e));
                             let resp = serde_json::json!({"status":"ERROR"});
                             Ok(Response::new(request.id(), resp))
                         }
@@ -266,7 +273,7 @@ fn ping() -> Result<serde_json::Value, io::Error> {
 }
 
 fn pings() -> Result<serde_json::Value, io::Error> {
-    log_msg(LogLevel::INFO, "pong".to_string());
+    log_msg(LogLevel::INFO, "pong");
 
     Ok(serde_json::json!({"status":"OK"}))
 }

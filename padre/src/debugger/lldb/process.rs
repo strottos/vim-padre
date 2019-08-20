@@ -37,7 +37,7 @@ pub enum LLDBListener {
     ProcessLaunched,
     ProcessExited,
     ProcessPaused,
-    BreakpointSet,
+    Breakpoint,
     PrintVariable,
 }
 
@@ -50,11 +50,11 @@ pub enum LLDBEvent {
     ProcessExited(u64, i64),
     // (File name, line number)
     BreakpointSet(FileLocation),
+    BreakpointMultiple,
+    BreakpointPending,
     // (File name, line number)
     JumpToPosition(FileLocation),
     UnknownPosition,
-    BreakpointMultiple,
-    BreakpointPending,
     // (type, variable, value)
     PrintVariable(Variable),
     VariableNotFound,
@@ -116,6 +116,10 @@ impl LLDBProcess {
         );
 
         self.lldb_process = Some(lldb_process);
+    }
+
+    pub fn teardown(&mut self) {
+        self.lldb_process = None;
     }
 
     /// Send a message to write to stdin
@@ -372,9 +376,9 @@ impl LLDBAnalyser {
     }
 
     fn found_breakpoint(&mut self, file: String, line: u64) {
-        breakpoint_set(file.clone(), line);
+        breakpoint_set(&file, line);
         let file_location = FileLocation::new(file, line);
-        match self.listeners.remove(&LLDBListener::BreakpointSet) {
+        match self.listeners.remove(&LLDBListener::Breakpoint) {
             Some(listener) => {
                 listener
                     .send(LLDBEvent::BreakpointSet(file_location))
@@ -386,7 +390,7 @@ impl LLDBAnalyser {
     }
 
     fn found_multiple_breakpoints(&mut self) {
-        match self.listeners.remove(&LLDBListener::BreakpointSet) {
+        match self.listeners.remove(&LLDBListener::Breakpoint) {
             Some(listener) => {
                 listener.send(LLDBEvent::BreakpointMultiple).wait().unwrap();
             }
@@ -395,7 +399,7 @@ impl LLDBAnalyser {
     }
 
     fn found_pending_breakpoint(&mut self) {
-        match self.listeners.remove(&LLDBListener::BreakpointSet) {
+        match self.listeners.remove(&LLDBListener::Breakpoint) {
             Some(listener) => {
                 listener.send(LLDBEvent::BreakpointPending).wait().unwrap();
             }
@@ -404,7 +408,7 @@ impl LLDBAnalyser {
     }
 
     fn jump_to_position(&mut self, file: String, line: u64) {
-        jump_to_position(file.clone(), line);
+        jump_to_position(&file, line);
         let file_location = FileLocation::new(file, line);
         match self.listeners.remove(&LLDBListener::ProcessPaused) {
             Some(listener) => {
@@ -418,7 +422,7 @@ impl LLDBAnalyser {
     }
 
     fn jump_to_unknown_position(&mut self) {
-        log_msg(LogLevel::WARN, "Stopped at unknown position".to_string());
+        log_msg(LogLevel::WARN, "Stopped at unknown position");
         match self.listeners.remove(&LLDBListener::ProcessPaused) {
             Some(listener) => {
                 listener.send(LLDBEvent::UnknownPosition).wait().unwrap();

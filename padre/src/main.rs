@@ -94,20 +94,21 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn exit_padre() {
-    //    let when = Instant::now() + Duration::new(5, 0);
-    //
-    //    tokio::spawn({
-    //        Delay::new(when)
-    //            .map_err(|e| panic!("timer failed; err={:?}", e))
-    //            .and_then(|_| {
-    //                println!("Timed out exiting!");
-    //                exit(-1);
-    //                #[allow(unreachable_code)]
-    //                Ok(())
-    //            })
-    //    });
-    exit(0);
+fn exit_padre(debugger: Arc<Mutex<debugger::Debugger>>) {
+    let when = Instant::now() + Duration::new(5, 0);
+
+    tokio::spawn({
+        Delay::new(when)
+            .map_err(|e| panic!("timer failed; err={:?}", e))
+            .and_then(|_| {
+                println!("Timed out exiting!");
+                exit(-1);
+                #[allow(unreachable_code)]
+                Ok(())
+            })
+    });
+
+    debugger.lock().unwrap().stop();
 }
 
 struct Runner {}
@@ -139,20 +140,22 @@ impl Future for Runner {
             })
             .expect(&format!("Can't open TCP listener on {}", &connection_addr));
 
+        let debugger_signal = debugger.clone();
         let signals = Signal::new(SIGINT)
             .flatten_stream()
             .for_each(move |_| {
-                exit_padre();
+                exit_padre(debugger_signal.clone());
                 Ok(())
             })
             .map_err(|e| {
                 println!("Caught SIGINT Error: {:?}", e);
             });
 
+        let debugger_signal = debugger.clone();
         let signals = Signal::new(SIGQUIT)
             .flatten_stream()
             .for_each(move |_| {
-                exit_padre();
+                exit_padre(debugger_signal.clone());
                 Ok(())
             })
             .map_err(|e| {
@@ -161,10 +164,11 @@ impl Future for Runner {
             .join(signals)
             .map(|_| {});
 
+        let debugger_signal = debugger.clone();
         let signals = Signal::new(SIGTERM)
             .flatten_stream()
             .for_each(move |_| {
-                exit_padre();
+                exit_padre(debugger_signal.clone());
                 Ok(())
             })
             .map_err(|e| {
