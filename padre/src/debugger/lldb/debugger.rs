@@ -1,4 +1,7 @@
 //! lldb client debugger
+//!
+//! The main LLDB Debugger entry point. Handles listening for instructions and
+//! communicating through the `LLDBProcess`.
 
 use std::io;
 use std::process::exit;
@@ -76,7 +79,8 @@ impl DebuggerV1 for ImplDebugger {
 
         let process = self.process.clone();
 
-        let f = rx.take(1)
+        let f = rx
+            .take(1)
             .into_future()
             .and_then(move |lldb_output| {
                 let lldb_output = lldb_output.0.unwrap();
@@ -93,28 +97,28 @@ impl DebuggerV1 for ImplDebugger {
             .and_then(move |_| {
                 let (tx, rx) = mpsc::channel(1);
 
-                process.lock()
+                process
+                    .lock()
                     .unwrap()
                     .add_listener(LLDBListener::ProcessLaunched, tx);
 
-                process.lock()
+                process
+                    .lock()
                     .unwrap()
                     .write_stdin(Bytes::from("process launch\n"));
 
                 rx.take(1).into_future()
             })
-            .map(move |event| {
-                match event.0.unwrap() {
-                    LLDBEvent::ProcessLaunched(pid) => {
-                        println!("Process launched {:?}", pid);
-                        serde_json::json!({"status":"OK","pid":pid.to_string()})
-                    }
-                    _ => unreachable!()
+            .map(move |event| match event.0.unwrap() {
+                LLDBEvent::ProcessLaunched(pid) => {
+                    println!("Process launched {:?}", pid);
+                    serde_json::json!({"status":"OK","pid":pid.to_string()})
                 }
+                _ => unreachable!(),
             })
             .map_err(|e| {
                 eprintln!("Reading stdin error {:?}", e);
-                io::Error::new(io::ErrorKind::Other, "Timed out setting breakpoint")
+                io::Error::new(io::ErrorKind::Other, "Timed out running process")
             });
 
         let stmt = "breakpoint set --name main\n";
@@ -143,20 +147,13 @@ impl DebuggerV1 for ImplDebugger {
             .unwrap()
             .add_listener(LLDBListener::Breakpoint, tx);
 
-        let f = rx.take(1)
+        let f = rx
+            .take(1)
             .into_future()
-            .map(move |event| {
-                match event.0.unwrap() {
-                    LLDBEvent::BreakpointSet(fl) => {
-                        println!("Breakpoint set {:?}", fl);
-                        serde_json::json!({"status":"OK"})
-                    }
-                    LLDBEvent::BreakpointPending => {
-                        println!("Breakpoint Pending");
-                        serde_json::json!({"status":"PENDING"})
-                    }
-                    _ => unreachable!()
-                }
+            .map(move |event| match event.0.unwrap() {
+                LLDBEvent::BreakpointSet(_) => serde_json::json!({"status":"OK"}),
+                LLDBEvent::BreakpointPending => serde_json::json!({"status":"PENDING"}),
+                _ => unreachable!(),
             })
             .map_err(|e| {
                 eprintln!("Reading stdin error {:?}", e);
@@ -174,36 +171,39 @@ impl DebuggerV1 for ImplDebugger {
     }
 
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
-
-        Box::new(f)
+        self.step("step-in")
     }
 
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
-
-        Box::new(f)
+        self.step("step-over")
     }
 
     fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
-
-        Box::new(f)
+        self.step("continue")
     }
 
     fn print(
         &mut self,
-        variable: &mut Variable,
+        variable: &Variable,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
+}
+
+impl ImplDebugger {
+    fn step(
+        &mut self,
+        kind: &str,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let stmt = format!("thread {}\n", kind);
+
+        self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
+
         let f = future::lazy(move || {
             let resp = serde_json::json!({"status":"OK"});
             Ok(resp)

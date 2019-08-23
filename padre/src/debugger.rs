@@ -32,17 +32,11 @@ impl FileLocation {
 #[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct Variable {
     variable_name: String,
-    variable_type: Option<String>,
-    variable_value: Option<String>,
 }
 
 impl Variable {
     pub fn new(variable_name: String) -> Self {
-        Variable {
-            variable_name,
-            variable_type: None,
-            variable_value: None,
-        }
+        Variable { variable_name }
     }
 }
 
@@ -60,7 +54,7 @@ pub enum DebuggerCmdV1 {
     StepIn,
     StepOver,
     Continue,
-    Variable(Variable),
+    Print(Variable),
 }
 
 #[derive(Debug)]
@@ -83,7 +77,11 @@ impl Debugger {
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         match cmd {
             DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl),
-            _ => self.debugger.run(),
+            DebuggerCmdV1::StepIn => self.debugger.step_in(),
+            DebuggerCmdV1::StepOver => self.debugger.step_over(),
+            DebuggerCmdV1::Continue => self.debugger.continue_(),
+            DebuggerCmdV1::Print(v) => self.debugger.print(v),
+            DebuggerCmdV1::Run => self.debugger.run(),
         }
     }
 }
@@ -102,7 +100,7 @@ pub trait DebuggerV1: Debug {
     fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn print(
         &mut self,
-        variable: &mut Variable,
+        variable: &Variable,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
 }
 

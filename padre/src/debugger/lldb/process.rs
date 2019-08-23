@@ -1,4 +1,12 @@
 //! lldb process handler
+//!
+//! This module performs the basic setup of and interfacing with LLDB. It will
+//! analyse the output of the text and work out what is happening then.
+//!
+//! There are two processes generally to be concerned with, firstly there is the
+//! LLDB process, secondly there is the program you're debugging. We keep track
+//! of the status of each of these things throughout and act appropriately based
+//! on what status we are currently in and the instructions we have received.
 
 use std::collections::HashMap;
 use std::io::{self, BufReader};
@@ -16,21 +24,29 @@ use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
 use tokio_process::{Child, ChildStderr, ChildStdin, ChildStdout, CommandExt};
 
+/// LLDB can be in one of four statuses:
+/// - None: This means that LLDB is not running, generally this is not
+///   very interesting.
+/// - Working: This means LLDB is in a status of processing and will not be
+///   responsive to commands sent to it.
+/// - Listening: This means LLDB is currently paused and awaiting further
+///   instructions
+/// - Exiting: This means LLDB is in a status of shutting down
 #[derive(Debug, Clone)]
 enum LLDBStatus {
     None,
     Listening,
     Working,
-    Quitting,
+    Exiting,
 }
 
-#[derive(Debug, Clone)]
-enum ProcessStatus {
-    None,
-    Running,
-    Paused,
-}
-
+/// You can register to listen for one of the following events:
+/// - LLDBLaunched: LLDB has started up initially
+/// - ProcessLaunched: LLDB has launched a process for debugging
+/// - ProcessExited: The process spawned by LLDB has exited
+/// - ProcessPaused: The process has stopped
+/// - Breakpoint: A breakpoint event has happened
+/// - PrintVariable: A variable has been requested to print and this is the response
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum LLDBListener {
     LLDBLaunched,
@@ -41,6 +57,7 @@ pub enum LLDBListener {
     PrintVariable,
 }
 
+/// An LLDB event is something that
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum LLDBEvent {
     LLDBLaunched,
@@ -125,11 +142,14 @@ impl LLDBProcess {
     /// Send a message to write to stdin
     pub fn write_stdin(&mut self, bytes: Bytes) {
         let tx = self.lldb_stdin_tx.clone();
+        let lldb_analyser = self.lldb_analyser.clone();
         tokio::spawn(
             tx.clone()
                 .unwrap()
                 .send(bytes)
-                .map(|_| {})
+                .map(move |_| {
+                    lldb_analyser.lock().unwrap().set_working();
+                })
                 .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
         );
     }
@@ -220,7 +240,6 @@ impl LLDBProcess {
 pub struct LLDBAnalyser {
     text: String,
     lldb_status: LLDBStatus,
-    process_status: ProcessStatus,
     listeners: HashMap<LLDBListener, Sender<LLDBEvent>>,
 }
 
@@ -229,7 +248,6 @@ impl LLDBAnalyser {
         LLDBAnalyser {
             text: "".to_string(),
             lldb_status: LLDBStatus::None,
-            process_status: ProcessStatus::None,
             listeners: HashMap::new(),
         }
     }
@@ -268,7 +286,7 @@ impl LLDBAnalyser {
         let s = self.text.clone();
 
         for line in s.split("\n") {
-            for cap in RE_LLDB_STARTED.captures_iter(line) {
+            for _ in RE_LLDB_STARTED.captures_iter(line) {
                 self.lldb_started();
             }
 
@@ -315,7 +333,7 @@ impl LLDBAnalyser {
             }
 
             for _ in RE_STOPPED_AT_POSITION.captures_iter(line) {
-                self.process_status = ProcessStatus::Paused;
+                self.lldb_status = LLDBStatus::Listening;
 
                 let mut found = false;
                 for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
@@ -334,7 +352,11 @@ impl LLDBAnalyser {
         self.clear_analyser();
     }
 
-    pub fn clear_analyser(&mut self) {
+    pub fn set_working(&mut self) {
+        self.lldb_status = LLDBStatus::Working;
+    }
+
+    fn clear_analyser(&mut self) {
         self.text = "".to_string();
     }
 
@@ -349,7 +371,7 @@ impl LLDBAnalyser {
     }
 
     fn process_started(&mut self, pid: u64) {
-        self.process_status = ProcessStatus::Running;
+        self.lldb_status = LLDBStatus::Working;
         match self.listeners.remove(&LLDBListener::ProcessLaunched) {
             Some(listener) => {
                 listener
@@ -362,7 +384,7 @@ impl LLDBAnalyser {
     }
 
     fn process_exited(&mut self, pid: u64, exit_code: i64) {
-        self.process_status = ProcessStatus::None;
+        self.lldb_status = LLDBStatus::Working;
         signal_exited(pid, exit_code);
         match self.listeners.remove(&LLDBListener::ProcessExited) {
             Some(listener) => {
@@ -409,25 +431,9 @@ impl LLDBAnalyser {
 
     fn jump_to_position(&mut self, file: String, line: u64) {
         jump_to_position(&file, line);
-        let file_location = FileLocation::new(file, line);
-        match self.listeners.remove(&LLDBListener::ProcessPaused) {
-            Some(listener) => {
-                listener
-                    .send(LLDBEvent::JumpToPosition(file_location))
-                    .wait()
-                    .unwrap();
-            }
-            None => {}
-        }
     }
 
     fn jump_to_unknown_position(&mut self) {
         log_msg(LogLevel::WARN, "Stopped at unknown position");
-        match self.listeners.remove(&LLDBListener::ProcessPaused) {
-            Some(listener) => {
-                listener.send(LLDBEvent::UnknownPosition).wait().unwrap();
-            }
-            None => {}
-        }
     }
 }

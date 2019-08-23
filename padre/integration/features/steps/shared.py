@@ -721,6 +721,7 @@ def padre_not_running(context):
     assert_that(context.padre.process.returncode,
                 equal_to(0), "Expected 0 exit code")
 
+    time.sleep(1)
     running = set(psutil.pids())
 
     assert_that(context.padre.pid, is_not(is_in(running)),

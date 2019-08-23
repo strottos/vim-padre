@@ -170,8 +170,12 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
 
     tokio::spawn(
         request_rx
-            .and_then(move |req| respond(req, debugger.clone()))
+            .and_then(move |req| {
+                println!("HERE req: {:?}", req);
+                respond(req, debugger.clone())
+            })
             .for_each(move |resp| {
+                println!("HERE resp: {:?}", resp);
                 tokio::spawn(
                     connection_tx_2
                         .clone()
@@ -187,9 +191,7 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
                     std::io::ErrorKind::ConnectionReset => {
                         remove_listener(&addr.clone());
                     }
-                    _ => {
-                        eprintln!("Socket error = {:?}", e);
-                    }
+                    _ => unreachable!(),
                 }
             }),
     );
@@ -234,30 +236,18 @@ fn respond(
         }
         RequestCmd::DebuggerCmd(cmd) => {
             let f = match cmd {
-                DebuggerCmd::V1(v1cmd) => {
-                    debugger.lock().unwrap().handle_v1_cmd(v1cmd)
-                    //match v1cmd {
-                    //    DebuggerCmdV1::Breakpoint(fl) => {
-                    //        debugger
-                    //            .lock()
-                    //            .unwrap()
-                    //            .breakpoint(&fl.file_name, fl.line_num),
-                    //    }
-                    //    DebuggerCmd::Run => debugger.lock().unwrap().run(),
-                    //    DebuggerCmd::StepIn => debugger.lock().unwrap().step_in(),
-                    //    DebuggerCmd::StepOver => debugger.lock().unwrap().step_over(),
-                    //    DebuggerCmd::Continue => debugger.lock().unwrap().continue_(),
-                    //    DebuggerCmd::Variable(v) => debugger.lock().unwrap().print(&v.variable_name),
-                    //    _ => debugger.lock().unwrap().run(),
-                    //}
-                }
+                DebuggerCmd::V1(v1cmd) => debugger.lock().unwrap().handle_v1_cmd(v1cmd),
             };
 
             Box::new(
                 f.timeout(Duration::new(30, 0))
                     .then(move |resp| match resp {
-                        Ok(s) => Ok(Response::new(request.id(), s)),
+                        Ok(s) => {
+                            println!("HERE: {:?}", s);
+                            Ok(Response::new(request.id(), s))
+                        }
                         Err(e) => {
+                            println!("HERE: {:?}", e);
                             log_msg(LogLevel::ERROR, &format!("{}", e));
                             let resp = serde_json::json!({"status":"ERROR"});
                             Ok(Response::new(request.id(), resp))

@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::io;
 
-use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation};
+use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation, Variable};
 use crate::server::{PadreCmd, PadreRequest, PadreSend, RequestCmd};
 use crate::util;
 
@@ -108,10 +108,7 @@ impl Decoder for VimCodec {
         let id: u64 = match serde_json::from_value(id.clone()) {
             Ok(s) => s,
             Err(e) => {
-                util::send_error_and_debug(
-                    "Can't read id",
-                    &format!("Can't read '{}': {}", id, e),
-                );
+                util::send_error_and_debug("Can't read id", &format!("Can't read '{}': {}", id, e));
 
                 return Ok(None);
             }
@@ -192,18 +189,36 @@ impl Decoder for VimCodec {
                         id,
                         RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(fl))),
                     ))),
-                    None => Ok(None),
+                    None => return Ok(None),
+                }
+            },
+            "print" => {
+                let variable = get_variable(&mut args);
+                match variable {
+                    Some(v) => Ok(Some(PadreRequest::new(
+                        id,
+                        RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Print(v))),
+                    ))),
+                    None => return Ok(None),
                 }
             }
-            _ => Ok(None),
+            _ => {
+                util::send_error_and_debug(
+                    "Command unknown",
+                    &format!("Command unknown: '{}'", cmd),
+                );
+                Ok(None)
+            },
         };
 
         match args.is_empty() {
             true => {}
             false => {
+                let mut args_left: Vec<String> = args.iter().map(|(key, _)| key.clone()).collect();
+                args_left.sort();
                 util::send_error_and_debug(
-                    "Extraneous arguments supplied",
-                    &format!("Extraneous arguments supplied '{:?}'", args),
+                    "Bad arguments",
+                    &format!("Bad arguments: {:?}", args_left),
                 );
                 return Ok(None);
             }
@@ -268,8 +283,8 @@ fn get_file_location(args: &mut HashMap<String, serde_json::Value>) -> Option<Fi
                 },
                 None => {
                     util::send_error_and_debug(
-                        "Can't read 'line' for file location when 'file' specified",
-                        &format!("Can't understand command with file but no line"),
+                        "Can't understand request",
+                        "Need to specify a line number",
                     );
                 }
             },
@@ -280,10 +295,32 @@ fn get_file_location(args: &mut HashMap<String, serde_json::Value>) -> Option<Fi
                 );
             }
         },
-        None => {}
+        None => {
+            util::send_error_and_debug("Can't understand request", "Need to specify a file name");
+        }
     };
 
-    return None;
+    None
+}
+
+/// Get a file location from the arguments
+fn get_variable(args: &mut HashMap<String, serde_json::Value>) -> Option<Variable> {
+    match args.remove("variable") {
+        Some(s) => match s {
+            serde_json::Value::String(s) => Some(Variable::new(s)),
+            _ => {
+                util::send_error_and_debug(
+                    "Badly specified 'variable'",
+                    &format!("Badly specified 'variable': {}", s),
+                );
+                None
+            }
+        },
+        None => {
+            util::send_error_and_debug("Can't understand request", "Need to specify a variable name");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

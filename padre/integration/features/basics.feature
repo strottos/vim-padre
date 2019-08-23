@@ -120,6 +120,11 @@ Feature: Basics
             | function           | args                                                     |
             | padre#debugger#Log | [2,"Can't find command"]                                 |
             | padre#debugger#Log | [5,"Can't find command '\\[1,{\"cmd\":{}}\\]': [^ ].*$"] |
+        When I send a request to PADRE '{"cmd":"not_exists"}'
+        Then I expect to be called with
+            | function           | args                                 |
+            | padre#debugger#Log | [2,"Command unknown"]                |
+            | padre#debugger#Log | [5,"Command unknown: 'not_exists'$"] |
         #When I send a raw request to PADRE '[1,{"cmd":"ping"'
         #And I send a raw request to PADRE '[1,{"cmd":"ping"}]'
         #Then I receive a raw response '[1,{"ping":"pong","status":"OK"}]'
@@ -143,15 +148,15 @@ Feature: Basics
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"breakpoint"}'
-        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function           | args                                                                      |
-            | padre#debugger#Log | [2,"Can't understand request"]                                 |
-            | padre#debugger#Log | [5,"Can't understand command without arguments: 'breakpoint'"] |
+        Then I expect to be called with
+            | function           | args                              |
+            | padre#debugger#Log | [2,"Can't understand request"]    |
+            | padre#debugger#Log | [5,"Need to specify a file name"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test.c"}'
         Then I expect to be called with
-            | function           | args                                                               |
-            | padre#debugger#Log | [2,"Can't read 'line' for file location when 'file' specified"]    |
-            | padre#debugger#Log | [5,"Can't understand command with file but no line: 'breakpoint'"] |
+            | function           | args                                |
+            | padre#debugger#Log | [2,"Can't understand request"]      |
+            | padre#debugger#Log | [5,"Need to specify a line number"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":12,"line":1}'
         Then I expect to be called with
             | function           | args                                  |
@@ -172,11 +177,6 @@ Feature: Basics
             | function           | args                                                 |
             | padre#debugger#Log | [2,"Bad arguments"]                                  |
             | padre#debugger#Log | [5,"Bad arguments: \\[\"bad_arg\", \"bad_arg2\"\\]"] |
-        When I send a request to PADRE '{"cmd":"bkpt","file":"test.c","line":12}'
-        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function           | args                                                     |
-            | padre#debugger#Log | [2,"Can't understand command"]                           |
-            | padre#debugger#Log | [5,"Can't understand command 'bkpt' with file location"] |
         When I terminate padre
         Then padre is not running
 
@@ -189,10 +189,10 @@ Feature: Basics
             | function                          | args |
             | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"print"}'
-        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function           | args                                                      |
-            | padre#debugger#Log | [2,"Can't understand request"]                            |
-            | padre#debugger#Log | [5,"Can't understand command without arguments: 'print'"] |
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [2,"Can't understand request"]        |
+            | padre#debugger#Log | [5,"Need to specify a variable name"] |
         When I send a request to PADRE '{"cmd":"print","variable":1}'
         Then I expect to be called with
             | function           | args                                     |
@@ -203,10 +203,5 @@ Feature: Basics
             | function           | args                                                 |
             | padre#debugger#Log | [2,"Bad arguments"]                                  |
             | padre#debugger#Log | [5,"Bad arguments: \\[\"bad_arg\", \"bad_arg2\"\\]"] |
-        When I send a request to PADRE '{"cmd":"prt","variable":"a"}'
-        Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function           | args                                               |
-            | padre#debugger#Log | [2,"Can't understand command"]                     |
-            | padre#debugger#Log | [5,"Can't understand command 'prt' with variable"] |
         When I terminate padre
         Then padre is not running
