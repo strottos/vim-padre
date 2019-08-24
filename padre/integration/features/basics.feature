@@ -205,3 +205,59 @@ Feature: Basics
             | padre#debugger#Log | [5,"Bad arguments: \\[\"bad_arg\", \"bad_arg2\"\\]"] |
         When I terminate padre
         Then padre is not running
+
+    Scenario: Check we can get and set config items per connection
+        Given that we have a file 'test_prog.c'
+        And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
+        And that we have a test program 'test_prog' that runs with 'lldb' debugger
+        When I debug the program with PADRE
+        Then I expect to be called with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a request to PADRE '{"cmd":"getConfig"}'
+        Then I expect to be called with
+            | function           | args                           |
+            | padre#debugger#Log | [2,"Can't understand request"] |
+            | padre#debugger#Log | [5,"Need to specify a 'key'"]  |
+        When I send a request to PADRE '{"cmd":"getConfig","key":123}'
+        Then I expect to be called with
+            | function           | args                                    |
+            | padre#debugger#Log | [2,"Badly specified string 'key'"]      |
+            | padre#debugger#Log | [5,"Badly specified string 'key': 123"] |
+        When I send a request to PADRE '{"cmd":"setConfig"}'
+        Then I expect to be called with
+            | function           | args                           |
+            | padre#debugger#Log | [2,"Can't understand request"] |
+            | padre#debugger#Log | [5,"Need to specify a 'key'"]  |
+        When I send a request to PADRE '{"cmd":"setConfig","key":"test"}'
+        Then I expect to be called with
+            | function           | args                             |
+            | padre#debugger#Log | [2,"Can't understand request"]   |
+            | padre#debugger#Log | [5,"Need to specify a 'value'"]  |
+        When I send a request to PADRE '{"cmd":"setConfig","key":123,"value":123}'
+        Then I expect to be called with
+            | function           | args                                    |
+            | padre#debugger#Log | [2,"Badly specified string 'key'"]      |
+            | padre#debugger#Log | [5,"Badly specified string 'key': 123"] |
+        When I send a request to PADRE '{"cmd":"setConfig","key":"test","value":"123"}'
+        Then I expect to be called with
+            | function           | args                                                  |
+            | padre#debugger#Log | [2,"Badly specified 64-bit integer 'value'"]          |
+            | padre#debugger#Log | [5,"Badly specified 64-bit integer 'value': \"123\""] |
+        When I send a request to PADRE '{"cmd":"setConfig","key":"test","value":123123123123123123123123123123123123123}'
+        Then I expect to be called with
+            | function           | args                                                               |
+            | padre#debugger#Log | [2,"Badly specified 64-bit integer 'value'"]          |
+            | padre#debugger#Log | [5,"Badly specified 64-bit integer 'value': 1.2312312312312312e38"] |
+        When I open another connection to PADRE
+        Then I expect to be called on connection 1 with
+            | function                          | args |
+            | padre#debugger#SignalPADREStarted | []   |
+        When I send a request to PADRE '{"cmd":"getConfig","key":"BackPressure"}' on connection 0
+        Then I receive a response '{"status":"OK","value":20}' on connection 0
+        When I send a request to PADRE '{"cmd":"setConfig","key":"BackPressure","value":25}' on connection 0
+        Then I receive a response '{"status":"OK"}' on connection 0
+        When I send a request to PADRE '{"cmd":"getConfig","key":"BackPressure"}' on connection 0
+        Then I receive a response '{"status":"OK","value":25}' on connection 0
+        When I send a request to PADRE '{"cmd":"getConfig","key":"BackPressure"}' on connection 1
+        Then I receive a response '{"status":"OK","value":20}' on connection 1

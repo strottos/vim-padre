@@ -21,21 +21,32 @@ def main():
     prog = args.prog_args[0]
     sys.stdout.write('(lldb) target create "{}"\n'.format(prog))
     sys.stdout.write("Current executable set to '{}' (x86_64).\n".format(prog))
-    sys.stdout.write("(lldb) ")
     sys.stdout.flush()
 
     for line in sys.stdin:
         line = line.rstrip()
+        sys.stdout.write('(lldb) {}\n'.format(line))
         if re.match('settings.*', line):
-            sys.stdout.write("(lldb) ")
             sys.stdout.flush()
             continue
 
-        match = re.match('frame variable (.*)', line)
-        if match:
+        if re.match('b(reakpoint)* .*main', line):
+            sys.stdout.write("Breakpoint 1: where = a.out`main + 15 at "
+                             + "test_prog.c:22:10, address = "
+                             + "0x0000000100000f2f\n")
+        elif line == "process launch":
+            sys.stdout.write("Process 12345 launched: "
+                             + "'{}' (x86_64)\n".format(prog))
+            sys.stdout.write("Process 12345 stopped\n")
+            sys.stdout.write("* thread #1, queue = 'com.apple.main-thread', "
+                             + "stop reason = breakpoint 1.1\n")
+            sys.stdout.write("    frame #0 at /Users/stevent@kainos.com/code/"
+                             + "personal/vim-padre/padre/test_prog.c:22\n")
+            sys.stdout.write("Target 0: (tmp) stopped.\n")
+
+        if re.match('frame variable (.*)', line):
             time.sleep(TIMEOUT + 1)
             sys.stdout.write("(int) i = 0\n")
-        sys.stdout.write("(lldb) ")
         sys.stdout.flush()
 
 

@@ -30,6 +30,142 @@ impl VimCodec {
     pub fn new() -> Self {
         VimCodec {}
     }
+
+    /// Get and remove a `file location` from the arguments
+    fn get_file_location(
+        &self,
+        args: &mut HashMap<String, serde_json::Value>,
+    ) -> Option<FileLocation> {
+        match args.remove("file") {
+            Some(s) => match s {
+                serde_json::Value::String(s) => match args.remove("line") {
+                    Some(t) => match t {
+                        serde_json::Value::Number(t) => {
+                            let t: u64 = match t.as_u64() {
+                                Some(t) => t,
+                                None => {
+                                    util::send_error_and_debug(
+                                        &format!("Badly specified 'line'"),
+                                        &format!("Badly specified 'line': {}", t),
+                                    );
+                                    return None;
+                                }
+                            };
+                            return Some(FileLocation::new(s, t));
+                        }
+                        _ => {
+                            util::send_error_and_debug(
+                                "Can't read 'line' argument",
+                                &format!("Can't understand 'line': {}", t),
+                            );
+                        }
+                    },
+                    None => {
+                        util::send_error_and_debug(
+                            "Can't understand request",
+                            "Need to specify a line number",
+                        );
+                    }
+                },
+                _ => {
+                    util::send_error_and_debug(
+                        &format!("Can't read 'file' argument"),
+                        &format!("Can't understand 'file': {}", s),
+                    );
+                }
+            },
+            None => {
+                util::send_error_and_debug(
+                    "Can't understand request",
+                    "Need to specify a file name",
+                );
+            }
+        };
+
+        None
+    }
+
+    /// Get and remove a `variable` from the arguments passed
+    fn get_variable(&self, args: &mut HashMap<String, serde_json::Value>) -> Option<Variable> {
+        match args.remove("variable") {
+            Some(s) => match s {
+                serde_json::Value::String(s) => Some(Variable::new(s)),
+                _ => {
+                    util::send_error_and_debug(
+                        "Badly specified 'variable'",
+                        &format!("Badly specified 'variable': {}", s),
+                    );
+                    None
+                }
+            },
+            None => {
+                util::send_error_and_debug(
+                    "Can't understand request",
+                    "Need to specify a variable name",
+                );
+                None
+            }
+        }
+    }
+
+    /// Get and remove the key specified from the arguments as a String
+    fn get_string(
+        &self,
+        key: &str,
+        args: &mut HashMap<String, serde_json::Value>,
+    ) -> Option<String> {
+        match args.remove(key) {
+            Some(s) => match s {
+                serde_json::Value::String(s) => Some(s),
+                _ => {
+                    util::send_error_and_debug(
+                        &format!("Badly specified string '{}'", key),
+                        &format!("Badly specified string '{}': {}", key, s),
+                    );
+                    None
+                }
+            },
+            None => {
+                util::send_error_and_debug(
+                    "Can't understand request",
+                    &format!("Need to specify a '{}'", key),
+                );
+                None
+            }
+        }
+    }
+
+    /// Get and remove the key specified from the arguments as an i64
+    fn get_i64(&self, key: &str, args: &mut HashMap<String, serde_json::Value>) -> Option<i64> {
+        match args.remove(key) {
+            Some(k) => match k.clone() {
+                serde_json::Value::Number(n) => match n.as_i64() {
+                    Some(i) => Some(i),
+                    None => {
+                        util::send_error_and_debug(
+                            &format!("Badly specified 64-bit integer '{}'", key),
+                            &format!("Badly specified 64-bit integer '{}': {}", key, &k),
+                        );
+                        None
+                    }
+                },
+                _ => {
+                    util::send_error_and_debug(
+                        &format!("Badly specified 64-bit integer '{}'", key),
+                        &format!("Badly specified 64-bit integer '{}': {}", key, &k),
+                    );
+                    None
+                }
+            },
+            None => {
+                util::send_error_and_debug(
+                    "Can't understand request",
+                    &format!("Need to specify a '{}'", key),
+                );
+                None
+            }
+        }
+    }
 }
 
 impl Decoder for VimCodec {
@@ -183,7 +319,7 @@ impl Decoder for VimCodec {
                 RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Continue)),
             ))),
             "breakpoint" => {
-                let file_location = get_file_location(&mut args);
+                let file_location = self.get_file_location(&mut args);
                 match file_location {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
@@ -191,14 +327,40 @@ impl Decoder for VimCodec {
                     ))),
                     None => return Ok(None),
                 }
-            },
+            }
             "print" => {
-                let variable = get_variable(&mut args);
+                let variable = self.get_variable(&mut args);
                 match variable {
                     Some(v) => Ok(Some(PadreRequest::new(
                         id,
                         RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Print(v))),
                     ))),
+                    None => return Ok(None),
+                }
+            }
+            "getConfig" => {
+                let key = self.get_string("key", &mut args);
+                match key {
+                    Some(k) => Ok(Some(PadreRequest::new(
+                        id,
+                        RequestCmd::PadreCmd(PadreCmd::GetConfig(k)),
+                    ))),
+                    None => return Ok(None),
+                }
+            }
+            "setConfig" => {
+                let key = self.get_string("key", &mut args);
+                match key {
+                    Some(k) => {
+                        let value = self.get_i64("value", &mut args);
+                        match value {
+                            Some(v) => Ok(Some(PadreRequest::new(
+                                id,
+                                RequestCmd::PadreCmd(PadreCmd::SetConfig(k, v)),
+                            ))),
+                            None => return Ok(None),
+                        }
+                    }
                     None => return Ok(None),
                 }
             }
@@ -208,7 +370,7 @@ impl Decoder for VimCodec {
                     &format!("Command unknown: '{}'", cmd),
                 );
                 Ok(None)
-            },
+            }
         };
 
         match args.is_empty() {
@@ -252,74 +414,6 @@ impl Encoder for VimCodec {
         buf.put(&response[..]);
 
         Ok(())
-    }
-}
-
-/// Get a file location from the arguments
-fn get_file_location(args: &mut HashMap<String, serde_json::Value>) -> Option<FileLocation> {
-    match args.remove("file") {
-        Some(s) => match s {
-            serde_json::Value::String(s) => match args.remove("line") {
-                Some(t) => match t {
-                    serde_json::Value::Number(t) => {
-                        let t: u64 = match t.as_u64() {
-                            Some(t) => t,
-                            None => {
-                                util::send_error_and_debug(
-                                    &format!("Badly specified 'line'"),
-                                    &format!("Badly specified 'line': {}", t),
-                                );
-                                return None;
-                            }
-                        };
-                        return Some(FileLocation::new(s, t));
-                    }
-                    _ => {
-                        util::send_error_and_debug(
-                            "Can't read 'line' argument",
-                            &format!("Can't understand 'line': {}", t),
-                        );
-                    }
-                },
-                None => {
-                    util::send_error_and_debug(
-                        "Can't understand request",
-                        "Need to specify a line number",
-                    );
-                }
-            },
-            _ => {
-                util::send_error_and_debug(
-                    &format!("Can't read 'file' argument"),
-                    &format!("Can't understand 'file': {}", s),
-                );
-            }
-        },
-        None => {
-            util::send_error_and_debug("Can't understand request", "Need to specify a file name");
-        }
-    };
-
-    None
-}
-
-/// Get a file location from the arguments
-fn get_variable(args: &mut HashMap<String, serde_json::Value>) -> Option<Variable> {
-    match args.remove("variable") {
-        Some(s) => match s {
-            serde_json::Value::String(s) => Some(Variable::new(s)),
-            _ => {
-                util::send_error_and_debug(
-                    "Badly specified 'variable'",
-                    &format!("Badly specified 'variable': {}", s),
-                );
-                None
-            }
-        },
-        None => {
-            util::send_error_and_debug("Can't understand request", "Need to specify a variable name");
-            None
-        }
     }
 }
 

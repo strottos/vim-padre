@@ -6,8 +6,10 @@
 use std::io;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use super::process::{LLDBEvent, LLDBListener, LLDBProcess};
+use super::process::{LLDBEvent, LLDBListener, LLDBProcess, LLDBStatus};
+use crate::config::Config;
 use crate::debugger::{DebuggerV1, FileLocation, Variable};
 use crate::notifier::{log_msg, LogLevel};
 
@@ -67,7 +69,10 @@ impl DebuggerV1 for ImplDebugger {
         exit(0);
     }
 
-    fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+    fn run(
+        &mut self,
+        config: Arc<Mutex<Config>>,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         log_msg(LogLevel::INFO, "Launching process");
 
         let (tx, rx) = mpsc::channel(1);
@@ -109,16 +114,23 @@ impl DebuggerV1 for ImplDebugger {
 
                 rx.take(1).into_future()
             })
+            .timeout(Duration::new(
+                config
+                    .lock()
+                    .unwrap()
+                    .get_config("ProcessSpawnTimeout")
+                    .unwrap() as u64,
+                0,
+            ))
             .map(move |event| match event.0.unwrap() {
                 LLDBEvent::ProcessLaunched(pid) => {
-                    println!("Process launched {:?}", pid);
                     serde_json::json!({"status":"OK","pid":pid.to_string()})
                 }
                 _ => unreachable!(),
             })
             .map_err(|e| {
                 eprintln!("Reading stdin error {:?}", e);
-                io::Error::new(io::ErrorKind::Other, "Timed out running process")
+                io::Error::new(io::ErrorKind::Other, "Timed out spawning process")
             });
 
         let stmt = "breakpoint set --name main\n";
@@ -131,6 +143,7 @@ impl DebuggerV1 for ImplDebugger {
     fn breakpoint(
         &mut self,
         file_location: &FileLocation,
+        config: Arc<Mutex<Config>>,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         log_msg(
             LogLevel::INFO,
@@ -150,6 +163,14 @@ impl DebuggerV1 for ImplDebugger {
         let f = rx
             .take(1)
             .into_future()
+            .timeout(Duration::new(
+                config
+                    .lock()
+                    .unwrap()
+                    .get_config("BreakpointTimeout")
+                    .unwrap() as u64,
+                0,
+            ))
             .map(move |event| match event.0.unwrap() {
                 LLDBEvent::BreakpointSet(_) => serde_json::json!({"status":"OK"}),
                 LLDBEvent::BreakpointPending => serde_json::json!({"status":"PENDING"}),
@@ -185,11 +206,55 @@ impl DebuggerV1 for ImplDebugger {
     fn print(
         &mut self,
         variable: &Variable,
+        config: Arc<Mutex<Config>>,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        let f = future::lazy(move || {
-            let resp = serde_json::json!({"status":"OK"});
-            Ok(resp)
-        });
+        match self.check_process() {
+            Some(f) => return f,
+            _ => {}
+        }
+
+        let (tx, rx) = mpsc::channel(1);
+
+        self.process
+            .lock()
+            .unwrap()
+            .add_listener(LLDBListener::PrintVariable, tx);
+
+        let f = rx
+            .take(1)
+            .into_future()
+            .timeout(Duration::new(
+                config
+                    .lock()
+                    .unwrap()
+                    .get_config("PrintVariableTimeout")
+                    .unwrap() as u64,
+                0,
+            ))
+            .map(move |event| match event.0.unwrap() {
+                LLDBEvent::PrintVariable(variable, value) => serde_json::json!({
+                    "status": "OK",
+                    "variable": variable.name,
+                    "value": value.value(),
+                    "type": value.type_()
+                }),
+                LLDBEvent::VariableNotFound(variable) => {
+                    log_msg(
+                        LogLevel::WARN,
+                        &format!("variable '{}' doesn't exist here", variable.name),
+                    );
+                    serde_json::json!({"status":"ERROR"})
+                }
+                _ => unreachable!(),
+            })
+            .map_err(|e| {
+                eprintln!("Reading stdin error {:?}", e);
+                io::Error::new(io::ErrorKind::Other, "Timed out printing variable")
+            });
+
+        let stmt = format!("frame variable {}\n", variable.name);
+
+        self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
 
         Box::new(f)
     }
@@ -200,6 +265,11 @@ impl ImplDebugger {
         &mut self,
         kind: &str,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        match self.check_process() {
+            Some(f) => return f,
+            _ => {}
+        }
+
         let stmt = format!("thread {}\n", kind);
 
         self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
@@ -210,6 +280,23 @@ impl ImplDebugger {
         });
 
         Box::new(f)
+    }
+
+    fn check_process(
+        &mut self,
+    ) -> Option<Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>> {
+        match self.process.lock().unwrap().get_status() {
+            LLDBStatus::NoProcess => {
+                log_msg(LogLevel::WARN, "No process running");
+                let f = future::lazy(move || {
+                    let resp = serde_json::json!({"status":"ERROR"});
+                    Ok(resp)
+                });
+
+                Some(Box::new(f))
+            }
+            _ => None,
+        }
     }
 }
 

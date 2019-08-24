@@ -7,6 +7,7 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::config::Config;
 use crate::debugger::{Debugger, DebuggerCmd};
 use crate::notifier::{add_listener, log_msg, remove_listener, LogLevel};
 use crate::vimcodec::VimCodec;
@@ -23,7 +24,8 @@ use tokio::sync::mpsc;
 pub enum PadreCmd {
     Ping,
     Pings,
-    SetConfig, // TODO: (HashMap<>),
+    GetConfig(String),
+    SetConfig(String, i64),
 }
 
 /// Contains command details of a request, either a `PadreCmd` or a `DebuggerCmd`
@@ -145,6 +147,8 @@ pub enum PadreSend {
 pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
     let addr = socket.peer_addr().unwrap();
 
+    let config = Arc::new(Mutex::new(Config::new()));
+
     let (request_tx, request_rx) = VimCodec::new().framed(socket).split();
 
     let (connection_tx, connection_rx) = mpsc::channel(1);
@@ -170,12 +174,8 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
 
     tokio::spawn(
         request_rx
-            .and_then(move |req| {
-                println!("HERE req: {:?}", req);
-                respond(req, debugger.clone())
-            })
+            .and_then(move |req| respond(req, debugger.clone(), config.clone()))
             .for_each(move |resp| {
-                println!("HERE resp: {:?}", resp);
                 tokio::spawn(
                     connection_tx_2
                         .clone()
@@ -216,13 +216,15 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
 fn respond(
     request: PadreRequest,
     debugger: Arc<Mutex<Debugger>>,
+    config: Arc<Mutex<Config>>,
 ) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
     match request.cmd() {
         RequestCmd::PadreCmd(cmd) => {
             let json_response = match cmd {
                 PadreCmd::Ping => ping(),
                 PadreCmd::Pings => pings(),
-                PadreCmd::SetConfig => Ok(serde_json::json!({"status":"unimplemented"})),
+                PadreCmd::GetConfig(key) => get_config(config, key),
+                PadreCmd::SetConfig(key, value) => set_config(config, key, *value),
             };
 
             Box::new(future::lazy(move || match json_response {
@@ -236,18 +238,14 @@ fn respond(
         }
         RequestCmd::DebuggerCmd(cmd) => {
             let f = match cmd {
-                DebuggerCmd::V1(v1cmd) => debugger.lock().unwrap().handle_v1_cmd(v1cmd),
+                DebuggerCmd::V1(v1cmd) => debugger.lock().unwrap().handle_v1_cmd(v1cmd, config),
             };
 
             Box::new(
                 f.timeout(Duration::new(30, 0))
                     .then(move |resp| match resp {
-                        Ok(s) => {
-                            println!("HERE: {:?}", s);
-                            Ok(Response::new(request.id(), s))
-                        }
+                        Ok(s) => Ok(Response::new(request.id(), s)),
                         Err(e) => {
-                            println!("HERE: {:?}", e);
                             log_msg(LogLevel::ERROR, &format!("{}", e));
                             let resp = serde_json::json!({"status":"ERROR"});
                             Ok(Response::new(request.id(), resp))
@@ -266,4 +264,24 @@ fn pings() -> Result<serde_json::Value, io::Error> {
     log_msg(LogLevel::INFO, "pong");
 
     Ok(serde_json::json!({"status":"OK"}))
+}
+
+fn get_config(config: Arc<Mutex<Config>>, key: &str) -> Result<serde_json::Value, io::Error> {
+    let value = config.lock().unwrap().get_config(key);
+    match value {
+        Some(v) => Ok(serde_json::json!({"status":"OK","value":v})),
+        None => Ok(serde_json::json!({"status":"ERROR"})),
+    }
+}
+
+fn set_config(
+    config: Arc<Mutex<Config>>,
+    key: &str,
+    value: i64,
+) -> Result<serde_json::Value, io::Error> {
+    let config_set = config.lock().unwrap().set_config(key, value);
+    match config_set {
+        true => Ok(serde_json::json!({"status":"OK"})),
+        false => Ok(serde_json::json!({"status":"ERROR"})),
+    }
 }

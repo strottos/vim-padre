@@ -5,7 +5,9 @@
 
 use std::fmt::Debug;
 use std::io;
+use std::sync::{Arc, Mutex};
 
+use crate::config::Config;
 use crate::util::{file_is_binary_executable, file_is_text, get_file_full_path};
 
 use tokio::prelude::*;
@@ -31,12 +33,12 @@ impl FileLocation {
 /// Variable name
 #[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct Variable {
-    variable_name: String,
+    name: String,
 }
 
 impl Variable {
-    pub fn new(variable_name: String) -> Self {
-        Variable { variable_name }
+    pub fn new(name: String) -> Self {
+        Variable { name }
     }
 }
 
@@ -74,14 +76,15 @@ impl Debugger {
     pub fn handle_v1_cmd(
         &mut self,
         cmd: &DebuggerCmdV1,
+        config: Arc<Mutex<Config>>,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
         match cmd {
-            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl),
+            DebuggerCmdV1::Run => self.debugger.run(config),
+            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl, config),
             DebuggerCmdV1::StepIn => self.debugger.step_in(),
             DebuggerCmdV1::StepOver => self.debugger.step_over(),
             DebuggerCmdV1::Continue => self.debugger.continue_(),
-            DebuggerCmdV1::Print(v) => self.debugger.print(v),
-            DebuggerCmdV1::Run => self.debugger.run(),
+            DebuggerCmdV1::Print(v) => self.debugger.print(v, config),
         }
     }
 }
@@ -90,10 +93,14 @@ impl Debugger {
 pub trait DebuggerV1: Debug {
     fn setup(&mut self);
     fn teardown(&mut self);
-    fn run(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+    fn run(
+        &mut self,
+        config: Arc<Mutex<Config>>,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn breakpoint(
         &mut self,
         file_location: &FileLocation,
+        config: Arc<Mutex<Config>>,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
@@ -101,6 +108,7 @@ pub trait DebuggerV1: Debug {
     fn print(
         &mut self,
         variable: &Variable,
+        config: Arc<Mutex<Config>>,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
 }
 

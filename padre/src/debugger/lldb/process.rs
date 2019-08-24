@@ -33,8 +33,8 @@ use tokio_process::{Child, ChildStderr, ChildStdin, ChildStdout, CommandExt};
 ///   instructions
 /// - Exiting: This means LLDB is in a status of shutting down
 #[derive(Debug, Clone)]
-enum LLDBStatus {
-    None,
+pub enum LLDBStatus {
+    NoProcess,
     Listening,
     Working,
     Exiting,
@@ -57,6 +57,27 @@ pub enum LLDBListener {
     PrintVariable,
 }
 
+/// The value of a variable
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct VariableValue {
+    type_: String,
+    value: String,
+}
+
+impl VariableValue {
+    pub fn new(type_: String, value: String) -> Self {
+        VariableValue { type_, value }
+    }
+
+    pub fn type_(&self) -> &str {
+        &self.type_
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
 /// An LLDB event is something that
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum LLDBEvent {
@@ -65,16 +86,13 @@ pub enum LLDBEvent {
     ProcessLaunched(u64),
     // (PID, Exit code)
     ProcessExited(u64, i64),
-    // (File name, line number)
     BreakpointSet(FileLocation),
     BreakpointMultiple,
     BreakpointPending,
-    // (File name, line number)
     JumpToPosition(FileLocation),
     UnknownPosition,
-    // (type, variable, value)
-    PrintVariable(Variable),
-    VariableNotFound,
+    PrintVariable(Variable, VariableValue),
+    VariableNotFound(Variable),
 }
 
 #[derive(Debug)]
@@ -161,6 +179,10 @@ impl LLDBProcess {
             .add_listener(kind, sender);
     }
 
+    pub fn get_status(&self) -> LLDBStatus {
+        self.lldb_analyser.lock().unwrap().get_status()
+    }
+
     /// Perform setup of listening and forwarding of stdin and setup ability to send to
     /// LLDB stdin.
     fn setup_stdin(&mut self, mut stdin: ChildStdin) {
@@ -216,7 +238,7 @@ impl LLDBProcess {
             read_output(BufReader::new(stdout))
                 .for_each(move |text| {
                     print!("{}", text);
-                    lldb_analyser.lock().unwrap().analyse_text(&text);
+                    lldb_analyser.lock().unwrap().analyse_stdout(&text);
                     Ok(())
                 })
                 .map_err(|e| eprintln!("Err reading LLDB stdout: {}", e)),
@@ -225,10 +247,12 @@ impl LLDBProcess {
 
     /// Perform setup of reading LLDB stderr, analysing it and writing it back to stdout.
     fn setup_stderr(&mut self, stderr: ChildStderr) {
+        let lldb_analyser = self.lldb_analyser.clone();
         tokio::spawn(
             read_output(BufReader::new(stderr))
-                .for_each(|text| {
-                    eprint!("STDERR: {}", text);
+                .for_each(move |text| {
+                    eprint!("{}", text);
+                    lldb_analyser.lock().unwrap().analyse_stderr(&text);
                     Ok(())
                 })
                 .map_err(|e| eprintln!("Err reading LLDB stderr: {}", e)),
@@ -238,7 +262,8 @@ impl LLDBProcess {
 
 #[derive(Debug)]
 pub struct LLDBAnalyser {
-    text: String,
+    stdout: String,
+    stderr: String,
     lldb_status: LLDBStatus,
     listeners: HashMap<LLDBListener, Sender<LLDBEvent>>,
 }
@@ -246,8 +271,9 @@ pub struct LLDBAnalyser {
 impl LLDBAnalyser {
     pub fn new() -> Self {
         LLDBAnalyser {
-            text: "".to_string(),
-            lldb_status: LLDBStatus::None,
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+            lldb_status: LLDBStatus::NoProcess,
             listeners: HashMap::new(),
         }
     }
@@ -256,8 +282,8 @@ impl LLDBAnalyser {
         self.listeners.insert(kind, sender);
     }
 
-    pub fn analyse_text(&mut self, s: &str) {
-        self.text.push_str(s);
+    pub fn analyse_stdout(&mut self, s: &str) {
+        self.stdout.push_str(s);
 
         lazy_static! {
             static ref RE_LLDB_STARTED: Regex =
@@ -281,9 +307,13 @@ impl LLDBAnalyser {
             static ref RE_STOPPED_AT_POSITION: Regex = Regex::new(" *frame #\\d.*$").unwrap();
             static ref RE_JUMP_TO_POSITION: Regex =
                 Regex::new("^ *frame #\\d at (\\S+):(\\d+)$").unwrap();
+            static ref RE_PRINTED_VARIABLE: Regex =
+                Regex::new("^\\((.*)\\) ([\\S+]*) = .*$").unwrap();
+            static ref RE_PROCESS_NOT_RUNNING: Regex =
+                Regex::new("error: invalid process$").unwrap();
         }
 
-        let s = self.text.clone();
+        let s = self.stdout.clone();
 
         for line in s.split("\n") {
             for _ in RE_LLDB_STARTED.captures_iter(line) {
@@ -347,6 +377,36 @@ impl LLDBAnalyser {
                     self.jump_to_unknown_position();
                 }
             }
+
+            for cap in RE_PRINTED_VARIABLE.captures_iter(line) {
+                let variable_type = cap[1].to_string();
+                let variable = cap[2].to_string();
+                self.printed_variable(variable, variable_type, &s);
+            }
+
+            for _ in RE_PROCESS_NOT_RUNNING.captures_iter(line) {
+                self.process_not_running();
+            }
+        }
+
+        self.clear_analyser();
+    }
+
+    pub fn analyse_stderr(&mut self, s: &str) {
+        self.stderr.push_str(s);
+
+        lazy_static! {
+            static ref RE_VARIABLE_NOT_FOUND: Regex =
+                Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
+        }
+
+        let s = self.stderr.clone();
+
+        for line in s.split("\n") {
+            for cap in RE_VARIABLE_NOT_FOUND.captures_iter(line) {
+                let variable = cap[1].to_string();
+                self.variable_not_found(variable);
+            }
         }
 
         self.clear_analyser();
@@ -356,8 +416,13 @@ impl LLDBAnalyser {
         self.lldb_status = LLDBStatus::Working;
     }
 
+    pub fn get_status(&self) -> LLDBStatus {
+        self.lldb_status.clone()
+    }
+
     fn clear_analyser(&mut self) {
-        self.text = "".to_string();
+        self.stdout = "".to_string();
+        self.stderr = "".to_string();
     }
 
     fn lldb_started(&mut self) {
@@ -384,7 +449,7 @@ impl LLDBAnalyser {
     }
 
     fn process_exited(&mut self, pid: u64, exit_code: i64) {
-        self.lldb_status = LLDBStatus::Working;
+        self.lldb_status = LLDBStatus::NoProcess;
         signal_exited(pid, exit_code);
         match self.listeners.remove(&LLDBListener::ProcessExited) {
             Some(listener) => {
@@ -435,5 +500,48 @@ impl LLDBAnalyser {
 
     fn jump_to_unknown_position(&mut self) {
         log_msg(LogLevel::WARN, "Stopped at unknown position");
+    }
+
+    fn printed_variable(&mut self, variable: String, variable_type: String, data: &str) {
+        let mut start = 1;
+
+        while &data[start..start + 1] != ")" {
+            start += 1;
+        }
+        while &data[start..start + 1] != "=" {
+            start += 1;
+        }
+        start += 2;
+
+        let end = data.len();
+
+        match self.listeners.remove(&LLDBListener::PrintVariable) {
+            Some(listener) => {
+                let variable = Variable::new(variable);
+                let value = VariableValue::new(variable_type, data[start..end].to_string());
+                listener
+                    .send(LLDBEvent::PrintVariable(variable, value))
+                    .wait()
+                    .unwrap();
+            }
+            None => {}
+        }
+    }
+
+    fn process_not_running(&self) {
+        log_msg(LogLevel::WARN, "program not running");
+    }
+
+    fn variable_not_found(&mut self, variable: String) {
+        match self.listeners.remove(&LLDBListener::PrintVariable) {
+            Some(listener) => {
+                let variable = Variable::new(variable);
+                listener
+                    .send(LLDBEvent::VariableNotFound(variable))
+                    .wait()
+                    .unwrap();
+            }
+            None => {}
+        }
     }
 }
