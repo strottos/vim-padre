@@ -1,8 +1,6 @@
 " vim: et ts=2 sts=2 sw=2
 
 Before:
-  "let g:PadrePreprocessingCommands = ['Command 1', 'Command 2']
-
   call padre#Enable()
 
 After:
@@ -133,7 +131,6 @@ Execute (Check we can debug a simple C program):
   PadreDebug test/progs/test_prog
   sleep 5
 
-  AssertEqual 1, padre#debugger#IsRunning()
   AssertEqual 4, len(padre#buffer#ReadBuffer('PADRE_Main'))
   AssertEqual 'INFO: PADRE debugger open', padre#buffer#ReadBuffer('PADRE_Main')[0]
   AssertEqual 'INFO: Setting breakpoint in file ' . g:mainFileToDebug . ' at line number 7', padre#buffer#ReadBuffer('PADRE_Main')[1]

@@ -419,7 +419,7 @@ impl Encoder for VimCodec {
 
 #[cfg(test)]
 mod tests {
-    use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation};
+    use crate::debugger::{DebuggerCmd, DebuggerCmdV1};
     use crate::server::{Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response};
 
     use bytes::{BufMut, BytesMut};

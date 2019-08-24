@@ -19,8 +19,6 @@
 //! will run the program `my_program arg1 arg2 3 4` in an `lldb` session.
 
 #[macro_use]
-extern crate cfg_if;
-#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;

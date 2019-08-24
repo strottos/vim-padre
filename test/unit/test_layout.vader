@@ -1,8 +1,6 @@
 " vim: et ts=2 sts=2 sw=2
 
 Before:
-  call padre#python#Setup()
-
   let g:buffer_number = padre#buffer#Create('Test_Tabs', 'TestBuf', 0)
 
 After:

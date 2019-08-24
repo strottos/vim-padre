@@ -189,27 +189,6 @@ fn is_node(cmd: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-    use std::path::Path;
-
-    fn get_test_path_env_var() -> String {
-        format!(
-            "{}:{}:/bin:/usr/bin",
-            Path::new("./test_files")
-                .canonicalize()
-                .expect("Cannot find test_files directory")
-                .as_path()
-                .to_str()
-                .unwrap(),
-            Path::new("./integration/test_files")
-                .canonicalize()
-                .expect("Cannot find test_files directory")
-                .as_path()
-                .to_str()
-                .unwrap(),
-        )
-    }
-
     #[test]
     fn finds_lldb_when_specified_and_absolute_path() {
         assert_eq!(

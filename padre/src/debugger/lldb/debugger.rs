@@ -8,7 +8,7 @@ use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::process::{LLDBEvent, LLDBListener, LLDBProcess, LLDBStatus};
+use super::process::{LLDBEvent, LLDBListener, LLDBProcess};
 use crate::config::Config;
 use crate::debugger::{DebuggerV1, FileLocation, Variable};
 use crate::notifier::{log_msg, LogLevel};
@@ -285,8 +285,8 @@ impl ImplDebugger {
     fn check_process(
         &mut self,
     ) -> Option<Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>> {
-        match self.process.lock().unwrap().get_status() {
-            LLDBStatus::NoProcess => {
+        match self.process.lock().unwrap().is_process_running() {
+            false => {
                 log_msg(LogLevel::WARN, "No process running");
                 let f = future::lazy(move || {
                     let resp = serde_json::json!({"status":"ERROR"});
@@ -295,7 +295,7 @@ impl ImplDebugger {
 
                 Some(Box::new(f))
             }
-            _ => None,
+            true => None,
         }
     }
 }

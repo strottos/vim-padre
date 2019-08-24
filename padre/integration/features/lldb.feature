@@ -252,10 +252,10 @@ Feature: LLDB
         Then I receive a response '{"status":"OK"}'
         When I send a request to PADRE '{"cmd":"run"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function                      | args                             |
-            | padre#debugger#Log            | [4,"Launching process"]          |
-            | padre#debugger#BreakpointSet  | ["test.c",25]                    |
-            | padre#debugger#Log            | [2,"Timed out spawning process"] |
+            | function                     | args                             |
+            | padre#debugger#Log           | [4,"Launching process"]          |
+            | padre#debugger#BreakpointSet | ["test.c",25]                    |
+            | padre#debugger#Log           | [2,"Timed out spawning process"] |
 
     Scenario: Test breakpoint timeout
         Given that we have a file 'test_prog.c'
@@ -269,9 +269,9 @@ Feature: LLDB
         Then I receive a response '{"status":"OK"}'
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test.c","line":17}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function                      | args                                                      |
-            | padre#debugger#Log            | [4,"Setting breakpoint in file test.c at line number 17"] |
-            | padre#debugger#Log            | [2,"Timed out setting breakpoint"]                        |
+            | function           | args                                                      |
+            | padre#debugger#Log | [4,"Setting breakpoint in file test.c at line number 17"] |
+            | padre#debugger#Log | [2,"Timed out setting breakpoint"]                        |
 
     Scenario: Test print timeout
         Given that we have a file 'test_prog.c'
@@ -291,5 +291,5 @@ Feature: LLDB
             | padre#debugger#Log            | [4,"Launching process"] |
         When I send a request to PADRE '{"cmd":"print","variable":"a"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-            | function                      | args                              |
-            | padre#debugger#Log            | [2,"Timed out printing variable"] |
+            | function           | args                              |
+            | padre#debugger#Log | [2,"Timed out printing variable"] |

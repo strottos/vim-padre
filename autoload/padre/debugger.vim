@@ -112,12 +112,12 @@ function! padre#debugger#Debug(...)
     let l:command = s:PluginRoot . '/padre/target/debug/padre --debugger=' . l:debugger . ' --type=' . l:debugger_type . ' -- ' . l:program
     execute 'terminal ++curwin ' . l:command
 
-    sleep 200ms
+    sleep 500ms
 
     let l:connection_line = ''
 
     for l:terminal in term_list()
-      let l:connection_line = term_getline(l:terminal, 1)
+      let l:connection_line = getline(1)
       let l:match = matchlist(l:connection_line, '^Listening on \([^ ]*\):\([0-9]*\)$')
       if !empty(l:match)
         let l:padre_host = l:match[1]
