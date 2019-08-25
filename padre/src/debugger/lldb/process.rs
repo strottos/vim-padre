@@ -2,27 +2,20 @@
 //!
 //! This module performs the basic setup of and interfacing with LLDB. It will
 //! analyse the output of the text and work out what is happening then.
-//!
-//! There are two processes generally to be concerned with, firstly there is the
-//! LLDB process, secondly there is the program you're debugging. We keep track
-//! of the status of each of these things throughout and act appropriately based
-//! on what status we are currently in and the instructions we have received.
 
 use std::collections::HashMap;
-use std::io::{self, BufReader};
-use std::process::{exit, Command, Stdio};
+use std::io::BufReader;
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use crate::debugger::{FileLocation, Variable};
 use crate::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
-use crate::util::{file_exists, get_file_full_path, read_output};
+use crate::util::{check_and_spawn_process, read_output, setup_stdin};
 
 use bytes::Bytes;
 use regex::Regex;
 use tokio::prelude::*;
-use tokio::sync::mpsc::{self, Sender};
-use tokio_process::{Child, ChildStderr, ChildStdin, ChildStdout, CommandExt};
+use tokio::sync::mpsc::Sender;
+use tokio_process::{Child, ChildStderr, ChildStdout};
 
 /// You can register to listen for one of the following events:
 /// - LLDBLaunched: LLDB has started up initially
@@ -31,12 +24,28 @@ use tokio_process::{Child, ChildStderr, ChildStdin, ChildStdout, CommandExt};
 /// - Breakpoint: A breakpoint event has happened
 /// - PrintVariable: A variable has been requested to print and this is the response
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub enum LLDBListener {
+pub enum Listener {
     LLDBLaunched,
     ProcessLaunched,
     ProcessExited,
     Breakpoint,
     PrintVariable,
+}
+
+/// An LLDB event is something that can be registered for being listened to and can be triggered
+/// when these events occur such that the listener is informed of them and passed some details
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum Event {
+    LLDBLaunched,
+    // (PID)
+    ProcessLaunched(u64),
+    // (PID, Exit code)
+    ProcessExited(u64, i64),
+    BreakpointSet(FileLocation),
+    BreakpointMultiple,
+    BreakpointPending,
+    PrintVariable(Variable, VariableValue),
+    VariableNotFound(Variable),
 }
 
 /// The value of a variable
@@ -60,80 +69,38 @@ impl VariableValue {
     }
 }
 
-/// An LLDB event is something that
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub enum LLDBEvent {
-    LLDBLaunched,
-    // (PID)
-    ProcessLaunched(u64),
-    // (PID, Exit code)
-    ProcessExited(u64, i64),
-    BreakpointSet(FileLocation),
-    BreakpointMultiple,
-    BreakpointPending,
-    PrintVariable(Variable, VariableValue),
-    VariableNotFound(Variable),
-}
-
 #[derive(Debug)]
 pub struct LLDBProcess {
-    debugger_cmd: String,
-    run_cmd: Vec<String>,
+    debugger_cmd: Option<String>,
+    run_cmd: Option<Vec<String>>,
     lldb_process: Option<Child>,
     lldb_stdin_tx: Option<Sender<Bytes>>,
-    lldb_analyser: Arc<Mutex<LLDBAnalyser>>,
+    analyser: Arc<Mutex<Analyser>>,
 }
 
 impl LLDBProcess {
     /// Create a new LLDBProcess
     pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
         LLDBProcess {
-            debugger_cmd,
-            run_cmd,
+            debugger_cmd: Some(debugger_cmd),
+            run_cmd: Some(run_cmd),
             lldb_process: None,
             lldb_stdin_tx: None,
-            lldb_analyser: Arc::new(Mutex::new(LLDBAnalyser::new())),
+            analyser: Arc::new(Mutex::new(Analyser::new())),
         }
     }
 
     /// Setup LLDB
     ///
     /// Includes spawning the LLDB process and all the relevant stdio handlers. In particular:
-    /// - Sets up a `ReadOutput` from `util.rs` in order to read stdout and stderr
-    /// - Sets up a thread to read stdin and forward it onto LLDB stdin.
+    /// - Sets up a `ReadOutput` from `util.rs` in order to read stdout and stderr;
+    /// - Sets up a thread to read stdin and forward it onto LLDB stdin;
+    /// - Checks that LLDB and the program to be ran both exist, otherwise panics.
     pub fn setup(&mut self) {
-        let mut not_found = None;
-
-        // Try getting the full path if the debugger doesn't exist
-        if !file_exists(&self.debugger_cmd) {
-            self.debugger_cmd = get_file_full_path(&self.debugger_cmd);
-        }
-
-        // Now check the debugger and program to debug exist, if not error
-        if !file_exists(&self.debugger_cmd) {
-            not_found = Some(&self.debugger_cmd);
-        }
-
-        if !file_exists(&self.run_cmd[0]) {
-            not_found = Some(&self.run_cmd[0]);
-        };
-
-        if let Some(s) = not_found {
-            let msg = format!("Can't spawn LLDB as {} does not exist", s);
-            log_msg(LogLevel::CRITICAL, &msg);
-            println!("{}", msg);
-
-            exit(1);
-        }
-
-        let mut lldb_process = Command::new(&self.debugger_cmd)
-            .arg("--")
-            .args(&self.run_cmd)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn_async()
-            .expect("Failed to spawn LLDB");
+        let mut lldb_process = check_and_spawn_process(
+            vec![self.debugger_cmd.take().unwrap()],
+            self.run_cmd.take().unwrap(),
+        );
 
         self.setup_stdout(
             lldb_process
@@ -147,13 +114,15 @@ impl LLDBProcess {
                 .take()
                 .expect("LLDB process did not have a handle to stderr"),
         );
-        self.setup_stdin(
+        let stdin_tx = setup_stdin(
             lldb_process
                 .stdin()
                 .take()
                 .expect("LLDB process did not have a handle to stdin"),
+            false,
         );
 
+        self.lldb_stdin_tx = Some(stdin_tx);
         self.lldb_process = Some(lldb_process);
     }
 
@@ -173,73 +142,22 @@ impl LLDBProcess {
         );
     }
 
-    pub fn add_listener(&mut self, kind: LLDBListener, sender: Sender<LLDBEvent>) {
-        self.lldb_analyser
-            .lock()
-            .unwrap()
-            .add_listener(kind, sender);
+    pub fn add_listener(&mut self, kind: Listener, sender: Sender<Event>) {
+        self.analyser.lock().unwrap().add_listener(kind, sender);
     }
 
     pub fn is_process_running(&self) -> bool {
-        self.lldb_analyser.lock().unwrap().is_process_running()
-    }
-
-    /// Perform setup of listening and forwarding of stdin and setup ability to send to
-    /// LLDB stdin.
-    fn setup_stdin(&mut self, mut stdin: ChildStdin) {
-        let (stdin_tx, stdin_rx) = mpsc::channel(1);
-        let mut tx = stdin_tx.clone();
-
-        thread::spawn(move || {
-            let mut stdin = io::stdin();
-            loop {
-                let mut buf = vec![0; 1024];
-                let n = match stdin.read(&mut buf) {
-                    Err(_) | Ok(0) => break,
-                    Ok(n) => n,
-                };
-                buf.truncate(n);
-                tx = match tx.send(Bytes::from(buf)).wait() {
-                    Ok(tx) => tx,
-                    Err(_) => break,
-                };
-            }
-        });
-
-        // Current implementation needs a kick, this is all liable to change with
-        // upcoming versions of tokio anyway so living with it for now.
-        match stdin.write(&[13]) {
-            Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {}
-            _ => unreachable!(),
-        }
-
-        tokio::spawn(
-            stdin_rx
-                .for_each(move |text| {
-                    match stdin.write(&text) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            panic!("Writing LLDB stdin err e: {}", e);
-                        }
-                    };
-                    Ok(())
-                })
-                .map_err(|e| {
-                    eprintln!("Reading stdin error {:?}", e);
-                }),
-        );
-
-        self.lldb_stdin_tx = Some(stdin_tx);
+        self.analyser.lock().unwrap().is_process_running()
     }
 
     /// Perform setup of reading LLDB stdout, analysing it and writing it back to stdout.
     fn setup_stdout(&mut self, stdout: ChildStdout) {
-        let lldb_analyser = self.lldb_analyser.clone();
+        let analyser = self.analyser.clone();
         tokio::spawn(
             read_output(BufReader::new(stdout))
                 .for_each(move |text| {
                     print!("{}", text);
-                    lldb_analyser.lock().unwrap().analyse_stdout(&text);
+                    analyser.lock().unwrap().analyse_stdout(&text);
                     Ok(())
                 })
                 .map_err(|e| eprintln!("Err reading LLDB stdout: {}", e)),
@@ -248,12 +166,12 @@ impl LLDBProcess {
 
     /// Perform setup of reading LLDB stderr, analysing it and writing it back to stdout.
     fn setup_stderr(&mut self, stderr: ChildStderr) {
-        let lldb_analyser = self.lldb_analyser.clone();
+        let analyser = self.analyser.clone();
         tokio::spawn(
             read_output(BufReader::new(stderr))
                 .for_each(move |text| {
                     eprint!("{}", text);
-                    lldb_analyser.lock().unwrap().analyse_stderr(&text);
+                    analyser.lock().unwrap().analyse_stderr(&text);
                     Ok(())
                 })
                 .map_err(|e| eprintln!("Err reading LLDB stderr: {}", e)),
@@ -262,16 +180,16 @@ impl LLDBProcess {
 }
 
 #[derive(Debug)]
-pub struct LLDBAnalyser {
+pub struct Analyser {
     stdout: String,
     stderr: String,
     process_pid: Option<u64>,
-    listeners: HashMap<LLDBListener, Sender<LLDBEvent>>,
+    listeners: HashMap<Listener, Sender<Event>>,
 }
 
-impl LLDBAnalyser {
+impl Analyser {
     pub fn new() -> Self {
-        LLDBAnalyser {
+        Analyser {
             stdout: "".to_string(),
             stderr: "".to_string(),
             process_pid: None,
@@ -279,7 +197,7 @@ impl LLDBAnalyser {
         }
     }
 
-    pub fn add_listener(&mut self, kind: LLDBListener, sender: Sender<LLDBEvent>) {
+    pub fn add_listener(&mut self, kind: Listener, sender: Sender<Event>) {
         self.listeners.insert(kind, sender);
     }
 
@@ -424,9 +342,9 @@ impl LLDBAnalyser {
     }
 
     fn lldb_started(&mut self) {
-        match self.listeners.remove(&LLDBListener::LLDBLaunched) {
+        match self.listeners.remove(&Listener::LLDBLaunched) {
             Some(listener) => {
-                listener.send(LLDBEvent::LLDBLaunched).wait().unwrap();
+                listener.send(Event::LLDBLaunched).wait().unwrap();
             }
             None => {}
         }
@@ -434,12 +352,9 @@ impl LLDBAnalyser {
 
     fn process_started(&mut self, pid: u64) {
         self.process_pid = Some(pid);
-        match self.listeners.remove(&LLDBListener::ProcessLaunched) {
+        match self.listeners.remove(&Listener::ProcessLaunched) {
             Some(listener) => {
-                listener
-                    .send(LLDBEvent::ProcessLaunched(pid))
-                    .wait()
-                    .unwrap();
+                listener.send(Event::ProcessLaunched(pid)).wait().unwrap();
             }
             None => {}
         }
@@ -448,10 +363,10 @@ impl LLDBAnalyser {
     fn process_exited(&mut self, pid: u64, exit_code: i64) {
         self.process_pid = None;
         signal_exited(pid, exit_code);
-        match self.listeners.remove(&LLDBListener::ProcessExited) {
+        match self.listeners.remove(&Listener::ProcessExited) {
             Some(listener) => {
                 listener
-                    .send(LLDBEvent::ProcessExited(pid, exit_code))
+                    .send(Event::ProcessExited(pid, exit_code))
                     .wait()
                     .unwrap();
             }
@@ -462,10 +377,10 @@ impl LLDBAnalyser {
     fn found_breakpoint(&mut self, file: String, line: u64) {
         breakpoint_set(&file, line);
         let file_location = FileLocation::new(file, line);
-        match self.listeners.remove(&LLDBListener::Breakpoint) {
+        match self.listeners.remove(&Listener::Breakpoint) {
             Some(listener) => {
                 listener
-                    .send(LLDBEvent::BreakpointSet(file_location))
+                    .send(Event::BreakpointSet(file_location))
                     .wait()
                     .unwrap();
             }
@@ -474,18 +389,18 @@ impl LLDBAnalyser {
     }
 
     fn found_multiple_breakpoints(&mut self) {
-        match self.listeners.remove(&LLDBListener::Breakpoint) {
+        match self.listeners.remove(&Listener::Breakpoint) {
             Some(listener) => {
-                listener.send(LLDBEvent::BreakpointMultiple).wait().unwrap();
+                listener.send(Event::BreakpointMultiple).wait().unwrap();
             }
             None => {}
         }
     }
 
     fn found_pending_breakpoint(&mut self) {
-        match self.listeners.remove(&LLDBListener::Breakpoint) {
+        match self.listeners.remove(&Listener::Breakpoint) {
             Some(listener) => {
-                listener.send(LLDBEvent::BreakpointPending).wait().unwrap();
+                listener.send(Event::BreakpointPending).wait().unwrap();
             }
             None => {}
         }
@@ -514,12 +429,12 @@ impl LLDBAnalyser {
         // it's possible one day we'll screw the UTF-8 pooch here.
         let value = data[start..data.len() - 1].to_string();
 
-        match self.listeners.remove(&LLDBListener::PrintVariable) {
+        match self.listeners.remove(&Listener::PrintVariable) {
             Some(listener) => {
                 let variable = Variable::new(variable);
                 let value = VariableValue::new(variable_type, value);
                 listener
-                    .send(LLDBEvent::PrintVariable(variable, value))
+                    .send(Event::PrintVariable(variable, value))
                     .wait()
                     .unwrap();
             }
@@ -532,11 +447,11 @@ impl LLDBAnalyser {
     }
 
     fn variable_not_found(&mut self, variable: String) {
-        match self.listeners.remove(&LLDBListener::PrintVariable) {
+        match self.listeners.remove(&Listener::PrintVariable) {
             Some(listener) => {
                 let variable = Variable::new(variable);
                 listener
-                    .send(LLDBEvent::VariableNotFound(variable))
+                    .send(Event::VariableNotFound(variable))
                     .wait()
                     .unwrap();
             }

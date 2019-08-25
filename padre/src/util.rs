@@ -7,12 +7,16 @@ use std::io::{self, BufRead};
 use std::mem;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{exit, Command, Stdio};
+use std::thread;
 
 use crate::notifier::{log_msg, LogLevel};
 
+use bytes::Bytes;
 use tokio::io::AsyncRead;
 use tokio::prelude::*;
+use tokio::sync::mpsc::{self, Sender};
+use tokio_process::{Child, ChildStdin, CommandExt};
 
 const BUFSIZE: usize = 4096;
 
@@ -27,6 +31,106 @@ pub fn get_unused_localhost_port() -> u16 {
 pub fn send_error_and_debug(err_msg: &str, debug_msg: &str) {
     log_msg(LogLevel::ERROR, err_msg);
     log_msg(LogLevel::DEBUG, debug_msg);
+}
+
+/// Check whether the specified debugger and program to debug exist, including change them to
+/// be the full path name if required. If it still can't find both it will panic, otherwise it
+/// will start a Child process for running the program.
+pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<String>) -> Child {
+    let mut not_found = None;
+
+    // Try getting the full path if the debugger doesn't exist
+    if !file_exists(&debugger_cmd[0]) {
+        debugger_cmd[0] = get_file_full_path(&debugger_cmd[0]);
+    }
+
+    // Now check the debugger and program to debug exist, if not error
+    if !file_exists(&run_cmd[0]) {
+        not_found = Some(&run_cmd[0]);
+    };
+
+    if !file_exists(&debugger_cmd[0]) {
+        not_found = Some(&debugger_cmd[0]);
+    }
+
+    if let Some(s) = not_found {
+        let msg = format!("Can't spawn debugger as {} does not exist", s);
+        log_msg(LogLevel::CRITICAL, &msg);
+        println!("{}", msg);
+
+        exit(1);
+    }
+
+    let mut args = vec![];
+
+    for arg in &debugger_cmd[1..] {
+        args.push(&arg[..]);
+    }
+
+    args.push("--");
+
+    for arg in &run_cmd {
+        args.push(&arg[..]);
+    }
+
+    Command::new(&debugger_cmd[0])
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn_async()
+        .expect("Failed to spawn debugger")
+}
+
+/// Perform setup of listening and forwarding of stdin and return a sender that will forward to the
+/// stdin of a process.
+pub fn setup_stdin(mut stdin: ChildStdin, output_stdin: bool) -> Sender<Bytes> {
+    let (stdin_tx, stdin_rx) = mpsc::channel(1);
+    let mut tx = stdin_tx.clone();
+
+    thread::spawn(move || {
+        let mut stdin = io::stdin();
+        loop {
+            let mut buf = vec![0; 1024];
+            let n = match stdin.read(&mut buf) {
+                Err(_) | Ok(0) => break,
+                Ok(n) => n,
+            };
+            buf.truncate(n);
+            tx = match tx.send(Bytes::from(buf)).wait() {
+                Ok(tx) => tx,
+                Err(_) => break,
+            };
+        }
+    });
+
+    // Current implementation needs a kick, this is all liable to change with
+    // upcoming versions of tokio anyway so living with it for now.
+    match stdin.write(&[13]) {
+        Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {}
+        _ => unreachable!(),
+    }
+
+    tokio::spawn(
+        stdin_rx
+            .for_each(move |text| {
+                if output_stdin {
+                    io::stdout().write_all(&text).unwrap();
+                }
+                match stdin.write(&text) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        panic!("Writing LLDB stdin err e: {}", e);
+                    }
+                };
+                Ok(())
+            })
+            .map_err(|e| {
+                eprintln!("Reading stdin error {:?}", e);
+            }),
+    );
+
+    stdin_tx
 }
 
 /// Find out if a file is a binary executable (either ELF or Mach-O

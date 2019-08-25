@@ -8,11 +8,19 @@ use std::io;
 use std::sync::{Arc, Mutex};
 
 use crate::config::Config;
-use crate::util::{file_is_binary_executable, file_is_text, get_file_full_path};
+use crate::util::{file_is_binary_executable, file_is_text};
 
 use tokio::prelude::*;
 
 mod lldb;
+mod python;
+
+/// Debuggers
+#[derive(Debug)]
+enum DebuggerType {
+    LLDB,
+    Python,
+}
 
 /// File location
 #[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -122,30 +130,44 @@ pub fn get_debugger(
     run_cmd: Vec<String>,
 ) -> Debugger {
     let debugger_type = match debugger_type {
-        Some(s) => s.to_string(),
-        None => match debugger_cmd {
-            Some(s) => get_debugger_type(s).expect("Can't find debugger type, bailing"),
-            None => panic!("Couldn't find debugger, try specifying with -t or -d"),
+        Some(s) => match s.to_ascii_lowercase().as_str() {
+            "lldb" => DebuggerType::LLDB,
+            "python" => DebuggerType::Python,
+            //"node" => DebuggerType::Node,
+            _ => panic!("Couldn't understand debugger type {}", s),
+        },
+        None => match get_debugger_type(&run_cmd[0]) {
+            Some(s) => s,
+            None => match debugger_cmd {
+                Some(s) => match s {
+                    "lldb" => DebuggerType::LLDB,
+                    "python" | "python3" => DebuggerType::Python,
+                    //"node" => DebuggerType::Node,
+                    _ => panic!(
+                        "Can't find debugger type for {}, try specifying with -d or -t",
+                        s
+                    ),
+                },
+                None => panic!("Can't find debugger type, try specifying with -d or -t"),
+            },
         },
     };
 
     let debugger_cmd = match debugger_cmd {
         Some(s) => s.to_string(),
-        None => debugger_type.clone(),
+        None => match debugger_type {
+            DebuggerType::LLDB => "lldb".to_string(),
+            DebuggerType::Python => "python3".to_string(),
+        },
     };
 
-    let mut debugger: Box<dyn DebuggerV1 + Send> = match debugger_type.to_ascii_lowercase().as_ref()
-    {
-        "lldb" => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
+    let mut debugger: Box<dyn DebuggerV1 + Send> = match debugger_type {
+        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
         //        "node" => Box::new(node::ImplDebugger::new(
         //            debugger_cmd,
         //            run_cmd,
         //        )),
-        //        "python" => Box::new(python::ImplDebugger::new(
-        //            debugger_cmd,
-        //            run_cmd,
-        //        )),
-        _ => panic!("Can't build debugger type {}, panicking", &debugger_type),
+        DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
     };
 
     debugger.setup();
@@ -154,12 +176,14 @@ pub fn get_debugger(
 }
 
 /// Guesses the debugger type
-pub fn get_debugger_type(cmd: &str) -> Option<String> {
-    let cmd = get_file_full_path(cmd);
-    if is_node(&cmd) {
-        Some(String::from("node"))
-    } else if is_lldb(&cmd) {
-        Some(String::from("lldb"))
+fn get_debugger_type(run_cmd: &str) -> Option<DebuggerType> {
+    //    if is_node(&cmd) {
+    //        Some(DebuggerType::Node)
+    //    } else
+    if is_python(&run_cmd) {
+        Some(DebuggerType::Python)
+    } else if is_lldb(&run_cmd) {
+        Some(DebuggerType::LLDB)
     } else {
         None
     }
@@ -175,25 +199,27 @@ fn is_lldb(cmd: &str) -> bool {
 }
 
 /// Checks if the file is a NodeJS script
-fn is_node(cmd: &str) -> bool {
-    if file_is_text(cmd) && cmd.ends_with(".js") {
+//fn is_node(cmd: &str) -> bool {
+//    if file_is_text(cmd) && cmd.ends_with(".js") {
+//        return true;
+//    }
+//
+//    // if file_is_binary_executable(cmd) && cmd.contains("node") {
+//    //     return true;
+//    // }
+//
+//    false
+//}
+
+/// Checks if the file is a NodeJS script
+fn is_python(cmd: &str) -> bool {
+    if file_is_text(cmd) && cmd.ends_with(".py") {
         return true;
     }
 
-    if file_is_binary_executable(cmd) && cmd.contains("node") {
-        return true;
-    }
+    // if file_is_binary_executable(cmd) && cmd.contains("python") {
+    //     return true;
+    // }
 
     false
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn finds_lldb_when_specified_and_absolute_path() {
-        assert_eq!(
-            super::get_debugger_type("./test_files/lldb-server"),
-            Some(String::from("lldb"))
-        );
-    }
 }

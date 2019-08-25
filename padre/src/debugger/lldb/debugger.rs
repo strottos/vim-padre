@@ -8,7 +8,7 @@ use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::process::{LLDBEvent, LLDBListener, LLDBProcess};
+use super::process::{Event, LLDBProcess, Listener};
 use crate::config::Config;
 use crate::debugger::{DebuggerV1, FileLocation, Variable};
 use crate::notifier::{log_msg, LogLevel};
@@ -31,15 +31,16 @@ impl ImplDebugger {
 }
 
 impl DebuggerV1 for ImplDebugger {
-    /// Perform any initial setup including
-    /// - startup lldb
+    /// Perform any initial setup including starting LLDB and setting up the stdio analyser stuff
+    /// - startup lldb and setup the stdio analyser
+    /// - perform initial setup so we can analyse LLDB properly
     fn setup(&mut self) {
         let (tx, rx) = mpsc::channel(1);
 
         self.process
             .lock()
             .unwrap()
-            .add_listener(LLDBListener::LLDBLaunched, tx);
+            .add_listener(Listener::LLDBLaunched, tx);
 
         let process = self.process.clone();
 
@@ -47,7 +48,7 @@ impl DebuggerV1 for ImplDebugger {
             rx.take(1)
                 .for_each(move |event| {
                     match event {
-                        LLDBEvent::LLDBLaunched => {
+                        Event::LLDBLaunched => {
                             process.lock().unwrap().write_stdin(Bytes::from(&b"settings set stop-line-count-after 0\n"[..]));
                             process.lock().unwrap().write_stdin(Bytes::from(&b"settings set stop-line-count-before 0\n"[..]));
                             process.lock().unwrap().write_stdin(Bytes::from(&b"settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n"[..]));
@@ -80,7 +81,7 @@ impl DebuggerV1 for ImplDebugger {
         self.process
             .lock()
             .unwrap()
-            .add_listener(LLDBListener::Breakpoint, tx);
+            .add_listener(Listener::Breakpoint, tx);
 
         let process = self.process.clone();
 
@@ -91,7 +92,7 @@ impl DebuggerV1 for ImplDebugger {
                 let lldb_output = lldb_output.0.unwrap();
 
                 match lldb_output {
-                    LLDBEvent::BreakpointSet(_) | LLDBEvent::BreakpointMultiple => {}
+                    Event::BreakpointSet(_) | Event::BreakpointMultiple => {}
                     _ => {
                         panic!("Don't understand output {:?}", lldb_output);
                     }
@@ -105,7 +106,7 @@ impl DebuggerV1 for ImplDebugger {
                 process
                     .lock()
                     .unwrap()
-                    .add_listener(LLDBListener::ProcessLaunched, tx);
+                    .add_listener(Listener::ProcessLaunched, tx);
 
                 process
                     .lock()
@@ -123,7 +124,7 @@ impl DebuggerV1 for ImplDebugger {
                 0,
             ))
             .map(move |event| match event.0.unwrap() {
-                LLDBEvent::ProcessLaunched(pid) => {
+                Event::ProcessLaunched(pid) => {
                     serde_json::json!({"status":"OK","pid":pid.to_string()})
                 }
                 _ => unreachable!(),
@@ -158,7 +159,7 @@ impl DebuggerV1 for ImplDebugger {
         self.process
             .lock()
             .unwrap()
-            .add_listener(LLDBListener::Breakpoint, tx);
+            .add_listener(Listener::Breakpoint, tx);
 
         let f = rx
             .take(1)
@@ -172,8 +173,8 @@ impl DebuggerV1 for ImplDebugger {
                 0,
             ))
             .map(move |event| match event.0.unwrap() {
-                LLDBEvent::BreakpointSet(_) => serde_json::json!({"status":"OK"}),
-                LLDBEvent::BreakpointPending => serde_json::json!({"status":"PENDING"}),
+                Event::BreakpointSet(_) => serde_json::json!({"status":"OK"}),
+                Event::BreakpointPending => serde_json::json!({"status":"PENDING"}),
                 _ => unreachable!(),
             })
             .map_err(|e| {
@@ -218,7 +219,7 @@ impl DebuggerV1 for ImplDebugger {
         self.process
             .lock()
             .unwrap()
-            .add_listener(LLDBListener::PrintVariable, tx);
+            .add_listener(Listener::PrintVariable, tx);
 
         let f = rx
             .take(1)
@@ -232,13 +233,13 @@ impl DebuggerV1 for ImplDebugger {
                 0,
             ))
             .map(move |event| match event.0.unwrap() {
-                LLDBEvent::PrintVariable(variable, value) => serde_json::json!({
+                Event::PrintVariable(variable, value) => serde_json::json!({
                     "status": "OK",
                     "variable": variable.name,
                     "value": value.value(),
                     "type": value.type_()
                 }),
-                LLDBEvent::VariableNotFound(variable) => {
+                Event::VariableNotFound(variable) => {
                     log_msg(
                         LogLevel::WARN,
                         &format!("variable '{}' doesn't exist here", variable.name),
@@ -299,6 +300,3 @@ impl ImplDebugger {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {}
