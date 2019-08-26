@@ -1,4 +1,4 @@
-//! Python client debugger
+//! Python debugger
 //!
 //! The main Python Debugger entry point. Handles listening for instructions and
 //! communicating through the `Process`.
@@ -79,7 +79,7 @@ impl DebuggerV1 for ImplDebugger {
                 match event.0.unwrap() {
                     Event::Launched => {
                         for bkpt in &pending_breakpoints {
-                            let stmt = format!("break {}:{}\n", bkpt.file_name, bkpt.line_num);
+                            let stmt = format!("break {}:{}\n", bkpt.name, bkpt.line_num);
                             process
                                 .clone()
                                 .lock()
@@ -122,7 +122,7 @@ impl DebuggerV1 for ImplDebugger {
             LogLevel::INFO,
             &format!(
                 "Setting breakpoint in file {} at line number {}",
-                file_location.file_name, file_location.line_num
+                file_location.name, file_location.line_num
             ),
         );
 
@@ -169,10 +169,7 @@ impl DebuggerV1 for ImplDebugger {
                 io::Error::new(io::ErrorKind::Other, "Timed out setting breakpoint")
             });
 
-        let stmt = format!(
-            "break {}:{}\n",
-            file_location.file_name, file_location.line_num
-        );
+        let stmt = format!("break {}:{}\n", file_location.name, file_location.line_num);
 
         self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
 

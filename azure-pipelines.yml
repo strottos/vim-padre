@@ -19,14 +19,6 @@ jobs:
   steps:
   - template: ci/padre-tests.yml
 
-- job: perf_tests
-  pool:
-    vmImage: 'ubuntu-latest'
-  timeoutInMinutes: 20
-
-  steps:
-  - template: ci/perf-tests.yml
-
 - job: vim_tests
   pool:
     vmImage: 'ubuntu-latest'

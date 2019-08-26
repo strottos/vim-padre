@@ -13,28 +13,27 @@ use crate::util::{file_is_binary_executable, file_is_text};
 use tokio::prelude::*;
 
 mod lldb;
+mod node;
 mod python;
 
 /// Debuggers
 #[derive(Debug)]
 enum DebuggerType {
     LLDB,
+    Node,
     Python,
 }
 
 /// File location
 #[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct FileLocation {
-    file_name: String,
+    name: String,
     line_num: u64,
 }
 
 impl FileLocation {
-    pub fn new(file_name: String, line_num: u64) -> Self {
-        FileLocation {
-            file_name,
-            line_num,
-        }
+    pub fn new(name: String, line_num: u64) -> Self {
+        FileLocation { name, line_num }
     }
 }
 
@@ -133,7 +132,7 @@ pub fn get_debugger(
         Some(s) => match s.to_ascii_lowercase().as_str() {
             "lldb" => DebuggerType::LLDB,
             "python" => DebuggerType::Python,
-            //"node" => DebuggerType::Node,
+            "node" => DebuggerType::Node,
             _ => panic!("Couldn't understand debugger type {}", s),
         },
         None => match get_debugger_type(&run_cmd[0]) {
@@ -142,7 +141,7 @@ pub fn get_debugger(
                 Some(s) => match s {
                     "lldb" => DebuggerType::LLDB,
                     "python" | "python3" => DebuggerType::Python,
-                    //"node" => DebuggerType::Node,
+                    "node" => DebuggerType::Node,
                     _ => panic!(
                         "Can't find debugger type for {}, try specifying with -d or -t",
                         s
@@ -157,16 +156,14 @@ pub fn get_debugger(
         Some(s) => s.to_string(),
         None => match debugger_type {
             DebuggerType::LLDB => "lldb".to_string(),
+            DebuggerType::Node => "node".to_string(),
             DebuggerType::Python => "python3".to_string(),
         },
     };
 
     let mut debugger: Box<dyn DebuggerV1 + Send> = match debugger_type {
         DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
-        //        "node" => Box::new(node::ImplDebugger::new(
-        //            debugger_cmd,
-        //            run_cmd,
-        //        )),
+        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
         DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
     };
 
@@ -177,10 +174,9 @@ pub fn get_debugger(
 
 /// Guesses the debugger type
 fn get_debugger_type(run_cmd: &str) -> Option<DebuggerType> {
-    //    if is_node(&cmd) {
-    //        Some(DebuggerType::Node)
-    //    } else
-    if is_python(&run_cmd) {
+    if is_node(&run_cmd) {
+        Some(DebuggerType::Node)
+    } else if is_python(&run_cmd) {
         Some(DebuggerType::Python)
     } else if is_lldb(&run_cmd) {
         Some(DebuggerType::LLDB)
@@ -199,17 +195,17 @@ fn is_lldb(cmd: &str) -> bool {
 }
 
 /// Checks if the file is a NodeJS script
-//fn is_node(cmd: &str) -> bool {
-//    if file_is_text(cmd) && cmd.ends_with(".js") {
-//        return true;
-//    }
-//
-//    // if file_is_binary_executable(cmd) && cmd.contains("node") {
-//    //     return true;
-//    // }
-//
-//    false
-//}
+fn is_node(cmd: &str) -> bool {
+    if file_is_text(cmd) && cmd.ends_with(".js") {
+        return true;
+    }
+
+    // if file_is_binary_executable(cmd) && cmd.contains("node") {
+    //     return true;
+    // }
+
+    false
+}
 
 /// Checks if the file is a NodeJS script
 fn is_python(cmd: &str) -> bool {

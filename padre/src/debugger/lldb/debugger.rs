@@ -150,7 +150,7 @@ impl DebuggerV1 for ImplDebugger {
             LogLevel::INFO,
             &format!(
                 "Setting breakpoint in file {} at line number {}",
-                file_location.file_name, file_location.line_num
+                file_location.name, file_location.line_num
             ),
         );
 
@@ -184,7 +184,7 @@ impl DebuggerV1 for ImplDebugger {
 
         let stmt = format!(
             "breakpoint set --file {} --line {}\n",
-            file_location.file_name, file_location.line_num
+            file_location.name, file_location.line_num
         );
 
         self.process.lock().unwrap().write_stdin(Bytes::from(stmt));

@@ -44,6 +44,7 @@ pub enum Event {
     PrintVariable(Variable, String),
 }
 
+/// Main handler for spawning the Python process
 #[derive(Debug)]
 pub struct Process {
     debugger_cmd: Option<String>,

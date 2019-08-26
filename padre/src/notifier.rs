@@ -65,7 +65,6 @@ impl Notifier {
     /// Should be called when a connection is dropped.
     fn remove_listener(&mut self, addr: &SocketAddr) {
         self.listeners.retain(|listener| listener.addr != *addr);
-        println!("Listeners {:?}", self.listeners);
     }
 
     /// Send the message to all clients
