@@ -116,14 +116,12 @@ function! padre#debugger#Debug(...)
 
     let l:connection_line = ''
 
-    for l:terminal in term_list()
-      let l:connection_line = getline(1)
-      let l:match = matchlist(l:connection_line, '^Listening on \([^ ]*\):\([0-9]*\)$')
-      if !empty(l:match)
-        let l:padre_host = l:match[1]
-        let l:padre_port = l:match[2]
-      endif
-    endfor
+    let l:connection_line = getline(1)
+    let l:match = matchlist(l:connection_line, '^Listening on \([^ ]*\):\([0-9]*\)$')
+    if !empty(l:match)
+      let l:padre_host = l:match[1]
+      let l:padre_port = l:match[2]
+    endif
   endif
 
   if l:padre_port == 0
