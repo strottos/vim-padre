@@ -4,7 +4,7 @@ VIM PADRE was written in order to help debug using the VIM editor. Whilst IDE's 
 
 This plugin still needs a lot of work but it does work. The idea has been that we rely on an external program to provide a consistent interface for VIM with this program (that I called `padre`) that does most of the heavy lifting.
 
-Currently `padre` supports LLDB, Python and Node debuggers with an ambition of adding more.
+Currently `padre` supports LLDB, Python and Node debuggers with an ambition of adding more. It runs on either Linux or Mac, Windows is currently unsupported.
 
 ## How-To
 
