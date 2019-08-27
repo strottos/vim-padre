@@ -1,2 +1,2 @@
 all:
-	cd padre && npm install
+	cd padre && cargo build

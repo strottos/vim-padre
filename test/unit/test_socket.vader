@@ -1,13 +1,15 @@
 " vim: et ts=2 sts=2 sw=2
 
-Before:
-  call padre#python#Setup()
-
-After:
-  Restore
-
 Execute (Check we can connect to a socket to send and receive data and close the socket):
-  let t:port = has('python3') ? py3eval('padre_api.get_unused_localhost_port()') : pyeval('padre_api.get_unused_localhost_port()')
+  python3 << EOF
+  import socket
+  sock = socket.socket()
+  sock.bind(('', 0))
+  port = sock.getsockname()[1]
+  sock.close()
+  vim.command("let t:port = {}".format(port))
+  EOF
+
   call padre#job#Start('test/pythonx/echo_server.py --port=' . t:port, {})
 
   call padre#socket#Connect('localhost', t:port)
@@ -27,7 +29,15 @@ Execute (Check we can connect to a socket to send and receive data and close the
   AssertEqual 'closed', padre#socket#Status()
 
 Execute (Check we can connect to a socket that opens after a short sleep):
-  let t:port = has('python3') ? py3eval('padre_api.get_unused_localhost_port()') : pyeval('padre_api.get_unused_localhost_port()')
+  python3 << EOF
+  import socket
+  sock = socket.socket()
+  sock.bind(('', 0))
+  port = sock.getsockname()[1]
+  sock.close()
+  vim.command("let t:port = {}".format(port))
+  EOF
+
   call padre#job#Start('test/pythonx/echo_server.py --init_sleep 1 --port=' . t:port, {})
 
   sleep 2
@@ -45,7 +55,15 @@ Execute (Check we can connect to a socket that opens after a short sleep):
   call padre#socket#Close()
 
 Execute (Check we can send to a socket with a different callback):
-  let t:port = has('python3') ? py3eval('padre_api.get_unused_localhost_port()') : pyeval('padre_api.get_unused_localhost_port()')
+  python3 << EOF
+  import socket
+  sock = socket.socket()
+  sock.bind(('', 0))
+  port = sock.getsockname()[1]
+  sock.close()
+  vim.command("let t:port = {}".format(port))
+  EOF
+
   call padre#job#Start('test/pythonx/echo_server.py --port=' . t:port, {})
 
   call padre#socket#Connect('localhost', t:port)

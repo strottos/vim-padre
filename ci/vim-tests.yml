@@ -1,0 +1,37 @@
+steps:
+  - script: |
+      sudo add-apt-repository -y ppa:jonathonf/vim
+      sudo apt-get update
+      sudo apt-get install -y vim
+      mkdir -p ~/.vim/autoload ~/.vim/bundle
+      curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
+      git clone https://github.com/junegunn/vader.vim ~/.vim/bundle/vader
+      ln -s `pwd` ~/.vim/bundle/padre
+      cp test/vimrc ~/.vimrc
+    displayName: Install VIM and plugins
+
+  - bash: |
+      # Spawn so the /usr/bin/env python lookup gets cached and spawns quickly
+      test/pythonx/test_prog.py
+      vim '+Vader! test/unit/*.vader'
+    displayName: Run VIM unit tests
+
+  - template: install-rust.yml
+
+  - script: |
+      sudo apt-get install -y lldb-5.0 gcc
+      sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
+      sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
+      sudo ln -s /usr/bin/lldb-server-5.0 /usr/lib/llvm-5.0/bin/lldb-server-5.0.0
+      cd test/progs
+      gcc -g -o test_prog test_prog.c test_func.c
+    displayName: Install lldb and build essentials and compile test program
+
+  - script: |
+      cd padre
+      cargo build
+    displayName: Compile Padre CLI
+
+  - bash: |
+      vim '+Vader! test/integration/*.vader'
+    displayName: Run VIM integration tests

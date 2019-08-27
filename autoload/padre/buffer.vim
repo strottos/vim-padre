@@ -192,7 +192,6 @@ endfunction
 function! padre#buffer#ReplaceBuffer(name, text)
   call padre#buffer#ClearBuffer(a:name)
   return padre#buffer#AppendBuffer(a:name, a:text)
-  "return padre#python#CallAPI('replace_buffer("' . a:name . '", "' . a:line_from . '", "' . a:line_to . '", ["' . join(a:text, '","') . '"])')
 endfunction
 
 function! padre#buffer#ClearBuffer(name)

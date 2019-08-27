@@ -12,8 +12,6 @@ function! padre#Enable()
     return
   endif
 
-  call padre#python#Setup()
-
   call padre#signs#Setup()
 
   call padre#debugger#Setup()
