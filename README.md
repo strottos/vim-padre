@@ -1,6 +1,6 @@
 # VIM PADRE
 
-VIM PADRE was written in order to help debug using the VIM editor. Whilst IDE's have become very popular VIM seems to remain popular (certainly in the authors case) for debugging. At the time of writing this there were many debugger plugins for VIM but none that seemed to a) work, b) could debug across multiple languages and c) I could easily extend myself.
+VIM PADRE was written in order to help debug using the VIM editor. Whilst IDE's have become very popular VIM seems to remain popular (certainly in the authors case) for editing. At the time of writing this there were many debugger plugins for VIM but none that seemed to a) work, b) could debug across multiple languages and c) I could easily extend myself.
 
 This plugin still needs a lot of work but it does work. The idea has been that we rely on an external program to provide a consistent interface for VIM with this program (that I called `padre`) that does most of the heavy lifting.
 
