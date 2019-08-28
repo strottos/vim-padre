@@ -11,7 +11,23 @@ Here's a demo of it in action:
 
 ## How-To
 
-You can download VIM plugins in a variety of ways, `pathogen` is my favourite because you just need to add the plugin to `~/.vim/bundle`. See here for more details on using `pathogen` (https://github.com/tpope/vim-pathogen) but essentially you just clone this repository into `~/.vim/bundle`. Once you've done this you should `cd ~/.vim/bundle/vim-padre` and then run `make`. Really the `Makefile` is very simple and just handles things off to Cargo (Rust's package manager/build tool). If you don't have Rust on your system you can install it via the instructions in https://rustup.rs/.
+### Installation
+
+You can download VIM plugins in a variety of ways. The plugin is written in Rust so make sure you have Rust on your system. If you don't, you can install it via the instructions in https://rustup.rs/.
+
+**pathogen**
+
+`pathogen` is my favourite because you just need to add the plugin to `~/.vim/bundle`. See here for more details on using `pathogen` (https://github.com/tpope/vim-pathogen) but essentially you just clone this repository into `~/.vim/bundle`. Once you've done this you should `cd ~/.vim/bundle/vim-padre` and then run `make`. Really the `Makefile` is very simple and just handles things off to Cargo (Rust's package manager/build tool). 
+
+**vim-plug**
+
+Add the following to your plugin section:
+
+```vimscript
+Plug 'strottos/vim-padre', { 'dir': '~/.vim/plugged/vim-padre', 'do': 'make' }
+```
+
+### Running
 
 Once you have VIM PADRE installed you can run a program by doing the following (NB: Do *not* specify the debugger command with the program you want to run, that's what `-d` is for):
 
