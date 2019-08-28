@@ -283,7 +283,6 @@ impl DebuggerV1 for ImplDebugger {
             .unwrap()
             .send_and_receive_message(msg)
             .map(move |response| {
-                println!("Response: {:?}", response);
                 if response["error"].is_null() {
                     let mut json = response;
                     let variable_type = json["result"]["result"]["type"].take();
