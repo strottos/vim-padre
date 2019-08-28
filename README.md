@@ -6,6 +6,9 @@ This plugin still needs a lot of work but it does work. The idea has been that w
 
 Currently `padre` supports LLDB, Python and Node debuggers with an ambition of adding more. It runs on either Linux or Mac, Windows is currently unsupported.
 
+Here's a demo of it in action:
+[![asciicast](https://asciinema.org/a/zuJTb3Nxi5uR0ObIXOCJ0TGCU.svg)](https://asciinema.org/a/zuJTb3Nxi5uR0ObIXOCJ0TGCU)
+
 ## How-To
 
 You can download VIM plugins in a variety of ways, `pathogen` is my favourite because you just need to add the plugin to `~/.vim/bundle`. See here for more details on using `pathogen` (https://github.com/tpope/vim-pathogen) but essentially you just clone this repository into `~/.vim/bundle`. Once you've done this you should `cd ~/.vim/bundle/vim-padre` and then run `make`. Really the `Makefile` is very simple and just handles things off to Cargo (Rust's package manager/build tool). If you don't have Rust on your system you can install it via the instructions in https://rustup.rs/.
