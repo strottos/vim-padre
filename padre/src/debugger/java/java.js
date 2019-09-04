@@ -44,7 +44,7 @@ class JavaDebugger extends eventEmitter {
       this.emit('padre_log', level, str)
     })
 
-    for (let dir of ['./', '/Users/stevent@kainos.com/code/third_party/java']) {
+    for (let dir of ['./', '/Users/stevent@kainos.com/code/third_party/java', '/Users/stevent@kainos.com/code/kainos/DEFRA/exports']) {
       walk.filesSync(dir, (basedir, filename) => {
         this.allJavaFiles.add(path.normalize(`${basedir}/${filename}`))
       })
@@ -363,7 +363,9 @@ class JavaDebugger extends eventEmitter {
     const methods = await this._getMethodsWithGeneric(refTypeID)
     const methodFound = _.get(methods.filter(x => x.name === methodName), '[0]')
 
-    // TODO: If not methodFound??
+    if (!methodFound) {
+      return
+    }
 
     await this.javaProcess.request(15, 1, Buffer.concat([
       Buffer.from([0x02, 0x02]),
@@ -432,6 +434,7 @@ class JavaDebugger extends eventEmitter {
 
     if (classSignature in this._pendingBreakpointMethodForClasses) {
       for (let methodName of this._pendingBreakpointMethodForClasses[classSignature]) {
+        console.log(`Found Breakpoint ${classSignature}:${methodName}`)
         await this._setBreakpoint(refTypeID, methodName)
       }
 
