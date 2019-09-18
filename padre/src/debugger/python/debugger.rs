@@ -4,6 +4,7 @@
 //! communicating through the `Process`.
 
 use std::io;
+use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -58,6 +59,20 @@ impl DebuggerV1 for ImplDebugger {
         &mut self,
         config: Arc<Mutex<Config>>,
     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let pending_breakpoints = match self.pending_breakpoints.take() {
+            Some(pb) => pb,
+            None => {
+                let msg = "Process already running, not launching";
+                eprintln!("{}", msg);
+                log_msg(LogLevel::WARN, msg);
+                let f = future::lazy(move || {
+                    let resp = serde_json::json!({"status":"ERROR"});
+                    Ok(resp)
+                });
+                return Box::new(f);
+            }
+        };
+
         log_msg(LogLevel::INFO, "Launching process");
 
         let (tx, rx) = mpsc::channel(1);
@@ -66,8 +81,6 @@ impl DebuggerV1 for ImplDebugger {
             .lock()
             .unwrap()
             .add_listener(Listener::Launch, tx);
-
-        let pending_breakpoints = self.pending_breakpoints.take().unwrap();
 
         let process = self.process.clone();
         let process2 = self.process.clone();
@@ -169,7 +182,13 @@ impl DebuggerV1 for ImplDebugger {
                 io::Error::new(io::ErrorKind::Other, "Timed out setting breakpoint")
             });
 
-        let stmt = format!("break {}:{}\n", file_location.name, file_location.line_num);
+        let full_file_path = PathBuf::from(format!("{}", file_location.name));
+        let full_file_name = full_file_path.canonicalize().unwrap();
+        let stmt = format!(
+            "break {}:{}\n",
+            full_file_name.to_str().unwrap(),
+            file_location.line_num
+        );
 
         self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
 

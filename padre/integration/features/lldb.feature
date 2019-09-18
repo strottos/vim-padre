@@ -6,9 +6,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a command 'b main' using the terminal
         Then I expect to be called with
             | function                     | args                     |
@@ -37,9 +34,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler '<compiler>' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test_prog.c","line":17}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                     | args                     |
@@ -94,9 +88,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a command 'b func3' using the terminal
         Then I expect to be called with
             | function                     | args                   |
@@ -141,9 +132,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"stepIn"}'
         Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
             | function           | args                      |
@@ -168,9 +156,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"run"}'
         Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
             | function                      | args                    |
@@ -189,9 +174,6 @@ Feature: LLDB
         And I have compiled the test program 'test_print_variables.rs' with compiler 'rustc -g' to program 'test_print_variables'
         And that we have a test program 'test_print_variables' that runs with 'lldb' debugger
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"run"}'
         Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
             | function           | args                              |
@@ -245,9 +227,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with './test_files/lldb_spawn_timeout.py' debugger of type 'lldb'
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"setConfig","key":"ProcessSpawnTimeout","value":1}'
         Then I receive a response '{"status":"OK"}'
         When I send a request to PADRE '{"cmd":"run"}'
@@ -262,9 +241,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with './test_files/lldb_breakpoint_timeout.py' debugger of type 'lldb'
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"setConfig","key":"BreakpointTimeout","value":1}'
         Then I receive a response '{"status":"OK"}'
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test.c","line":17}'
@@ -278,9 +254,6 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with './test_files/lldb_print_variable_timeout.py' debugger of type 'lldb'
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"setConfig","key":"PrintVariableTimeout","value":1}'
         Then I receive a response '{"status":"OK"}'
         When I send a request to PADRE '{"cmd":"run"}'

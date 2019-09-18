@@ -10,15 +10,24 @@ Execute (Check we can connect to a socket to send and receive data and close the
   vim.command("let t:port = {}".format(port))
   EOF
 
-  call padre#job#Start('test/pythonx/echo_server.py --port=' . t:port, {})
+  let job = job_start('test/pythonx/echo_server.py --port=' . t:port)
 
   call padre#socket#Connect('localhost', t:port)
 
-  sleep 3
+  sleep 2
 
-  call padre#socket#Send('test echo server')
+  let t:CallbackCalled = 0
+
+  function! g:EchoServerCallbackTest(channel, msg)
+    AssertEqual a:msg, 'test echo server'
+    let t:CallbackCalled = 1
+  endfunction
+
+  call padre#socket#Send('test echo server', function('g:EchoServerCallbackTest'))
   sleep 100ms
-  AssertEqual padre#socket#Received(), 'test echo server'
+
+After:
+  AssertEqual 1, t:CallbackCalled
 
   call padre#socket#Send('quit')
 
@@ -27,6 +36,7 @@ Execute (Check we can connect to a socket to send and receive data and close the
   sleep 100ms
 
   AssertEqual 'closed', padre#socket#Status()
+  call job_stop(job)
 
 Execute (Check we can connect to a socket that opens after a short sleep):
   python3 << EOF
@@ -38,37 +48,7 @@ Execute (Check we can connect to a socket that opens after a short sleep):
   vim.command("let t:port = {}".format(port))
   EOF
 
-  call padre#job#Start('test/pythonx/echo_server.py --init_sleep 1 --port=' . t:port, {})
-
-  sleep 2
-
-  call padre#socket#Connect('localhost', t:port)
-
-  sleep 2
-
-  call padre#socket#Send('test echo server')
-  sleep 100ms
-  AssertEqual padre#socket#Received(), 'test echo server'
-
-  call padre#socket#Send('quit')
-
-  call padre#socket#Close()
-
-Execute (Check we can send to a socket with a different callback):
-  python3 << EOF
-  import socket
-  sock = socket.socket()
-  sock.bind(('', 0))
-  port = sock.getsockname()[1]
-  sock.close()
-  vim.command("let t:port = {}".format(port))
-  EOF
-
-  call padre#job#Start('test/pythonx/echo_server.py --port=' . t:port, {})
-
-  call padre#socket#Connect('localhost', t:port)
-
-  sleep 3
+  let job = job_start('test/pythonx/echo_server.py --init_sleep 1 --port=' . t:port)
 
   let t:CallbackCalled = 0
 
@@ -77,8 +57,18 @@ Execute (Check we can send to a socket with a different callback):
     let t:CallbackCalled = 1
   endfunction
 
+  call padre#socket#Connect('localhost', t:port)
+
+  sleep 3
+
   call padre#socket#Send('test echo server', function('g:EchoServerCallbackTest'))
+  sleep 100ms
 
-  sleep 2
-
+After:
   AssertEqual 1, t:CallbackCalled
+
+  call padre#socket#Send('quit')
+
+  call padre#socket#Close()
+
+  call job_stop(job)

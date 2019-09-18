@@ -4,9 +4,6 @@ Feature: NodeJS
     Scenario: Debug a basic program with nodeJS
         Given that we have a test program './test_files/test_prog.js' that runs with 'node' debugger
         When I debug the program with PADRE
-        Then I expect to be called with
-            | function                          | args |
-            | padre#debugger#SignalPADREStarted | []   |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test_files/test_prog.js","line":16}'
         Then I receive a response '{"status":"PENDING"}'
         When I send a request to PADRE '{"cmd":"run"}'

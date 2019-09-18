@@ -195,19 +195,6 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
                 }
             }),
     );
-
-    // TODO: Get rid of this signal started stuff, requests should be queued and VIM should
-    // work out when it's connected.
-    tokio::spawn(
-        connection_tx
-            .clone()
-            .send(PadreSend::Notification(Notification::new(
-                "padre#debugger#SignalPADREStarted".to_string(),
-                vec![],
-            )))
-            .map(|_| ())
-            .map_err(|e| eprintln!("Notifier can't send to socket: {}", e)),
-    );
 }
 
 /// Process a PadreRequest.

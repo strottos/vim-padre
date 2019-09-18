@@ -17,7 +17,7 @@ You can download VIM plugins in a variety of ways. The plugin is written in Rust
 
 **pathogen**
 
-`pathogen` is my favourite because you just need to add the plugin to `~/.vim/bundle`. See here for more details on using `pathogen` (https://github.com/tpope/vim-pathogen) but essentially you just clone this repository into `~/.vim/bundle`. Once you've done this you should `cd ~/.vim/bundle/vim-padre` and then run `make`. Really the `Makefile` is very simple and just handles things off to Cargo (Rust's package manager/build tool). 
+`pathogen` is my favourite because you just need to add the plugin to `~/.vim/bundle`. See here for more details on using `pathogen` (https://github.com/tpope/vim-pathogen) but essentially you just clone this repository into `~/.vim/bundle`. Once you've done this you should `cd ~/.vim/bundle/vim-padre` and then run `make`. Really the `Makefile` is very simple and just handles things off to Cargo (Rust's package manager/build tool).
 
 **vim-plug**
 
@@ -97,8 +97,8 @@ Things that we need to add still are as follows (feel free to help if you wish, 
 - Proper variable printing, it's mostly a bit simple at the moment
 - Go Debugger
 - Java Debugger
-- Padre can be ran multiple times without restarting vim (Currently I restart VIM every time I want to run PADRE, this is a serious bug that needs fixing ASAP)
 - Support multiple PADRE processes
 - Make things more configurable
 - Consistent breakpoint setting, can set them before or after running the program and they will still be picked up, works better unders some debuggers than others
 - Upgrade PADRE to use new Tokio/Rust futures/async/await syntax once they're in stable.
+- Allow setting variables to other values

@@ -120,7 +120,7 @@ pub fn setup_stdin(mut stdin: ChildStdin, output_stdin: bool) -> Sender<Bytes> {
                 match stdin.write(&text) {
                     Ok(_) => {}
                     Err(e) => {
-                        panic!("Writing LLDB stdin err e: {}", e);
+                        eprintln!("Writing stdin err e: {}", e);
                     }
                 };
                 Ok(())
@@ -158,10 +158,7 @@ pub fn file_is_text(cmd: &str) -> bool {
     }
 }
 
-/// Find out if a file is a binary executable (either ELF or Mach-O
-/// executable). It will try to find the file first, failing that
-/// it will try to find it in the path and failing that it will
-/// return the empty string.
+/// Find out the full path of a file based on the PATH environment variable.
 pub fn get_file_full_path(cmd: &str) -> String {
     let cmd_full_path_buf = env::var_os("PATH")
         .and_then(|paths| {
@@ -235,21 +232,24 @@ where
         loop {
             let n = match self.io.read(&mut buf) {
                 Ok(t) => t,
-                Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(Async::NotReady);
                 }
                 Err(e) => return Err(e.into()),
             };
-            if n == BUFSIZE {
-                let s = std::str::from_utf8(&buf[0..n]).unwrap();
-                self.text.push_str(s);
-                continue;
-            }
+
             if n == 0 && self.text.len() == 0 {
                 return Ok(None.into());
             }
-            let s = std::str::from_utf8(&buf[0..n]).unwrap();
-            self.text.push_str(s);
+
+            if n == BUFSIZE {
+                let bufstr = String::from_utf8_lossy(&buf[0..n]);
+                self.text.push_str(&bufstr);
+                continue;
+            }
+
+            let bufstr = String::from_utf8_lossy(&buf[0..n]);
+            self.text.push_str(&bufstr);
             break;
         }
         Ok(Some(mem::replace(&mut self.text, String::new())).into())
@@ -258,29 +258,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::env;
     use std::net::TcpListener;
-    use std::path::Path;
     use std::thread;
     use std::time::Duration;
-
-    fn get_test_path_env_var() -> String {
-        format!(
-            "{}:{}:/bin:/usr/bin",
-            Path::new("./test_files")
-                .canonicalize()
-                .expect("Cannot find test_files directory")
-                .as_path()
-                .to_str()
-                .unwrap(),
-            Path::new("./integration/test_files")
-                .canonicalize()
-                .expect("Cannot find test_files directory")
-                .as_path()
-                .to_str()
-                .unwrap(),
-        )
-    }
 
     #[test]
     fn find_and_use_unused_port() {
@@ -313,39 +293,6 @@ mod tests {
     #[test]
     fn test_file_not_exists() {
         assert_eq!(false, super::file_exists("./test_files/not_exists"));
-    }
-
-    #[test]
-    fn test_getting_files_full_path_for_absolute_path() {
-        let old_path = env::var("PATH").unwrap();
-        let path_var = get_test_path_env_var();
-        env::set_var("PATH", &path_var);
-
-        assert_eq!(
-            "./test_files/node".to_string(),
-            super::get_file_full_path("./test_files/node")
-        );
-
-        env::set_var("PATH", old_path);
-    }
-
-    #[test]
-    fn test_getting_files_full_path() {
-        let old_path = env::var("PATH").unwrap();
-        let path_var = get_test_path_env_var();
-        env::set_var("PATH", &path_var);
-
-        let test_files_path_raw = String::from("./test_files/node");
-        let test_files_path = Path::new(&test_files_path_raw)
-            .canonicalize()
-            .expect("Cannot find test_files directory");
-
-        assert_eq!(
-            test_files_path.as_path().to_str().unwrap(),
-            super::get_file_full_path("node")
-        );
-
-        env::set_var("PATH", old_path);
     }
 
     #[test]
