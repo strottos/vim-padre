@@ -212,7 +212,8 @@ impl Decoder for VimCodec {
                 }
             },
             None => {
-                unreachable!();
+                println!("If this line prints and problems occur please raise a bug report");
+                return Ok(None);
             }
         };
 

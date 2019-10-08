@@ -2,33 +2,33 @@
 Test basic PADRE functions with behave
 """
 import asyncio
-import datetime
 import json
 import os
 import re
 import socket
 import subprocess
-import time
 import threading
-from tempfile import TemporaryDirectory
+import time
 from shutil import copyfile
+from tempfile import TemporaryDirectory
 
-from behave import *
-from hamcrest import *
 import psutil
+from behave import fixture, given, then, use_fixture, when
+from hamcrest import (assert_that, equal_to, has_item, is_in, is_not,
+                      matches_regexp)
 
 TEST_FILES_DIR = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)),
-    "../../test_files",
+    os.path.dirname(os.path.realpath(__file__)), "../../test_files"
 )
 
 TIMEOUT = 15
 
 
-class Padre():
+class Padre:
     """
     Details for program
     """
+
     def __init__(self, executable, debugger, program_type):
         self._executable = executable
         self._debugger = debugger
@@ -131,15 +131,16 @@ class Padre():
         """
         Find Children of Padre PID and store them
         """
-        self._children = \
-            self._children.union(set(psutil.Process(self.pid)
-                                           .children(recursive=True)))
+        self._children = self._children.union(
+            set(psutil.Process(self.pid).children(recursive=True))
+        )
 
 
 async def do_read_from_padre(future, reader, loop):
     """
     Read from PADRE
     """
+
     def cancel():
         future.cancel()
 
@@ -163,7 +164,7 @@ async def do_read_from_padre(future, reader, loop):
             results.append(line[idx:to])
             idx = json.decoder.WHITESPACE.match(line, to).end()
     except ValueError as exc:
-        raise ValueError('%s (%r at position %d).' % (exc, line[idx:], idx))
+        raise ValueError("%s (%r at position %d)." % (exc, line[idx:], idx))
 
     if len(results):
         print("Responses: {}".format(results))
@@ -175,6 +176,7 @@ async def do_send_to_padre(future, writer, message, loop):
     """
     Send a message to PADRE
     """
+
     def cancel():
         future.cancel()
 
@@ -195,38 +197,36 @@ def run_padre(context, timeout=20):
     """
     Run padre debugger for program given
     """
+
     async def do_run_padre(context, future, loop):
         def cancel():
             future.cancel()
 
         loop.call_at(loop.time() + TIMEOUT, cancel)
 
-        if context.padre.program_type is not None:
-            context.padre.process = await asyncio.create_subprocess_exec(
-                os.path.join(
-                    os.path.dirname(os.path.realpath(__file__)),
-                    "../../../target/debug/padre"
-                ), "--debugger={}".format(context.padre.debugger),
-                "--type={}".format(context.padre.program_type),
-                "--host={}".format("127.0.0.1"),
-                "--port={}".format(context.padre.port), context.padre.executable,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                loop=loop
-            )
-        else:
-            context.padre.process = await asyncio.create_subprocess_exec(
-                os.path.join(
-                    os.path.dirname(os.path.realpath(__file__)),
-                    "../../../target/debug/padre"
-                ), "--debugger={}".format(context.padre.debugger),
-                "--host={}".format("127.0.0.1"),
-                "--port={}".format(context.padre.port), context.padre.executable,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                loop=loop
-            )
+        program = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), "../../../target/debug/padre"
+        )
 
+        args = [
+            "--host={}".format("127.0.0.1"),
+            "--port={}".format(context.padre.port),
+            context.padre.executable,
+        ]
+
+        if context.padre.program_type is not None:
+            args.append("--type={}".format(context.padre.program_type))
+
+        if context.padre.debugger is not None:
+            args.append("--debugger={}".format(context.padre.debugger))
+
+        context.padre.process = await asyncio.create_subprocess_exec(
+            program,
+            *args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            loop=loop,
+        )
 
         line = await context.padre.process.stdout.readline()
 
@@ -234,8 +234,7 @@ def run_padre(context, timeout=20):
 
     loop = asyncio.get_event_loop()
     future = loop.create_future()
-    ensure = asyncio.ensure_future(do_run_padre(context, future, loop),
-                                   loop=loop)
+    ensure = asyncio.ensure_future(do_run_padre(context, future, loop), loop=loop)
     loop.run_until_complete(ensure)
     line = future.result()
 
@@ -249,7 +248,7 @@ def run_padre(context, timeout=20):
             while True:
                 try:
                     line = await context.padre.process.stdout.readline()
-                    if line != b'':
+                    if line != b"":
                         i = 0
                         print(line)
                     else:
@@ -259,8 +258,7 @@ def run_padre(context, timeout=20):
                 except AttributeError:
                     break
 
-        ensure = asyncio.ensure_future(a_print_stuff(context),
-                                       loop=loop)
+        asyncio.ensure_future(a_print_stuff(context), loop=loop)
 
     t = threading.Thread(target=print_stuff, args=(loop, context))
     t.start()
@@ -277,14 +275,11 @@ def connect_to_padre(context):
     Open a socket to the PADRE process and attach that socket to the
     `padre` object
     """
-    async def do_connect_to_padre(loop):
-        con = asyncio.open_connection(
-            "127.0.0.1",
-            context.padre.port)
 
-        context.connections.append(await asyncio.wait_for(con,
-                                                          int(TIMEOUT),
-                                                          loop=loop))
+    async def do_connect_to_padre(loop):
+        con = asyncio.open_connection("127.0.0.1", context.padre.port)
+
+        context.connections.append(await asyncio.wait_for(con, int(TIMEOUT), loop=loop))
 
     loop = asyncio.get_event_loop()
 
@@ -298,34 +293,56 @@ def copy_file(context, source):
     to that directory
     """
     context.tmpdir = TemporaryDirectory()
-    copyfile(os.path.join(TEST_FILES_DIR, source),
-             os.path.join(context.tmpdir.name, source)
-             )
+    copyfile(
+        os.path.join(TEST_FILES_DIR, source), os.path.join(context.tmpdir.name, source)
+    )
 
 
 @given(
     "I have compiled the test program '{source}' with compiler "
     "'{compiler}' to program '{output}'"
-    )
+)
 def compile_program(context, source, compiler, output):
     """
     Compile the program and store that in the context for the program
     """
     context.program = output
-    execute = compiler.split(' ')
-    execute.extend(["-o",
-                    os.path.join(context.tmpdir.name, output),
-                    os.path.join(context.tmpdir.name, source)
-                    ])
-    subprocess.run(execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                   check=True, cwd=os.getcwd())
+    execute = compiler.split(" ")
+    execute.extend(
+        [
+            "-o",
+            os.path.join(context.tmpdir.name, output),
+            os.path.join(context.tmpdir.name, source),
+        ]
+    )
+    subprocess.run(
+        execute,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        cwd=os.getcwd(),
+    )
     time.sleep(0.1)
+
+
+@given("that we have only a test program '{executable}'")
+def padre(context, executable):
+    """
+    Copy the contents of the test program to a temporary empty directory
+    and change dir to that directory and store the program in the context
+    """
+    if "/" not in executable:
+        executable = os.path.join(context.tmpdir.name, executable)
+    if not os.path.exists(executable):
+        copyfile(os.path.join(TEST_FILES_DIR, executable), executable)
+    context.padre = Padre(executable, None, None)
+    return padre
 
 
 @given(
     "that we have a test program '{executable}' that runs with '{debugger}' debugger"
-    )
-def padre(context, executable, debugger):
+)
+def padre_with_debugger(context, executable, debugger):
     """
     Copy the contents of the test program to a temporary empty directory
     and change dir to that directory and store the program in the context
@@ -340,8 +357,8 @@ def padre(context, executable, debugger):
 
 @given(
     "that we have a test program '{executable}' that runs with '{debugger}' debugger of type '{progtype}'"
-    )
-def padre(context, executable, debugger, progtype):
+)
+def padre_with_debugger_and_type(context, executable, debugger, progtype):
     """
     Copy the contents of the test program to a temporary empty directory
     and change dir to that directory and store the program in the context
@@ -378,10 +395,14 @@ def padre_called_with(context, connection):
     I have recieved from PADRE the right call
     """
     num_expected_results = len(context.table.rows)
-    results = read_results(num_expected_results, context.connections[int(connection)][0])
-    assert_that(len(results),
-                equal_to(num_expected_results),
-                "Padre called with expected number of results")
+    results = read_results(
+        num_expected_results, context.connections[int(connection)][0]
+    )
+    assert_that(
+        len(results),
+        equal_to(num_expected_results),
+        "Padre called with expected number of results",
+    )
     for row in context.table:
         check_calls_in(results, row[0], json.loads(row[1]))
 
@@ -403,8 +424,9 @@ def padre_request_raw(context, request, connection):
 
     print("Request: {}".format(request))
 
-    loop.run_until_complete(do_send_to_padre(
-        future, context.connections[int(connection)][1], request, loop))
+    loop.run_until_complete(
+        do_send_to_padre(future, context.connections[int(connection)][1], request, loop)
+    )
     assert_that(future.result(), "Padre request sent")
     context.padre.get_children()
 
@@ -428,9 +450,10 @@ def padre_request(context, request, connection):
 
     e.g. [1,{"cmd":"breakpoint","file":"test_prog.c","line":16} ]
     """
-    request = json.dumps([context.padre.request_counter,
-                          json.loads(request.replace('\\n', '\n'))],
-                         separators=(',', ':'))
+    request = json.dumps(
+        [context.padre.request_counter, json.loads(request.replace("\\n", "\n"))],
+        separators=(",", ":"),
+    )
     padre_request_raw(context, request, connection)
 
 
@@ -459,9 +482,7 @@ def get_response(connection):
 
     loop.call_at(loop.time() + TIMEOUT, cancel)
 
-    loop.run_until_complete(do_read_from_padre(future,
-                                               connection,
-                                               loop))
+    loop.run_until_complete(do_read_from_padre(future, connection, loop))
 
     return future
 
@@ -473,10 +494,7 @@ def padre_response(context, response, connection):
     """
     future = get_response(context.connections[int(connection)][0])
     assert_that(len(future.result()), equal_to(1), "Got one response")
-    check_response_in(future.result(),
-                      context.padre.last_request_number,
-                      response
-                      )
+    check_response_in(future.result(), context.padre.last_request_number, response)
 
 
 @then("I receive a response '{response}'")
@@ -497,17 +515,23 @@ def padre_raw_response(context, response):
     assert_that(future.result()[0], equal_to(response))
 
 
-@then("I receive both a response '{response}' and I expect to be called on connection {connection} with")
+@then(
+    "I receive both a response '{response}' and I expect to be called on connection {connection} with"
+)
 def padre_response_and_code_jump(context, response, connection):
     """
     I expect a response and to jump to a point in the code in two separate
     messages
     """
     num_expected_results = len(context.table.rows) + 1
-    results = read_results(num_expected_results, context.connections[int(connection)][0])
-    assert_that(len(results),
-                equal_to(num_expected_results),
-                "Got {} responses".format(num_expected_results))
+    results = read_results(
+        num_expected_results, context.connections[int(connection)][0]
+    )
+    assert_that(
+        len(results),
+        equal_to(num_expected_results),
+        "Got {} responses".format(num_expected_results),
+    )
     for row in context.table:
         check_calls_in(results, row[0], json.loads(row[1]))
     check_response_in(results, context.padre.last_request_number, response)
@@ -531,14 +555,14 @@ def check_calls_in(results, function, args):
 
     result_found = False
 
-    assert_that([x[0] for x in results_json],
-                has_item("call"),
-                "Found call")
+    assert_that([x[0] for x in results_json], has_item("call"), "Found call")
     results_json = [x for x in results_json if x[0] == "call"]
 
-    assert_that([x[1] for x in results_json],
-                has_item(function),
-                "Found function {}".format(function))
+    assert_that(
+        [x[1] for x in results_json],
+        has_item(function),
+        "Found function {}".format(function),
+    )
     results_json = [x for x in results_json if x[1] == function]
 
     for result_json in results_json:
@@ -568,9 +592,11 @@ def check_call(result, function, args):
     assert_that(result_json[0], equal_to("call"), "Found call")
     assert_that(result_json[1], equal_to(function), "Found function")
     for (i, arg) in enumerate(args):
-        assert_that(str(result_json[2][i]),
-                    matches_regexp(re.compile(arg)),
-                    "Argument {} matches".format(i))
+        assert_that(
+            str(result_json[2][i]),
+            matches_regexp(re.compile(arg)),
+            "Argument {} matches".format(i),
+        )
 
 
 def check_response_in(results, request_number, expected_response):
@@ -586,9 +612,7 @@ def check_response_in(results, request_number, expected_response):
     assert_that(len(responses), equal_to(1), "Got 1 response")
     response = responses[0]
 
-    assert_that(response[0],
-                equal_to(request_number),
-                "Found correct request number")
+    assert_that(response[0], equal_to(request_number), "Found correct request number")
 
     expected_response = json.loads(expected_response)
     check_json(response[1], expected_response)
@@ -598,19 +622,21 @@ def check_json(response, expected_response):
     """
     Recursively verify the JSON matches
     """
-    assert_that(response.keys(),
-                equal_to(expected_response.keys()),
-                "Got correct keys in response")
+    assert_that(
+        response.keys(),
+        equal_to(expected_response.keys()),
+        "Got correct keys in response",
+    )
 
     for key in response.keys():
         if isinstance(response[key], int):
-            assert_that(response[key],
-                        expected_response[key],
-                        "Integers match")
+            assert_that(response[key], expected_response[key], "Integers match")
         elif not isinstance(response[key], dict):
-            assert_that(response[key],
-                        matches_regexp(expected_response[key]),
-                        "Response regexp matches")
+            assert_that(
+                response[key],
+                matches_regexp(expected_response[key]),
+                "Response regexp matches",
+            )
         else:
             check_json(response[key], expected_response[key])
 
@@ -639,7 +665,7 @@ def read_results(expected_results, reader):
     return results
 
 
-@when(u'I send a command \'{command}\' using the terminal')
+@when("I send a command '{command}' using the terminal")
 def send_terminal_command(context, command):
     """
     Send a command over the terminal via stdio of PADRE
@@ -665,13 +691,10 @@ def send_terminal_command(context, command):
     cancel = loop.call_at(loop.time() + TIMEOUT, cancel)
     print(cancel)
 
-    loop.run_until_complete(write_terminal(context.padre,
-                                           command,
-                                           future,
-                                           loop))
+    loop.run_until_complete(write_terminal(context.padre, command, future, loop))
 
 
-@when(u'I wait {seconds} seconds')
+@when("I wait {seconds} seconds")
 def sleep_seconds(context, seconds):
     """
     Wait for specified number of seconds
@@ -679,7 +702,7 @@ def sleep_seconds(context, seconds):
     time.sleep(int(seconds))
 
 
-@when(u'I terminate connection {connection}')
+@when("I terminate connection {connection}")
 def terminate_connection(context, connection):
     """
     Close connection number {connection}
@@ -689,16 +712,18 @@ def terminate_connection(context, connection):
     connection = None
 
 
-@when(u'I terminate padre')
+@when("I terminate padre")
 def terminate_program(context):
     """
     Close PADRE
     """
-    subprocess.run(["kill", "-SIGINT", "{}".format(context.padre.process.pid)],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=True,
-                    cwd=os.getcwd())
+    subprocess.run(
+        ["kill", "-SIGINT", "{}".format(context.padre.process.pid)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        cwd=os.getcwd(),
+    )
 
     async def wait_process(loop):
         await context.padre.process.wait()
@@ -708,7 +733,7 @@ def terminate_program(context):
     loop.run_until_complete(wait_process(loop))
 
 
-@then(u'padre is not running')
+@then("padre is not running")
 def padre_not_running(context):
     """
     Close PADRE
@@ -718,14 +743,13 @@ def padre_not_running(context):
             break
         time.sleep(TIMEOUT / 50)
 
-    assert_that(context.padre.process.returncode,
-                equal_to(0), "Expected 0 exit code")
+    assert_that(context.padre.process.returncode, equal_to(0), "Expected 0 exit code")
 
     time.sleep(1)
     running = set(psutil.pids())
 
-    assert_that(context.padre.pid, is_not(is_in(running)),
-                "Padre Pid found Running")
+    assert_that(context.padre.pid, is_not(is_in(running)), "Padre Pid found Running")
     for child in context.padre.children:
-        assert_that(child.pid, is_not(is_in(running)),
-                    "Padre Child found {}".format(child))
+        assert_that(
+            child.pid, is_not(is_in(running)), "Padre Child found {}".format(child)
+        )

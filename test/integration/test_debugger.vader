@@ -3,118 +3,168 @@
 Before:
   call padre#Enable()
 
+  function! g:CheckRegexInLogLines(re, line_from, line_to)
+    let l:original_winnr = winnr()
+    wincmd l
+    let t:i = a:line_from
+    let t:has_matched = 0
+    while 1
+      if !empty(matchstr(getline(t:i), a:re))
+        let t:has_matched = 1
+        break
+      endif
+
+      let t:i += 1
+
+      if (a:line_to == '$' && t:i > line('$')) || (a:line_to =~# '^\d\+$' && t:i > a:line_to)
+        break
+      endif
+    endwhile
+    execute l:original_winnr . ' wincmd w'
+    AssertEqual 1, t:has_matched
+  endfunction
+
+  function! g:GetLastLogLineNumber()
+    wincmd l
+    let l:lastLogLine = line('$')
+    wincmd h
+
+    return l:lastLogLine
+  endfunction
+
+  function! g:CheckCurrentCodePointerLine()
+    redir => l:signs
+      silent exec 'sign place'
+    redir end
+
+    for l:line in split(l:signs, '\n')
+      let l:match = matchlist(l:line, 'Signs for \(.*\):$')
+      if len(l:match) != 0
+        let l:file = l:match[1]
+      endif
+
+      let l:match = matchlist(l:line, '.*line=\(\d*\) .*name=PadreDebugPointer.*$')
+      if len(l:match) != 0
+        return [l:file, l:match[1] + 0]
+      endif
+    endfor
+  endfunction
+
 After:
-  sleep 100ms
-
-  call padre#Disable()
-
   Restore
 
 Execute (Check padre tab and buffer):
+  tabnew
   let g:start_tabpagenr = tabpagenr()
-
+  normal itest
   PadreDebug test/progs/test_prog
 
-Then:
-  let t:padre_buf_num = bufnr('%')
+  sleep 500ms
 
-  " Check Padre buffer exists
-  AssertEqual 'PADRE_Main', padre#buffer#GetBufNameForBufNum(t:padre_buf_num)
+Then:
+  wincmd l
+
+  let t:padre_buf_num = bufnr('%')
 
   " Check we have a new tab and it's the PADRE_Main buffer
   AssertEqual g:start_tabpagenr + 1, tabpagenr()
+  AssertEqual 'PADRE_Logs_1', expand('%:t')
   AssertEqual 0, getbufvar(t:padre_buf_num, '&swapfile')
-  AssertEqual 'PADRE_Main', getbufvar(t:padre_buf_num, '&filetype')
+  AssertEqual 'PADRE_Logs', getbufvar(t:padre_buf_num, '&filetype')
   AssertEqual 0, getbufvar(t:padre_buf_num, '&modifiable')
   AssertEqual 'nofile', getbufvar(t:padre_buf_num, '&buftype')
   AssertEqual 0, getbufvar(t:padre_buf_num, '&buflisted')
 
   unlet t:padre_buf_num
 
-  quit
+  quit!
+  quit!
+  quit!
   quit!
 
-" Probably remove this, should probably be able to run multiple
-"Execute (Check when we run twice the same tab is open):
-"  PadreDebug test/progs/test_prog
-"  PadreDebug test/progs/test_prog
-"
-"Then:
-"  AssertEqual 1, len(padre#layout#GetTabNumbersContainingBufferName('PADRE_Main'))
-"  AssertEqual 2, len(padre#layout#GetBuffersInTab())
-"
-"  quit
-"  quit
+# TODO: Work out what to do with this, probably remove, should really be able to run multiple
+#Execute (Check when we run twice the same tab is open):
+#  PadreDebug test/progs/test_prog
+#  PadreDebug test/progs/test_prog
+#
+#Then:
+#  AssertEqual 1, len(padre#layout#GetTabNumbersContainingBufferName('PADRE_Main'))
+#  AssertEqual 2, len(padre#layout#GetBuffersInTab())
+#
+#  quit
+#  quit
 
-" TODO: Fix stop
-"Execute (Check when we run PADRE followed by the stop command we have no tab or padre process running):
-"  let g:NumTabs = tabpagenr('$')
-"  PadreDebug test/progs/test_prog
-"  sleep 1
-"  AssertEqual g:NumTabs + 1, tabpagenr('$')
-"  PadreStop
-"  sleep 100ms
-"
-"Then:
-"  AssertEqual 0, padre#job#RunningJobs()
-"  AssertEqual g:NumTabs, tabpagenr('$')
-"
-"  quit!
+Execute (Check when we run PADRE followed by the stop command we have no tab or padre process running):
+  let g:NumTabs = tabpagenr('$')
+  tabnew
+  PadreDebug test/progs/test_prog
+  sleep 1
+  AssertEqual g:NumTabs + 1, tabpagenr('$')
+  PadreStop
+  sleep 100ms
+
+Then:
+  AssertEqual g:NumTabs, tabpagenr('$')
 
 Execute (Check when we log errors and they log at the correct levels):
+  tabnew
   PadreDebug test/progs/test_prog
-  sleep 3
-  if has_key(g:, 'PadreLogLevel')
-    unlet g:PadreLogLevel
-  endif
+  sleep 500ms
+  let g:PadreLogLevel = 5
+
+  wincmd l
+  let t:lastLogLine = line('$')
 
 Then:
   call padre#debugger#Log(1, 'Test Critical Log')
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[1], '^CRITICAL: Test Critical Log$'))
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (CRITICAL): Test Critical Log$', t:lastLogLine, '$')
+  let t:lastLogLine += 1
   call padre#debugger#Log(2, 'Test Error Log')
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[2], '^ERROR: Test Error Log$'))
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (ERROR): Test Error Log$', t:lastLogLine, '$')
+  let t:lastLogLine += 1
   call padre#debugger#Log(3, 'Test Warn Log')
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[3], '^WARN: Test Warn Log$'))
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (WARN): Test Warn Log$', t:lastLogLine, '$')
+  let t:lastLogLine += 1
   call padre#debugger#Log(4, 'Test Info Log')
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[4], '^INFO: Test Info Log$'))
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Test Info Log$', t:lastLogLine, '$')
+  let t:lastLogLine += 1
   call padre#debugger#Log(5, 'Test Debug Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (DEBUG): Test Debug Log$', t:lastLogLine, '$')
+  let t:lastLogLine += 1
 
+  AssertEqual line('$'), 7
   let g:PadreLogLevel = 1
   call padre#debugger#Log(2, 'Test Error Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
+  AssertEqual line('$'), 7
 
   let g:PadreLogLevel = 2
   call padre#debugger#Log(3, 'Test Warn Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
+  AssertEqual line('$'), 7
 
   let g:PadreLogLevel = 3
   call padre#debugger#Log(4, 'Test Info Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
+  AssertEqual line('$'), 7
 
   let g:PadreLogLevel = 4
   call padre#debugger#Log(5, 'Test Debug Log')
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 6
+  AssertEqual line('$'), 7
 
-  let g:PadreLogLevel = 5
-  call padre#debugger#Log(5, 'Test Debug Log')
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[5], '^DEBUG: Test Debug Log$'))
-  AssertEqual len(padre#buffer#ReadBuffer('PADRE_Main')), 7
-  quit
+  quit!
+  quit!
   quit!
 
-" TODO: Fix this:
-"Execute (Check we stop PADRE when we close PADRE_Main):
-"  PadreDebug test/progs/test_prog
-"  sleep 3
-"
-"  call padre#layout#FindBufferWindowWithinTab('PADRE_Main')
-"  normal ZZ
-"
-"  sleep 1
-"
-"Then:
-"  AssertEqual 0, padre#debugger#IsRunning()
+Execute (Check we stop PADRE when we close PADRE_Main):
+  let g:num_tabs = tabpagenr('$')
+  tabnew
+  PadreDebug test/progs/test_prog
+  sleep 100ms
+
+  normal ZZ
+
+  sleep 100ms
+
+Then:
+  AssertEqual g:num_tabs, tabpagenr('$')
 
 Execute (Check we can debug a simple C program):
   tabnew
@@ -129,74 +179,83 @@ Execute (Check we can debug a simple C program):
   quit
 
   PadreDebug test/progs/test_prog
-  sleep 5
+  sleep 3
 
-  AssertEqual 4, len(padre#buffer#ReadBuffer('PADRE_Main'))
-  AssertEqual 'INFO: PADRE debugger open', padre#buffer#ReadBuffer('PADRE_Main')[0]
-  AssertEqual 'INFO: Setting breakpoint in file ' . g:mainFileToDebug . ' at line number 7', padre#buffer#ReadBuffer('PADRE_Main')[1]
-  AssertEqual 'INFO: Breakpoint set file=test_prog.c, line=7', padre#buffer#ReadBuffer('PADRE_Main')[2]
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): PADRE Running$', 1, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Setting breakpoint in file ' . g:mainFileToDebug . ' at line number 7$', 1, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Breakpoint set file=test_prog.c, line=7$', 1, '$')
+
+  let lastLogLine = g:GetLastLogLineNumber()
 
   normal r
-  sleep 3
+  sleep 1
 
-  AssertEqual 8, len(padre#buffer#ReadBuffer('PADRE_Main'))
-  AssertEqual 'INFO: Launching process', padre#buffer#ReadBuffer('PADRE_Main')[3]
-  AssertEqual 'INFO: Breakpoint set file=test_prog.c, line=6', padre#buffer#ReadBuffer('PADRE_Main')[4]
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[5], '^INFO: Process \d\+ Running$'))
-  AssertEqual 'INFO: Stopped file=' . g:mainFileToDebug . ' line=6', padre#buffer#ReadBuffer('PADRE_Main')[6]
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Launching process$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Breakpoint set file=test_prog.c, line=6$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Process \d\+ Running$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Stopped file=' . g:mainFileToDebug . ' line=6$', lastLogLine, '$')
 
-  let t:buffers_in_tab = padre#layout#GetBuffersInTab()
-  AssertEqual 0, index(t:buffers_in_tab, bufnr(g:mainFileToDebug))
-  AssertEqual 1, index(t:buffers_in_tab, padre#buffer#GetBufNumForBufName('PADRE_Main'))
+  let current_pointer = g:CheckCurrentCodePointerLine()
+  AssertEqual g:mainFileToDebug, current_pointer[0]
+  AssertEqual expand('%:p'), current_pointer[0]
+  AssertEqual 6, current_pointer[1]
+
+  let lastLogLine = g:GetLastLogLineNumber()
 
   normal S
-  sleep 3
+  sleep 1
 
-  AssertEqual 9, len(padre#buffer#ReadBuffer('PADRE_Main'))
-  AssertEqual 'INFO: Stopped file=' . g:funcFileToDebug . ' line=2', padre#buffer#ReadBuffer('PADRE_Main')[7]
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Stopped file=' . g:funcFileToDebug . ' line=2$', lastLogLine, '$')
 
-  let t:buffers_in_tab = padre#layout#GetBuffersInTab()
-  AssertEqual 0, index(t:buffers_in_tab, bufnr(g:funcFileToDebug))
-  AssertEqual 1, index(t:buffers_in_tab, padre#buffer#GetBufNumForBufName('PADRE_Main'))
+  let current_pointer = g:CheckCurrentCodePointerLine()
+  AssertEqual g:funcFileToDebug, current_pointer[0]
+  AssertEqual expand('%:p'), current_pointer[0]
+  AssertEqual 2, current_pointer[1]
 
+  let lastLogLine = g:GetLastLogLineNumber()
+
+  wincmd l
   normal s
-  sleep 3
+  sleep 1
 
-  AssertEqual 10, len(padre#buffer#ReadBuffer('PADRE_Main'))
-  AssertEqual 'INFO: Stopped file=' . g:funcFileToDebug . ' line=3', padre#buffer#ReadBuffer('PADRE_Main')[8]
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Stopped file=' . g:funcFileToDebug . ' line=3$', lastLogLine, '$')
 
-  let t:buffers_in_tab = padre#layout#GetBuffersInTab()
-  AssertEqual 0, index(t:buffers_in_tab, bufnr(g:funcFileToDebug))
-  AssertEqual 1, index(t:buffers_in_tab, padre#buffer#GetBufNumForBufName('PADRE_Main'))
+  let current_pointer = g:CheckCurrentCodePointerLine()
+  AssertEqual g:funcFileToDebug, current_pointer[0]
+  AssertEqual 3, current_pointer[1]
 
+  let lastLogLine = g:GetLastLogLineNumber()
+
+  wincmd h
   call cursor(3,12)
   normal vp
-  sleep 3
+  sleep 1
 
-  AssertEqual 14, len(padre#buffer#ReadBuffer('PADRE_Main'))
-  AssertEqual 'INFO: Variable a={', padre#buffer#ReadBuffer('PADRE_Main')[9]
-  AssertEqual 'INFO:     "type": "int",', padre#buffer#ReadBuffer('PADRE_Main')[10]
-  AssertEqual 'INFO:     "value": "1"', padre#buffer#ReadBuffer('PADRE_Main')[11]
-  AssertEqual 'INFO: }', padre#buffer#ReadBuffer('PADRE_Main')[12]
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Variable a=$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('{$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('  "type": "int",$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('  "value": "1"$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('}$', lastLogLine, '$')
 
-  normal C
-  sleep 3
-
-  AssertEqual 15, len(padre#buffer#ReadBuffer('PADRE_Main'))
-  AssertEqual 'INFO: Stopped file=' . g:mainFileToDebug . ' line=7', padre#buffer#ReadBuffer('PADRE_Main')[13]
-
-  let t:buffers_in_tab = padre#layout#GetBuffersInTab()
-  AssertEqual 0, index(t:buffers_in_tab, bufnr(g:mainFileToDebug))
-  AssertEqual 1, index(t:buffers_in_tab, padre#buffer#GetBufNumForBufName('PADRE_Main'))
+  let lastLogLine = g:GetLastLogLineNumber()
 
   normal C
-  sleep 5
+  sleep 1
 
-  AssertEqual 16, len(padre#buffer#ReadBuffer('PADRE_Main'))
-  Assert !empty(matchstr(padre#buffer#ReadBuffer('PADRE_Main')[14], '^INFO: Process \d\+ finished with exit code=0$'))
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Stopped file=' . g:mainFileToDebug . ' line=7$', lastLogLine, '$')
 
-  quit
+  let current_pointer = g:CheckCurrentCodePointerLine()
+  AssertEqual g:mainFileToDebug, current_pointer[0]
+  AssertEqual expand('%:p'), current_pointer[0]
+  AssertEqual 7, current_pointer[1]
+
+  let lastLogLine = g:GetLastLogLineNumber()
+
+  normal C
+  sleep 1
+
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Process \d\+ finished with exit code=0$', lastLogLine, '$')
+
   quit!
-
-# TODO: Fix
-#  AssertEqual 0, padre#debugger#IsRunning()
+  quit!
+  quit!

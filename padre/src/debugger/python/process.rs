@@ -6,17 +6,24 @@
 
 use std::collections::HashMap;
 use std::io::BufReader;
+use std::path::Path;
+#[cfg(not(test))]
+use std::process::exit;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use crate::debugger::{FileLocation, Variable};
 use crate::notifier::{breakpoint_set, jump_to_position, signal_exited};
-use crate::util::{check_and_spawn_process, read_output, setup_stdin};
+use crate::notifier::{log_msg, LogLevel};
+#[cfg(not(test))]
+use crate::util::{file_exists, get_file_full_path};
+use crate::util::{read_output, setup_stdin};
 
 use bytes::Bytes;
 use regex::Regex;
 use tokio::prelude::*;
 use tokio::sync::mpsc::Sender;
-use tokio_process::{Child, ChildStderr, ChildStdout};
+use tokio_process::{Child, ChildStderr, ChildStdout, CommandExt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PDBStatus {
@@ -74,14 +81,18 @@ impl Process {
     /// - Sets up a thread to read stdin and forward it onto Python interpreter;
     /// - Checks that Python and the program to be ran both exist, otherwise panics.
     pub fn run(&mut self) {
-        let mut process = check_and_spawn_process(
-            vec![
-                self.debugger_cmd.take().unwrap(),
-                "-m".to_string(),
-                "pdb".to_string(),
-            ],
-            self.run_cmd.take().unwrap(),
-        );
+        let debugger_cmd = self.debugger_cmd.take().unwrap();
+        let run_cmd = self.run_cmd.take().unwrap();
+
+        let args = get_python_args(&debugger_cmd[..], run_cmd.iter().map(|x| &x[..]).collect());
+
+        let mut process = Command::new(&debugger_cmd)
+            .args(&args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn_async()
+            .expect("Failed to spawn debugger");
 
         self.setup_stdout(
             process
@@ -164,6 +175,84 @@ impl Process {
     }
 }
 
+/// Work out the arguments to send to python based on the python command given and the
+/// run command specified
+fn get_python_args<'a>(debugger_cmd: &str, run_cmd: Vec<&'a str>) -> Vec<&'a str> {
+    let mut python_args = vec![];
+    let mut script_args = vec![];
+
+    // Now check the debugger and program to debug exist, if not error
+    #[cfg(not(test))]
+    {
+        // Try getting the full path if the debugger doesn't exist
+        if !file_exists(&debugger_cmd) {
+            let debugger_cmd = get_file_full_path(&debugger_cmd);
+
+            if !file_exists(&debugger_cmd) {
+                let msg = format!("Can't spawn debugger as {} does not exist", debugger_cmd);
+                log_msg(LogLevel::CRITICAL, &msg);
+                println!("{}", msg);
+
+                exit(1);
+            }
+        }
+    }
+
+    python_args.push("-m");
+    python_args.push("pdb");
+
+    // If we have the command `python -m mymod` say and `python` is specified
+    // as the debugger then we have then we don't want to run
+    // `python -m pdb -- -m mymod`
+    // On the other hand if we specified `./script.py -a test` we want that to
+    // run
+    // `python -m pdb -- ./script.py -a test`
+    // so we keep track of whether they're likely to be a python arg or a script
+    // arg here.
+    //
+    // tl;dr We assume all args are script args if the 0th element doesn't
+    // match the debugger, if it does we wait until we see `--` and then we
+    // assume script args.
+    let mut is_script_arg = true;
+
+    for (i, arg) in run_cmd.iter().enumerate() {
+        // Skip the python part if specified as we add that from the -d option
+        if i == 0 {
+            let debugger_cmd_path = Path::new(debugger_cmd);
+
+            let debugger_cmd = match debugger_cmd_path.file_name() {
+                Some(s) => s.to_str().unwrap(),
+                None => debugger_cmd,
+            };
+
+            if debugger_cmd == *arg {
+                is_script_arg = false;
+                continue;
+            } else {
+                is_script_arg = true;
+            }
+        }
+
+        if *arg == "--" {
+            is_script_arg = true;
+            continue;
+        }
+
+        if is_script_arg {
+            script_args.push(&arg[..]);
+        } else {
+            python_args.push(arg);
+        }
+    }
+
+    if script_args.len() > 0 {
+        python_args.push("--");
+        python_args.append(&mut script_args);
+    }
+
+    python_args
+}
+
 #[derive(Debug)]
 pub struct Analyser {
     status: PDBStatus,
@@ -190,6 +279,8 @@ impl Analyser {
                 Regex::new("^Breakpoint (\\d*) at (.*):(\\d*)$").unwrap();
             static ref RE_JUMP_TO_POSITION: Regex =
                 Regex::new("^> (.*)\\((\\d*)\\)[<>\\w]*\\(\\)$").unwrap();
+            static ref RE_RETURNING: Regex =
+                Regex::new("^> (.*)\\((\\d*)\\)[<>\\w]*\\(\\)->(.*)$").unwrap();
             static ref RE_PROCESS_EXITED: Regex =
                 Regex::new("^The program finished and will be restarted$").unwrap();
             static ref RE_PROCESS_EXITED_WITH_CODE: Regex =
@@ -211,6 +302,14 @@ impl Analyser {
                 let file = cap[2].to_string();
                 let line = cap[3].parse::<u64>().unwrap();
                 self.found_breakpoint(file, line);
+            }
+
+            for cap in RE_RETURNING.captures_iter(line) {
+                let file = cap[1].to_string();
+                let line = cap[2].parse::<u64>().unwrap();
+                let return_value = cap[3].to_string();
+                jump_to_position(&file, line);
+                log_msg(LogLevel::INFO, &format!("Returning value {}", return_value));
             }
 
             for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
@@ -270,6 +369,11 @@ impl Analyser {
     }
 
     fn print_variable(&mut self, variable: Variable, data: &str) {
+        let len = data.len();
+        if len < 2 {
+            return;
+        }
+
         let to = data.len() - 2;
         match self.listeners.remove(&Listener::PrintVariable) {
             Some(listener) => {
@@ -280,5 +384,44 @@ impl Analyser {
             }
             None => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn check_get_args_basic_command() {
+        let args = super::get_python_args("/usr/bin/python3", vec!["test.py", "arg1"]);
+        assert_eq!(args, vec!["-m", "pdb", "--", "test.py", "arg1"]);
+    }
+
+    #[test]
+    fn check_get_args_recognises_matching_python_command() {
+        let args = super::get_python_args("/usr/bin/python3", vec!["python3", "test.py", "arg1"]);
+        assert_eq!(args, vec!["-m", "pdb", "test.py", "arg1"]);
+    }
+
+    #[test]
+    fn check_get_args_leaves_non_matching_python_command() {
+        let args = super::get_python_args("/usr/bin/python3.7", vec!["python3", "test.py", "arg1"]);
+        assert_eq!(args, vec!["-m", "pdb", "--", "python3", "test.py", "arg1"]);
+    }
+
+    #[test]
+    fn check_get_args_accepts_module_running() {
+        let args = super::get_python_args(
+            "/usr/bin/python3",
+            vec!["python3", "-m", "abc", "--", "arg1"],
+        );
+        assert_eq!(args, vec!["-m", "pdb", "-m", "abc", "--", "arg1"]);
+    }
+
+    #[test]
+    fn check_get_args_accepts_command_arguments() {
+        let args = super::get_python_args(
+            "/usr/bin/python3",
+            vec!["python3", "-c", "print('Hello, World!')"],
+        );
+        assert_eq!(args, vec!["-m", "pdb", "-c", "print('Hello, World!')"]);
     }
 }

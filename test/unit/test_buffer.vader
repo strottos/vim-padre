@@ -1,218 +1,94 @@
 " vim: et ts=2 sts=2 sw=2
 
 Before:
-  let t:options = ['noswapfile', 'buftype=nofile', 'filetype=TestBuf', 'nobuflisted']
-  let g:static_buffer_number = padre#buffer#Create('Test_Buffer_Static', 'TestBuf', 0)
-  let g:writable_buffer_number = padre#buffer#Create('Test_Buffer', 'TestBuf', 1)
-  let g:terminal_buffer_number = padre#buffer#Create('Test_Buffer_Terminal', 'TestBuf', 1)
-  call padre#buffer#SetOnlyWriteableAtBottom('Test_Buffer_Terminal')
-
   tabnew
-  execute 'buffer ' . g:writable_buffer_number
-
-After:
-  quit
-
-  Restore
-
-Execute (Check we can create a buffer and get the buffer name for a buffer number):
-  AssertEqual 'Test_Buffer', padre#buffer#GetBufNameForBufNum(g:writable_buffer_number)
-
-Execute (Check we can get the buffer number for a buffer name):
-  AssertEqual g:writable_buffer_number, padre#buffer#GetBufNumForBufName('Test_Buffer')
-
-Execute (Check we return nothing for a buffer number not created by this plugin):
-  tabnew
-  execute "silent edit Test_Buffer_2"
-
-  setlocal noswapfile
-  setlocal buftype=nofile
-  setlocal nobuflisted
-
-  AssertEqual '', padre#buffer#GetBufNameForBufNum(bufnr('%'))
-
-  quit
-
-Execute (Check we can create a read only buffer and get the buffer number for it):
-  tabnew
-  execute 'buffer ' . g:static_buffer_number
-
-  AssertEqual g:static_buffer_number, padre#buffer#GetBufNumForBufName('Test_Buffer_Static')
-  AssertEqual 0, &swapfile
-  AssertEqual 'nofile', &buftype
-  AssertEqual 0, &modifiable
-  AssertEqual 'TestBuf', &filetype
-  AssertEqual 0, &buflisted
-
-  quit
-
-Execute (Check we can create a read only buffer and get the buffer name for it):
-  tabnew
-  call padre#buffer#LoadBufferName('Test_Buffer')
-  AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('Test_Buffer')
-
+  call padre#buffer#CreateForCurrentBuffer('Test_Buffer', 'TestBuf', 1)
+  call padre#buffer#CreateForCurrentBuffer('Test_Buffer_Nomodify', 'TestBuf', 0)
   quit
 
 Execute (Check we can add single lines of text to a buffer):
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test 1'])
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test 2'])
+  tabnew
+  buffer Test_Buffer
 
-  split
-  execute 'buffer ' . g:writable_buffer_number
+  call padre#buffer#AppendBuffer('Test 1', 1)
+  call padre#buffer#AppendBuffer('Test 2', 1)
 
   AssertEqual getline(1), 'Test 1'
   AssertEqual getline(2), 'Test 2'
 
   quit
 
-Execute (Check we can read a buffer):
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 1'])
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 2'])
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 3'])
-
-  AssertEqual ['Test line 1', 'Test line 2', 'Test line 3', ''], padre#buffer#ReadBuffer('Test_Buffer')
-
-Execute (Check we can add to the last line of text to a buffer):
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 1'])
-  call padre#buffer#AppendBufferString('Test_Buffer', 'Test 1')
-  call padre#buffer#AppendBufferString('Test_Buffer', ' Test 2')
-  call padre#buffer#AppendBufferString('Test_Buffer', ' Test 3')
-
-  AssertEqual ['Test line 1', 'Test 1 Test 2 Test 3'], padre#buffer#ReadBuffer('Test_Buffer')
-
 Execute (Check we can add multiple lines to a buffer):
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 1', 'Test line 2', 'Test line 3'])
+  tabnew
+  buffer Test_Buffer_Nomodify
 
-  AssertEqual ['Test line 1', 'Test line 2', 'Test line 3', ''], padre#buffer#ReadBuffer('Test_Buffer')
+  call padre#buffer#AppendBuffer("Test line 1\nTest line 2\nTest line 3", 0)
+
+  AssertEqual getline(1), 'Test line 1'
+  AssertEqual getline(2), 'Test line 2'
+  AssertEqual getline(3), 'Test line 3'
+  AssertEqual getline(4), ''
+
+  quit
 
 Execute (Check we can replace buffer):
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 1', 'Test line 2', 'Test line 3'])
-  call padre#buffer#ReplaceBuffer('Test_Buffer', ['TEST LINE 1', 'TEST LINE 2', 'TEST LINE 3'])
+  tabnew
+  buffer Test_Buffer
 
-  AssertEqual ['TEST LINE 1', 'TEST LINE 2', 'TEST LINE 3', ''], padre#buffer#ReadBuffer('Test_Buffer')
+  call padre#buffer#AppendBuffer("Test line 1\nTest line 2\nTest line 3", 1)
+  call padre#buffer#ReplaceBuffer("TEST LINE 1\nTEST LINE 2\nTEST LINE 3", 1)
 
-Execute (Check PADRE plugin can still edit a non-modifiable buffer):
-  split
-  execute 'buffer ' . g:writable_buffer_number
-
-  set nomodifiable
-
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 1', 'Test line 2', 'Test line 3'])
-
-  AssertEqual ['Test line 1', 'Test line 2', 'Test line 3', ''], padre#buffer#ReadBuffer('Test_Buffer')
-
-  AssertEqual &modifiable, 0
+  AssertEqual getline(1), 'TEST LINE 1'
+  AssertEqual getline(2), 'TEST LINE 2'
+  AssertEqual getline(3), 'TEST LINE 3'
+  AssertEqual getline(4), ''
 
   quit
 
 Execute (Check we can clear a buffer):
-  split
-  execute 'buffer ' . g:writable_buffer_number
+  tabnew
+  buffer Test_Buffer_Nomodify
 
-  " Apparently Vader needs this when run from terminal
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test line 1', 'Test line 2', 'Test line 3'])
+  call padre#buffer#AppendBuffer("Test line 1\nTest line 2\nTest line 3", 0)
 
   AssertEqual line('$'), 4
 
-  quit
-
-  call padre#buffer#ClearBuffer('Test_Buffer')
-
-  split
-  execute 'buffer ' . g:writable_buffer_number
+  call padre#buffer#ClearBuffer(0)
 
   AssertEqual line('$'), 1
   AssertEqual getline(1), ''
 
   quit
 
-Execute (Check we can create a terminal style buffer and only write to the last line):
-  tabnew
-  call padre#buffer#LoadBufferName('Test_Buffer_Terminal')
-  AssertEqual bufnr('%'), padre#buffer#GetBufNumForBufName('Test_Buffer_Terminal')
-
-  call padre#buffer#ReplaceBuffer('Test_Buffer_Terminal', ['abc', 'def'])
-  call padre#buffer#AppendBufferString('Test_Buffer_Terminal', 'ghi')
-
-  execute 'normal 1GItest'
-  AssertEqual ['abc', 'def', 'testghi'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1GAtest'
-  AssertEqual ['abc', 'def', 'testghitest'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1GStest'
-  AssertEqual ['abc', 'def', 'test'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1Gdd'
-  AssertEqual ['abc', 'def', ''], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1Got'
-  AssertEqual ['abc', 'def', ''], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1GOt'
-  AssertEqual ['abc', 'def', ''], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1Gitest'
-  AssertEqual ['abc', 'def', 'test'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2litest'
-  AssertEqual ['abc', 'def', 'tetestst'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal dd1Gatest'
-  AssertEqual ['abc', 'def', 'test'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2latest'
-  AssertEqual ['abc', 'def', 'testestt'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2lCtest'
-  AssertEqual ['abc', 'def', 'tetest'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2lD'
-  AssertEqual ['abc', 'def', 'te'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2yyp'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'def'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1GP'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'def'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2ylp'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'dabef'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1GP'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'abdabef'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1Gxx'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'dabef'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2lX'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'dbef'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2lrx'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'dbxf'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  execute 'normal 1G2lRyz'
-  AssertEqual ['abc', 'def', 'te', 'abc', 'abc', 'def', 'dbyz'], padre#buffer#ReadBuffer('Test_Buffer_Terminal')
-
-  quit
-
 Execute (Check a buffer scrolls when appended to if we're currently at the bottom):
+  tabnew
+  buffer Test_Buffer_Nomodify
+
+  call padre#buffer#ClearBuffer(0)
+
   for t:line_num in range(1, winheight(winnr()) + 2)
-    call padre#buffer#AppendBuffer('Test_Buffer', ['Test ' . t:line_num])
-    let t:line_num += 1
+    call padre#buffer#AppendBuffer('Test ' . t:line_num, 0)
   endfor
   normal G
   let t:current_buffer_line = getpos('.')[1]
 
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test new line 1', 'Test new line 2'])
+  call padre#buffer#AppendBuffer("Test new line 1\nTest new line 2", 0)
   AssertEqual t:current_buffer_line + 2, getpos('.')[1]
 
+  quit
+
 Execute (Check a buffer doesn't scrolls when appended to if we're not currently at the bottom):
+  tabnew
+  buffer Test_Buffer_Nomodify
+
+  call padre#buffer#ClearBuffer(0)
+
   for t:line_num in range(1, winheight(winnr()) + 2)
-    call padre#buffer#AppendBuffer('Test_Buffer', ['Test ' . t:line_num])
-    let t:line_num += 1
+    call padre#buffer#AppendBuffer('Test ' . t:line_num, 0)
   endfor
   normal 1G
 
-  call padre#buffer#AppendBuffer('Test_Buffer', ['Test new line 1', 'Test new line 2'])
+  call padre#buffer#AppendBuffer("Test new line 1\nTest new line 2", 0)
   AssertEqual 1, getpos('.')[1]
+
+  quit
