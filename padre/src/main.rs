@@ -25,8 +25,7 @@ extern crate serde_derive;
 
 use std::io;
 use std::net::SocketAddr;
-use std::process::{exit, Command, Stdio};
-use std::str;
+use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -195,54 +194,8 @@ impl Future for Runner {
     }
 }
 
-// TODO: Assumes git is used for now, add releasing option in later.
-fn check_for_and_report_padre_updates() {
-    let output = Command::new("git")
-        .arg("status")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .expect("Failed to execute git command, can't tell if PADRE needs updating");
-
-    let status = str::from_utf8(&output.stdout)
-        .unwrap()
-        .split('\n')
-        .collect::<Vec<&str>>();
-
-    // TODO: Change
-    if *status.get(0).unwrap() == "On branch master" {
-        Command::new("git")
-            .args(vec!["remote", "update"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .expect("Failed to execute git command, can't tell if PADRE needs updating");
-
-        let output = Command::new("git")
-            .arg("status")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .expect("Failed to execute git command, can't tell if PADRE needs updating");
-
-        let status = str::from_utf8(&output.stdout)
-            .unwrap()
-            .split('\n')
-            .collect::<Vec<&str>>();
-
-        if status.get(1).unwrap().starts_with("Your branch is behind ") {
-            println!("Your PADRE version is out of date and should be updated, please run `git pull` and rerun `make`.");
-        }
-    }
-}
-
 fn main() -> io::Result<()> {
     let mut runtime = Runtime::new().unwrap();
-
-    runtime.spawn(future::lazy(|| {
-        check_for_and_report_padre_updates();
-        Ok(())
-    }));
 
     runtime.spawn(Runner {});
 

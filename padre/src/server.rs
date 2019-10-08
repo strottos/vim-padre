@@ -3,7 +3,10 @@
 //! Handles the main network connections, parses basic messages and forwards to
 //! padre and debuggers for actioning.
 
+use std::env::current_exe;
 use std::io;
+use std::process::{Command, Stdio};
+use std::str;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -195,6 +198,11 @@ pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
                 }
             }),
     );
+
+    tokio::spawn(future::lazy(|| {
+        check_for_and_report_padre_updates();
+        Ok(())
+    }));
 }
 
 /// Process a PadreRequest.
@@ -270,5 +278,53 @@ fn set_config(
     match config_set {
         true => Ok(serde_json::json!({"status":"OK"})),
         false => Ok(serde_json::json!({"status":"ERROR"})),
+    }
+}
+
+/// Checks whether we're on the latest version with git and if not gives a warning
+fn check_for_and_report_padre_updates() {
+    let padre_exe = current_exe().unwrap();
+    let padre_dir = padre_exe.parent().unwrap();
+
+    // TODO: Assumes git is used for now and exists, add releasing option in later.
+    let output = Command::new("git")
+        .arg("status")
+        .current_dir(padre_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("Failed to execute git command, can't tell if PADRE needs updating");
+
+    let status = str::from_utf8(&output.stdout)
+        .unwrap()
+        .split('\n')
+        .collect::<Vec<&str>>();
+
+    // TODO: Change
+    if *status.get(0).unwrap() == "On branch master" {
+        Command::new("git")
+            .args(vec!["remote", "update"])
+            .current_dir(padre_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("Failed to execute git command, can't tell if PADRE needs updating");
+
+        let output = Command::new("git")
+            .arg("status")
+            .current_dir(padre_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("Failed to execute git command, can't tell if PADRE needs updating");
+
+        let status = str::from_utf8(&output.stdout)
+            .unwrap()
+            .split('\n')
+            .collect::<Vec<&str>>();
+
+        if status.get(1).unwrap().starts_with("Your branch is behind ") {
+            log_msg(LogLevel::WARN, "Your PADRE version is out of date and should be updated, please run `git pull` in your PADRE directory and and then rerun `make`.");
+        }
     }
 }
