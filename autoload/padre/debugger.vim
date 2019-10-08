@@ -103,16 +103,21 @@ function! padre#debugger#Debug(...)
 
     execute 'terminal ++curwin ' . l:command
 
-    sleep 500ms
+    let l:timeout = get(g:, 'PadreStartupTimeout', 10)
 
-    let l:connection_line = ''
+    for i in range(float2nr(l:timeout / 0.25))
+      sleep 250ms
 
-    let l:connection_line = getline(1)
-    let l:match = matchlist(l:connection_line, '^Listening on \([^ ]*\):\([0-9]*\)$')
-    if !empty(l:match)
-      let l:padre_host = l:match[1]
-      let l:padre_port = l:match[2]
-    endif
+      let l:connection_line = ''
+
+      let l:connection_line = getline(1)
+      let l:match = matchlist(l:connection_line, '^Listening on \([^ ]*\):\([0-9]*\)$')
+      if !empty(l:match)
+        let l:padre_host = l:match[1]
+        let l:padre_port = l:match[2]
+        break
+      endif
+    endfor
   endif
 
   if l:padre_port == 0
