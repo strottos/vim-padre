@@ -34,7 +34,7 @@ use libc::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
-use tokio::timer::Delay;
+use tokio::timer::delay;
 use tokio_net::signal::unix::{signal, SignalKind};
 
 mod config;
@@ -95,25 +95,16 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn exit_padre() { //debugger: Arc<Mutex<debugger::Debugger>>) {
-    println!("QUITTING");
+fn exit_padre(debugger: Arc<Mutex<debugger::Debugger>>) {
     let when = Instant::now() + Duration::new(5, 0);
 
-    //tokio::spawn({
-    //    Delay::new(when)
-    //        .map_err(|e| panic!("timer failed; err={:?}", e))
-    //        .and_then(|_| {
-    //            println!("Timed out exiting!");
-    //            exit(-1);
-    //            #[allow(unreachable_code)]
-    //            Ok(())
-    //        })
-    //});
+    tokio::spawn(async move {
+        delay(when).await;
+        println!("Timed out exiting!");
+        exit(-1);
+    });
 
-    //debugger.lock().unwrap().stop();
-    //
-
-    exit(0);
+    debugger.lock().unwrap().stop();
 }
 
 async fn run_padre() -> () {
@@ -125,11 +116,11 @@ async fn run_padre() -> () {
         .map(|x| x.to_string())
         .collect::<Vec<String>>();
 
-    //        let debugger = Arc::new(Mutex::new(debugger::get_debugger(
-    //            args.value_of("debugger"),
-    //            args.value_of("type"),
-    //            debug_cmd,
-    //        )));
+    // TODO: Do we need to wrap in Arc/Mutex any more now/when we're on new tokio 0.2? Probably in
+    // the case of multiple connections but is there a way around it?
+    let debugger = Arc::new(Mutex::new(
+        debugger::get_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd).await,
+    ));
 
     let connection_addr = get_connection(&args);
     let mut incoming = TcpListener::bind(&connection_addr)
@@ -141,28 +132,40 @@ async fn run_padre() -> () {
         .expect(&format!("Can't open TCP listener on {}", &connection_addr))
         .incoming();
 
-    //        let debugger_signal = debugger.clone();
-    let mut signals = signal(SignalKind::interrupt()).unwrap();
+    // TODO: Merge the following into one lot of signals when we know how to
 
-    while let Some(_) = signals.next().await {
-        exit_padre(); //debugger_signal.clone());
-    }
+    let debugger_signals = debugger.clone();
+    tokio::spawn(async move {
+        let mut signals = signal(SignalKind::interrupt()).unwrap();
 
-    let mut signals = signal(SignalKind::quit()).unwrap();
+        while let Some(_) = signals.next().await {
+            exit_padre(debugger_signals.clone());
+        }
+    });
 
-    while let Some(_) = signals.next().await {
-        exit_padre(); //debugger_signal.clone());
-    }
+    let debugger_signals = debugger.clone();
+    tokio::spawn(async move {
+        let mut signals = signal(SignalKind::quit()).unwrap();
 
-    let mut signals = signal(SignalKind::terminate()).unwrap();
+        while let Some(_) = signals.next().await {
+            exit_padre(debugger_signals.clone());
+        }
+    });
 
-    while let Some(_) = signals.next().await {
-        exit_padre(); //debugger_signal.clone());
-    }
+    let debugger_signals = debugger.clone();
+    tokio::spawn(async move {
+        let mut signals = signal(SignalKind::terminate()).unwrap();
+
+        while let Some(_) = signals.next().await {
+            exit_padre(debugger_signals.clone());
+        }
+    });
 
     while let Some(Ok(stream)) = incoming.next().await {
+        let debugger_stream = debugger.clone();
+
         tokio::spawn(async move {
-            server::process_connection(stream); //, debugger.clone());
+            server::process_connection(stream, debugger_stream.clone());
         });
     }
 }

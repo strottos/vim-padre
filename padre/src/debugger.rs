@@ -82,6 +82,7 @@ impl Debugger {
 
     pub fn stop(&mut self) {
         //self.debugger.teardown();
+        std::process::exit(-1);
     }
 
     pub async fn handle_v1_cmd(
@@ -90,14 +91,14 @@ impl Debugger {
         //config: Arc<Mutex<Config>>,
     ) -> Result<serde_json::Value, io::Error> {
         Ok(serde_json::json!({"status":"OK"}))
-//        match cmd {
-//            DebuggerCmdV1::Run => self.debugger.run(), //config),
-//            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl), //, config),
-//            DebuggerCmdV1::StepIn => self.debugger.step_in(),
-//            DebuggerCmdV1::StepOver => self.debugger.step_over(),
-//            DebuggerCmdV1::Continue => self.debugger.continue_(),
-//            DebuggerCmdV1::Print(v) => self.debugger.print(v), //, config),
-//        }
+        //        match cmd {
+        //            DebuggerCmdV1::Run => self.debugger.run(), //config),
+        //            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl), //, config),
+        //            DebuggerCmdV1::StepIn => self.debugger.step_in(),
+        //            DebuggerCmdV1::StepOver => self.debugger.step_over(),
+        //            DebuggerCmdV1::Continue => self.debugger.continue_(),
+        //            DebuggerCmdV1::Print(v) => self.debugger.print(v), //, config),
+        //        }
     }
 }
 
@@ -166,13 +167,13 @@ pub async fn get_debugger(
         },
     };
 
-//    let mut debugger: lldb::ImplDebugger = match debugger_type {
-//        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
-//        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
-//        DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
-//    };
+    //    let mut debugger: lldb::ImplDebugger = match debugger_type {
+    //        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
+    //        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
+    //        DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
+    //    };
 
-//    debugger.setup();
+    //    debugger.setup();
 
     Debugger::new()
 }
