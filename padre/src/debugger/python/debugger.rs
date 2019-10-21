@@ -304,4 +304,21 @@ impl DebuggerV1 for ImplDebugger {
 
         Box::new(f)
     }
+
+    fn set(
+        &mut self,
+        variable: &Variable,
+        _config: Arc<Mutex<Config>>,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        let stmt = format!("!{}={}\n", variable.name, variable.get_value().unwrap());
+
+        self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
+
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"OK"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
 }

@@ -45,6 +45,7 @@ command -nargs=0 PadreStepOver call padre#debugger#StepOver()
 command -nargs=0 PadreStop call padre#debugger#Stop()
 command -nargs=1 PadrePrintVariable call padre#debugger#PrintVariable(<f-args>)
 command -nargs=0 PadreContinue call padre#debugger#Continue()
+command -nargs=1 PadreSetVariable call padre#debugger#SetVariable(<f-args>)
 
 " This is basic vim plugin boilerplate
 call s:restore_cpo()

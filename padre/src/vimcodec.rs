@@ -108,6 +108,50 @@ impl VimCodec {
         }
     }
 
+    /// Get and remove a `variable` and `value` from the arguments passed and pass back a
+    /// `Variable`
+    fn get_variable_with_value(
+        &self,
+        args: &mut HashMap<String, serde_json::Value>,
+    ) -> Option<Variable> {
+        let variable = self.get_variable(args);
+        let variable = match variable {
+            Some(mut v) => {
+                let var = &mut v;
+                match args.remove("value") {
+                    Some(s) => match s {
+                        serde_json::Value::String(s) => {
+                            let mut variable = Variable::new(var.get_name());
+                            variable.set_value(format!("\"{}\"", s));
+                            Some(variable)
+                        }
+                        serde_json::Value::Number(s) => {
+                            let mut variable = Variable::new(var.get_name());
+                            variable.set_value(format!("{}", s));
+                            Some(variable)
+                        }
+                        _ => {
+                            util::send_error_and_debug(
+                                "Badly specified 'variable'",
+                                &format!("Badly specified 'variable': {}", s),
+                            );
+                            None
+                        }
+                    },
+                    None => {
+                        util::send_error_and_debug(
+                            "Can't understand request",
+                            "Need to specify a variable name",
+                        );
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+        variable
+    }
+
     /// Get and remove the key specified from the arguments as a String
     fn get_string(
         &self,
@@ -336,6 +380,18 @@ impl Decoder for VimCodec {
                         id,
                         RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Print(v))),
                     ))),
+                    None => return Ok(None),
+                }
+            }
+            "set" => {
+                let variable = self.get_variable_with_value(&mut args);
+                match variable {
+                    Some(v) => {
+                        return Ok(Some(PadreRequest::new(
+                            id,
+                            RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Set(v))),
+                        )));
+                    }
                     None => return Ok(None),
                 }
             }

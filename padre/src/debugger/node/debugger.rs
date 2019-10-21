@@ -300,4 +300,19 @@ impl DebuggerV1 for ImplDebugger {
 
         Box::new(f)
     }
+
+    fn set(
+        &mut self,
+        _variable: &Variable,
+        _config: Arc<Mutex<Config>>,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+        log_msg(LogLevel::ERROR, "Unsupported Command");
+
+        let f = future::lazy(move || {
+            let resp = serde_json::json!({"status":"ERROR"});
+            Ok(resp)
+        });
+
+        Box::new(f)
+    }
 }

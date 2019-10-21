@@ -69,6 +69,14 @@ Feature: Python
             | padre#debugger#JumpToPosition | [".*test_prog.py",22] |
         When I send a request to PADRE '{"cmd":"print","variable":"b"}'
         Then I receive a response '{"status":"OK","variable":"b","value":"123"}'
+        When I send a request to PADRE '{"cmd":"set","variable":"b","value":124}'
+        Then I receive a response '{"status":"OK"}'
+        When I send a request to PADRE '{"cmd":"print","variable":"b"}'
+        Then I receive a response '{"status":"OK","variable":"b","value":"124"}'
+        When I send a request to PADRE '{"cmd":"set","variable":"b","value":"125a"}'
+        Then I receive a response '{"status":"OK"}'
+        When I send a request to PADRE '{"cmd":"print","variable":"b"}'
+        Then I receive a response '{"status":"OK","variable":"b","value":"125a"}'
         When I send a request to PADRE '{"cmd":"continue"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                   |

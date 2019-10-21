@@ -188,6 +188,11 @@ function! padre#debugger#Continue()
   call padre#socket#Send({"cmd": "continue"}, function('padre#debugger#ContinueCallback'))
 endfunction
 
+function! padre#debugger#SetVariable(variable)
+  let l:value = input("Please enter a value for " . a:variable . ": ")
+  call padre#socket#Send({"cmd": "set", "variable": a:variable, "value": l:value}, function('padre#debugger#SetCallback'))
+endfunction
+
 """"""""""""""""
 " API functions
 
@@ -253,6 +258,12 @@ function! padre#debugger#PrintVariableCallback(channel_id, data)
   execute "let l:json = system('python -m json.tool', '" . substitute(json_encode(a:data), "'", "''", "g") . "')"
   let l:msg = 'Variable ' . l:variable_name . "=\n" . l:json
   call padre#debugger#Log(4, l:msg)
+endfunction
+
+function! padre#debugger#SetCallback(channel_id, data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
+  endif
 endfunction
 
 function! padre#debugger#JumpToPosition(file, line)

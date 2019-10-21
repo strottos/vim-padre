@@ -41,11 +41,24 @@ impl FileLocation {
 #[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct Variable {
     name: String,
+    value: Option<String>,
 }
 
 impl Variable {
     pub fn new(name: String) -> Self {
-        Variable { name }
+        Variable { name, value: None }
+    }
+
+    pub fn set_value(&mut self, value: String) {
+        self.value = Some(value);
+    }
+
+    pub fn get_value(&self) -> Option<String> {
+        self.value.clone()
+    }
+
+    pub fn get_name(&self) -> String {
+        self.name.clone()
     }
 }
 
@@ -64,6 +77,7 @@ pub enum DebuggerCmdV1 {
     StepOver,
     Continue,
     Print(Variable),
+    Set(Variable),
 }
 
 #[derive(Debug)]
@@ -92,6 +106,7 @@ impl Debugger {
             DebuggerCmdV1::StepOver => self.debugger.step_over(),
             DebuggerCmdV1::Continue => self.debugger.continue_(),
             DebuggerCmdV1::Print(v) => self.debugger.print(v, config),
+            DebuggerCmdV1::Set(v) => self.debugger.set(v, config),
         }
     }
 }
@@ -113,6 +128,11 @@ pub trait DebuggerV1: Debug {
     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
     fn print(
+        &mut self,
+        variable: &Variable,
+        config: Arc<Mutex<Config>>,
+    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+    fn set(
         &mut self,
         variable: &Variable,
         config: Arc<Mutex<Config>>,
