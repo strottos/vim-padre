@@ -7,16 +7,16 @@ use std::io::{self, BufRead};
 use std::mem;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{exit, Command, Stdio};
+use std::process::{exit, Stdio};
 use std::thread;
 
 use crate::notifier::{log_msg, LogLevel};
 
 use bytes::Bytes;
 use tokio::io::AsyncRead;
+use tokio::net::process::{Child, ChildStdin, Command};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
-use tokio_process::{Child, ChildStdin, CommandExt};
 
 const BUFSIZE: usize = 4096;
 
@@ -78,65 +78,65 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn_async()
+        .spawn()
         .expect("Failed to spawn debugger")
 }
 
 /// Perform setup of listening and forwarding of stdin and return a sender that will forward to the
 /// stdin of a process.
-pub fn setup_stdin(mut stdin: ChildStdin, output_stdin: bool) -> Sender<Bytes> {
-    let (stdin_tx, stdin_rx) = mpsc::channel(1);
-    let mut tx = stdin_tx.clone();
-
-    thread::spawn(move || {
-        let mut stdin = io::stdin();
-        loop {
-            let mut buf = vec![0; 1024];
-            let n = match stdin.read(&mut buf) {
-                Err(_) | Ok(0) => break,
-                Ok(n) => n,
-            };
-            buf.truncate(n);
-            tx = match tx.send(Bytes::from(buf)).wait() {
-                Ok(tx) => tx,
-                Err(_) => break,
-            };
-        }
-    });
-
-    // Current implementation needs a kick, this is all liable to change with
-    // upcoming versions of tokio anyway so living with it for now.
-    match stdin.write(&[13]) {
-        Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {}
-        _ => unreachable!(),
-    }
-
-    tokio::spawn(
-        stdin_rx
-            .for_each(move |text| {
-                if output_stdin {
-                    io::stdout().write_all(&text).unwrap();
-                }
-                match stdin.write(&text) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        eprintln!("Writing stdin err e: {}", e);
-                    }
-                };
-                Ok(())
-            })
-            .map_err(|e| {
-                eprintln!("Reading stdin error {:?}", e);
-            }),
-    );
-
-    stdin_tx
-}
+//pub fn setup_stdin(mut stdin: ChildStdin, output_stdin: bool) -> Sender<Bytes> {
+//    let (stdin_tx, stdin_rx) = mpsc::channel(1);
+//    let mut tx = stdin_tx.clone();
+//
+//    thread::spawn(move || {
+//        let mut stdin = io::stdin();
+//        loop {
+//            let mut buf = vec![0; 1024];
+//            let n = match stdin.read(&mut buf) {
+//                Err(_) | Ok(0) => break,
+//                Ok(n) => n,
+//            };
+//            buf.truncate(n);
+//            tx = match tx.send(Bytes::from(buf)).wait() {
+//                Ok(tx) => tx,
+//                Err(_) => break,
+//            };
+//        }
+//    });
+//
+//    // Current implementation needs a kick, this is all liable to change with
+//    // upcoming versions of tokio anyway so living with it for now.
+//    match stdin.write(&[13]) {
+//        Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {}
+//        _ => unreachable!(),
+//    }
+//
+//    tokio::spawn(
+//        stdin_rx
+//            .for_each(move |text| {
+//                if output_stdin {
+//                    io::stdout().write_all(&text).unwrap();
+//                }
+//                match stdin.write(&text) {
+//                    Ok(_) => {}
+//                    Err(e) => {
+//                        eprintln!("Writing stdin err e: {}", e);
+//                    }
+//                };
+//                Ok(())
+//            })
+//            .map_err(|e| {
+//                eprintln!("Reading stdin error {:?}", e);
+//            }),
+//    );
+//
+//    stdin_tx
+//}
 
 /// Find out if a file is a binary executable (either ELF or Mach-O
 /// executable).
-pub fn file_is_binary_executable(cmd: &str) -> bool {
-    let output = get_file_type(cmd);
+pub async fn file_is_binary_executable(cmd: &str) -> bool {
+    let output = get_file_type(cmd).await;
 
     if output.contains("ELF")
         || (output.contains("Mach-O") && output.to_ascii_lowercase().contains("executable"))
@@ -148,8 +148,8 @@ pub fn file_is_binary_executable(cmd: &str) -> bool {
 }
 
 /// Find out if a file is a text file (either ASCII or UTF-8).
-pub fn file_is_text(cmd: &str) -> bool {
-    let output = get_file_type(cmd);
+pub async fn file_is_text(cmd: &str) -> bool {
+    let output = get_file_type(cmd).await;
 
     if output.contains("ASCII") || output.contains("UTF-8") {
         true
@@ -187,11 +187,13 @@ pub fn file_exists(path: &str) -> bool {
 }
 
 /// Get the file type as output by the UNIX `file` command.
-fn get_file_type(cmd: &str) -> String {
+async fn get_file_type(cmd: &str) -> String {
     let output = Command::new("file")
         .arg("-L") // Follow symlinks
         .arg(cmd)
-        .output()
+        .output();
+    let output = output
+        .await
         .expect(&format!("Can't run file on {} to find file type", cmd));
 
     String::from_utf8_lossy(&output.stdout).to_string()
@@ -220,41 +222,41 @@ where
     }
 }
 
-impl<A> Stream for ReadOutput<A>
-where
-    A: AsyncRead + BufRead,
-{
-    type Item = String;
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<Option<String>, io::Error> {
-        let mut buf = [0; BUFSIZE];
-        loop {
-            let n = match self.io.read(&mut buf) {
-                Ok(t) => t,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    return Ok(Async::NotReady);
-                }
-                Err(e) => return Err(e.into()),
-            };
-
-            if n == 0 && self.text.len() == 0 {
-                return Ok(None.into());
-            }
-
-            if n == BUFSIZE {
-                let bufstr = String::from_utf8_lossy(&buf[0..n]);
-                self.text.push_str(&bufstr);
-                continue;
-            }
-
-            let bufstr = String::from_utf8_lossy(&buf[0..n]);
-            self.text.push_str(&bufstr);
-            break;
-        }
-        Ok(Some(mem::replace(&mut self.text, String::new())).into())
-    }
-}
+//impl<A> Stream for ReadOutput<A>
+//where
+//    A: AsyncRead + BufRead,
+//{
+//    type Item = String;
+//    type Error = io::Error;
+//
+//    fn poll(&mut self) -> Poll<Option<String>, io::Error> {
+//        let mut buf = [0; BUFSIZE];
+//        loop {
+//            let n = match self.io.read(&mut buf) {
+//                Ok(t) => t,
+//                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+//                    return Ok(Async::NotReady);
+//                }
+//                Err(e) => return Err(e.into()),
+//            };
+//
+//            if n == 0 && self.text.len() == 0 {
+//                return Ok(None.into());
+//            }
+//
+//            if n == BUFSIZE {
+//                let bufstr = String::from_utf8_lossy(&buf[0..n]);
+//                self.text.push_str(&bufstr);
+//                continue;
+//            }
+//
+//            let bufstr = String::from_utf8_lossy(&buf[0..n]);
+//            self.text.push_str(&bufstr);
+//            break;
+//        }
+//        Ok(Some(mem::replace(&mut self.text, String::new())).into())
+//    }
+//}
 
 #[cfg(test)]
 mod tests {

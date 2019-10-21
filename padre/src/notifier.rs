@@ -28,7 +28,8 @@ pub enum LogLevel {
     DEBUG,
 }
 
-/// A `Listener` is a wrapper around the ...
+/// A `Listener` is a wrapper around the socket that we can use to send
+/// messages to
 #[derive(Debug)]
 struct Listener {
     sender: Sender<PadreSend>,
@@ -70,13 +71,13 @@ impl Notifier {
     /// Send the message to all clients
     fn send_msg(&mut self, msg: Notification) {
         for listener in self.listeners.iter_mut() {
-            let sender = listener.sender.clone();
-            tokio::spawn(
-                sender
-                    .send(PadreSend::Notification(msg.clone()))
-                    .map(|_| ())
-                    .map_err(|e| eprintln!("Notifier can't send to socket: {}", e)),
-            );
+            let msg_copy = msg.clone();
+            let mut sender = listener.sender.clone();
+            tokio::spawn(async move {
+                if let Err(e) = sender.send(PadreSend::Notification(msg_copy)).await {
+                    eprintln!("Notifier can't send to socket: {}", e);
+                }
+            });
         }
     }
 }

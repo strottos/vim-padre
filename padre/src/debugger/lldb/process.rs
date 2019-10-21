@@ -9,13 +9,13 @@ use std::sync::{Arc, Mutex};
 
 use crate::debugger::{FileLocation, Variable};
 use crate::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
-use crate::util::{check_and_spawn_process, read_output, setup_stdin};
+use crate::util::{check_and_spawn_process, read_output}; //, setup_stdin};
 
 use bytes::Bytes;
 use regex::Regex;
+use tokio::net::process::{Child, ChildStderr, ChildStdout};
 use tokio::prelude::*;
 use tokio::sync::mpsc::Sender;
-use tokio_process::{Child, ChildStderr, ChildStdout};
 
 /// You can register to listen for one of the following events:
 /// - LLDBLaunched: LLDB has started up initially
@@ -114,15 +114,15 @@ impl LLDBProcess {
                 .take()
                 .expect("LLDB process did not have a handle to stderr"),
         );
-        let stdin_tx = setup_stdin(
-            lldb_process
-                .stdin()
-                .take()
-                .expect("LLDB process did not have a handle to stdin"),
-            false,
-        );
+        //let stdin_tx = setup_stdin(
+        //    lldb_process
+        //        .stdin()
+        //        .take()
+        //        .expect("LLDB process did not have a handle to stdin"),
+        //    false,
+        //);
 
-        self.lldb_stdin_tx = Some(stdin_tx);
+        //self.lldb_stdin_tx = Some(stdin_tx);
         self.lldb_process = Some(lldb_process);
     }
 
@@ -132,14 +132,14 @@ impl LLDBProcess {
 
     /// Send a message to write to stdin
     pub fn write_stdin(&mut self, bytes: Bytes) {
-        let tx = self.lldb_stdin_tx.clone();
-        tokio::spawn(
-            tx.clone()
-                .unwrap()
-                .send(bytes)
-                .map(move |_| {})
-                .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
-        );
+        //let tx = self.lldb_stdin_tx.clone();
+        //tokio::spawn(
+        //    tx.clone()
+        //        .unwrap()
+        //        .send(bytes)
+        //        .map(move |_| {})
+        //        .map_err(|e| eprintln!("Error sending to LLDB: {}", e)),
+        //);
     }
 
     pub fn add_listener(&mut self, kind: Listener, sender: Sender<Event>) {

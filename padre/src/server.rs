@@ -147,109 +147,109 @@ pub enum PadreSend {
 /// Process a TCP socket connection.
 ///
 /// Fully sets up a new socket connection including listening for requests and sending responses.
-pub fn process_connection(socket: TcpStream, debugger: Arc<Mutex<Debugger>>) {
-    let addr = socket.peer_addr().unwrap();
+pub fn process_connection(stream: TcpStream) {
+    //, debugger: Arc<Mutex<Debugger>>) {
+    let addr = stream.peer_addr().unwrap();
 
     let config = Arc::new(Mutex::new(Config::new()));
 
-    let (request_tx, request_rx) = VimCodec::new().framed(socket).split();
+    let (request_tx, request_rx) = VimCodec::new().framed(stream).split();
 
     let (connection_tx, connection_rx) = mpsc::channel(1);
 
     add_listener(connection_tx.clone(), addr.clone());
 
+    //tokio::spawn(
+    //    request_tx
+    //        .send_all(connection_rx.map_err(|e| {
+    //            eprintln!("failed to retrieve message to send: {}", e);
+    //            io::Error::new(io::ErrorKind::Other, e)
+    //        }))
+    //        .then(|res| {
+    //            if let Err(e) = res {
+    //                eprintln!("failed to send data to socket; error = {:?}", e);
+    //            }
+
+    //            Ok(())
+    //        }),
+    //);
+
+    //let connection_tx_2 = connection_tx.clone();
+
+    //tokio::spawn(
+    //    request_rx
+    //        //.and_then(move |req| respond(req, debugger.clone(), config.clone()))
+    //        .for_each(move |resp| {
+    //            tokio::spawn(
+    //                connection_tx_2
+    //                    .clone()
+    //                    .send(PadreSend::Response(resp))
+    //                    .map(|_| {})
+    //                    .map_err(|e| println!("Error responding: {}", e)),
+    //            );
+    //            Ok(())
+    //        })
+    //        .map_err(move |e| {
+    //            match e.kind() {
+    //                // Remove socket from notifier if pipe broken, otherwise report error
+    //                std::io::ErrorKind::ConnectionReset => {
+    //                    remove_listener(&addr.clone());
+    //                }
+    //                _ => unreachable!(),
+    //            }
+    //        }),
+    //);
+
     tokio::spawn(
-        request_tx
-            .send_all(connection_rx.map_err(|e| {
-                eprintln!("failed to retrieve message to send: {}", e);
-                io::Error::new(io::ErrorKind::Other, e)
-            }))
-            .then(|res| {
-                if let Err(e) = res {
-                    eprintln!("failed to send data to socket; error = {:?}", e);
-                }
-
-                Ok(())
-            }),
+        check_for_and_report_padre_updates()
     );
-
-    let connection_tx_2 = connection_tx.clone();
-
-    tokio::spawn(
-        request_rx
-            .and_then(move |req| respond(req, debugger.clone(), config.clone()))
-            .for_each(move |resp| {
-                tokio::spawn(
-                    connection_tx_2
-                        .clone()
-                        .send(PadreSend::Response(resp))
-                        .map(|_| {})
-                        .map_err(|e| println!("Error responding: {}", e)),
-                );
-                Ok(())
-            })
-            .map_err(move |e| {
-                match e.kind() {
-                    // Remove socket from notifier if pipe broken, otherwise report error
-                    std::io::ErrorKind::ConnectionReset => {
-                        remove_listener(&addr.clone());
-                    }
-                    _ => unreachable!(),
-                }
-            }),
-    );
-
-    tokio::spawn(future::lazy(|| {
-        check_for_and_report_padre_updates();
-        Ok(())
-    }));
 }
 
 /// Process a PadreRequest.
 ///
 /// Forwards the request to the appropriate place to handle it and responds appropriately.
-fn respond(
-    request: PadreRequest,
-    debugger: Arc<Mutex<Debugger>>,
-    config: Arc<Mutex<Config>>,
-) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
-    match request.cmd() {
-        RequestCmd::PadreCmd(cmd) => {
-            let json_response = match cmd {
-                PadreCmd::Ping => ping(),
-                PadreCmd::Pings => pings(),
-                PadreCmd::GetConfig(key) => get_config(config, key),
-                PadreCmd::SetConfig(key, value) => set_config(config, key, *value),
-            };
-
-            Box::new(future::lazy(move || match json_response {
-                Ok(args) => Ok(Response::new(request.id(), args)),
-                Err(e) => {
-                    log_msg(LogLevel::ERROR, &format!("{}", e));
-                    let resp = serde_json::json!({"status":"ERROR"});
-                    Ok(Response::new(request.id(), resp))
-                }
-            }))
-        }
-        RequestCmd::DebuggerCmd(cmd) => {
-            let f = match cmd {
-                DebuggerCmd::V1(v1cmd) => debugger.lock().unwrap().handle_v1_cmd(v1cmd, config),
-            };
-
-            Box::new(
-                f.timeout(Duration::new(30, 0))
-                    .then(move |resp| match resp {
-                        Ok(s) => Ok(Response::new(request.id(), s)),
-                        Err(e) => {
-                            log_msg(LogLevel::ERROR, &format!("{}", e));
-                            let resp = serde_json::json!({"status":"ERROR"});
-                            Ok(Response::new(request.id(), resp))
-                        }
-                    }),
-            )
-        }
-    }
-}
+//fn respond(
+//    request: PadreRequest,
+//    debugger: Arc<Mutex<Debugger>>,
+//    //config: Arc<Mutex<Config>>,
+//) -> Box<dyn Future<Item = Response, Error = io::Error> + Send> {
+//    match request.cmd() {
+//        RequestCmd::PadreCmd(cmd) => {
+//            let json_response = match cmd {
+//                PadreCmd::Ping => ping(),
+//                PadreCmd::Pings => pings(),
+//                PadreCmd::GetConfig(key) => get_config(config, key),
+//                PadreCmd::SetConfig(key, value) => set_config(config, key, *value),
+//            };
+//
+//            Box::new(future::lazy(move || match json_response {
+//                Ok(args) => Ok(Response::new(request.id(), args)),
+//                Err(e) => {
+//                    log_msg(LogLevel::ERROR, &format!("{}", e));
+//                    let resp = serde_json::json!({"status":"ERROR"});
+//                    Ok(Response::new(request.id(), resp))
+//                }
+//            }))
+//        }
+//        RequestCmd::DebuggerCmd(cmd) => {
+//            let f = match cmd {
+//                DebuggerCmd::V1(v1cmd) => debugger.lock().unwrap().handle_v1_cmd(v1cmd, config),
+//            };
+//
+//            Box::new(
+//                f.timeout(Duration::new(30, 0))
+//                    .then(move |resp| match resp {
+//                        Ok(s) => Ok(Response::new(request.id(), s)),
+//                        Err(e) => {
+//                            log_msg(LogLevel::ERROR, &format!("{}", e));
+//                            let resp = serde_json::json!({"status":"ERROR"});
+//                            Ok(Response::new(request.id(), resp))
+//                        }
+//                    }),
+//            )
+//        }
+//    }
+//}
 
 fn ping() -> Result<serde_json::Value, io::Error> {
     Ok(serde_json::json!({"status":"OK","ping":"pong"}))
@@ -261,28 +261,28 @@ fn pings() -> Result<serde_json::Value, io::Error> {
     Ok(serde_json::json!({"status":"OK"}))
 }
 
-fn get_config(config: Arc<Mutex<Config>>, key: &str) -> Result<serde_json::Value, io::Error> {
-    let value = config.lock().unwrap().get_config(key);
-    match value {
-        Some(v) => Ok(serde_json::json!({"status":"OK","value":v})),
-        None => Ok(serde_json::json!({"status":"ERROR"})),
-    }
-}
-
-fn set_config(
-    config: Arc<Mutex<Config>>,
-    key: &str,
-    value: i64,
-) -> Result<serde_json::Value, io::Error> {
-    let config_set = config.lock().unwrap().set_config(key, value);
-    match config_set {
-        true => Ok(serde_json::json!({"status":"OK"})),
-        false => Ok(serde_json::json!({"status":"ERROR"})),
-    }
-}
+//fn get_config(config: Arc<Mutex<Config>>, key: &str) -> Result<serde_json::Value, io::Error> {
+//    let value = config.lock().unwrap().get_config(key);
+//    match value {
+//        Some(v) => Ok(serde_json::json!({"status":"OK","value":v})),
+//        None => Ok(serde_json::json!({"status":"ERROR"})),
+//    }
+//}
+//
+//fn set_config(
+//    config: Arc<Mutex<Config>>,
+//    key: &str,
+//    value: i64,
+//) -> Result<serde_json::Value, io::Error> {
+//    let config_set = config.lock().unwrap().set_config(key, value);
+//    match config_set {
+//        true => Ok(serde_json::json!({"status":"OK"})),
+//        false => Ok(serde_json::json!({"status":"ERROR"})),
+//    }
+//}
 
 /// Checks whether we're on the latest version with git and if not gives a warning
-fn check_for_and_report_padre_updates() {
+async fn check_for_and_report_padre_updates() {
     let padre_exe = current_exe().unwrap();
     let padre_dir = padre_exe.parent().unwrap();
 

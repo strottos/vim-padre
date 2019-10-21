@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use super::process::{Event, LLDBProcess, Listener};
 use crate::config::Config;
-use crate::debugger::{DebuggerV1, FileLocation, Variable};
+use crate::debugger::{FileLocation, Variable};
 use crate::notifier::{log_msg, LogLevel};
 
 use bytes::Bytes;
@@ -28,9 +28,7 @@ impl ImplDebugger {
             process: Arc::new(Mutex::new(LLDBProcess::new(debugger_cmd, run_cmd))),
         }
     }
-}
 
-impl DebuggerV1 for ImplDebugger {
     /// Perform any initial setup including starting LLDB and setting up the stdio analyser stuff
     /// - startup lldb and setup the stdio analyser
     /// - perform initial setup so we can analyse LLDB properly
@@ -70,10 +68,10 @@ impl DebuggerV1 for ImplDebugger {
         exit(0);
     }
 
-    fn run(
+    async fn run(
         &mut self,
         config: Arc<Mutex<Config>>,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+    ) -> Result<serde_json::Value, io::Error> {
         log_msg(LogLevel::INFO, "Launching process");
 
         let (tx, rx) = mpsc::channel(1);
@@ -141,11 +139,11 @@ impl DebuggerV1 for ImplDebugger {
         Box::new(f)
     }
 
-    fn breakpoint(
+    async fn breakpoint(
         &mut self,
         file_location: &FileLocation,
         config: Arc<Mutex<Config>>,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+    ) -> Result<serde_json::Value, io::Error> {
         log_msg(
             LogLevel::INFO,
             &format!(
@@ -192,27 +190,27 @@ impl DebuggerV1 for ImplDebugger {
         Box::new(f)
     }
 
-    fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+    async fn step_in(&mut self) -> Result<serde_json::Value, io::Error> {
         self.step("step-in")
     }
 
-    fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+    async fn step_over(&mut self) -> Result<serde_json::Value, io::Error> {
         self.step("step-over")
     }
 
-    fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
+    async fn continue_(&mut self) -> Result<serde_json::Value, io::Error> {
         self.step("continue")
     }
 
-    fn print(
+    async fn print(
         &mut self,
         variable: &Variable,
         config: Arc<Mutex<Config>>,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        match self.check_process() {
-            Some(f) => return f,
-            _ => {}
-        }
+    ) -> Result<serde_json::Value, io::Error> {
+        //match self.check_process() {
+        //    Some(f) => return f,
+        //    _ => {}
+        //}
 
         let (tx, rx) = mpsc::channel(1);
 
@@ -259,17 +257,15 @@ impl DebuggerV1 for ImplDebugger {
 
         Box::new(f)
     }
-}
 
-impl ImplDebugger {
-    fn step(
+    async fn step(
         &mut self,
         kind: &str,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        match self.check_process() {
-            Some(f) => return f,
-            _ => {}
-        }
+    ) -> Result<serde_json::Value, io::Error> {
+        //match self.check_process() {
+        //    Some(f) => return f,
+        //    _ => {}
+        //}
 
         let stmt = format!("thread {}\n", kind);
 
@@ -283,20 +279,20 @@ impl ImplDebugger {
         Box::new(f)
     }
 
-    fn check_process(
-        &mut self,
-    ) -> Option<Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>> {
-        match self.process.lock().unwrap().is_process_running() {
-            false => {
-                log_msg(LogLevel::WARN, "No process running");
-                let f = future::lazy(move || {
-                    let resp = serde_json::json!({"status":"ERROR"});
-                    Ok(resp)
-                });
+    //fn check_process(
+    //    &mut self,
+    //) -> Option<Result<serde_json::Value, io::Error>> {
+    //    match self.process.lock().unwrap().is_process_running() {
+    //        false => {
+    //            log_msg(LogLevel::WARN, "No process running");
+    //            let f = future::lazy(move || {
+    //                let resp = serde_json::json!({"status":"ERROR"});
+    //                Ok(resp)
+    //            });
 
-                Some(Box::new(f))
-            }
-            true => None,
-        }
-    }
+    //            Some(Box::new(f))
+    //        }
+    //        true => None,
+    //    }
+    //}
 }

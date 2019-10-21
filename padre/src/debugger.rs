@@ -12,9 +12,9 @@ use crate::util::{file_is_binary_executable, file_is_text};
 
 use tokio::prelude::*;
 
-mod lldb;
-mod node;
-mod python;
+//mod lldb;
+//mod node;
+//mod python;
 
 /// Debuggers
 #[derive(Debug)]
@@ -68,62 +68,67 @@ pub enum DebuggerCmdV1 {
 
 #[derive(Debug)]
 pub struct Debugger {
-    debugger: Box<dyn DebuggerV1 + Send>,
+    //debugger: lldb::ImplDebugger,
 }
 
 impl Debugger {
-    pub fn new(debugger: Box<dyn DebuggerV1 + Send>) -> Debugger {
-        Debugger { debugger }
+    pub fn new() -> Debugger {
+        Debugger {}
     }
+
+    //pub fn new(debugger: lldb::ImplDebugger) -> Debugger {
+    //    Debugger { debugger }
+    //}
 
     pub fn stop(&mut self) {
-        self.debugger.teardown();
+        //self.debugger.teardown();
     }
 
-    pub fn handle_v1_cmd(
+    pub async fn handle_v1_cmd(
         &mut self,
         cmd: &DebuggerCmdV1,
-        config: Arc<Mutex<Config>>,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send> {
-        match cmd {
-            DebuggerCmdV1::Run => self.debugger.run(config),
-            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl, config),
-            DebuggerCmdV1::StepIn => self.debugger.step_in(),
-            DebuggerCmdV1::StepOver => self.debugger.step_over(),
-            DebuggerCmdV1::Continue => self.debugger.continue_(),
-            DebuggerCmdV1::Print(v) => self.debugger.print(v, config),
-        }
+        //config: Arc<Mutex<Config>>,
+    ) -> Result<serde_json::Value, io::Error> {
+        Ok(serde_json::json!({"status":"OK"}))
+//        match cmd {
+//            DebuggerCmdV1::Run => self.debugger.run(), //config),
+//            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl), //, config),
+//            DebuggerCmdV1::StepIn => self.debugger.step_in(),
+//            DebuggerCmdV1::StepOver => self.debugger.step_over(),
+//            DebuggerCmdV1::Continue => self.debugger.continue_(),
+//            DebuggerCmdV1::Print(v) => self.debugger.print(v), //, config),
+//        }
     }
 }
 
-/// Debugger trait that implements the basics
-pub trait DebuggerV1: Debug {
-    fn setup(&mut self);
-    fn teardown(&mut self);
-    fn run(
-        &mut self,
-        config: Arc<Mutex<Config>>,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-    fn breakpoint(
-        &mut self,
-        file_location: &FileLocation,
-        config: Arc<Mutex<Config>>,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-    fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-    fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-    fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-    fn print(
-        &mut self,
-        variable: &Variable,
-        config: Arc<Mutex<Config>>,
-    ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-}
+// /// Debugger trait that implements the basics
+// pub trait DebuggerV1: Debug {
+//     fn setup(&mut self);
+//     fn teardown(&mut self);
+//     fn run(
+//         &mut self,
+//         //config: Arc<Mutex<Config>>,
+//     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+//     fn breakpoint(
+//         &mut self,
+//         file_location: &FileLocation,
+//         //config: Arc<Mutex<Config>>,
+//     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+//     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+//     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+//     fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+//     fn print(
+//         &mut self,
+//         variable: &Variable,
+//         //config: Arc<Mutex<Config>>,
+//     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
+// }
 
 /// Get the debugger implementation
 ///
 /// If the debugger type is not specified it will try it's best to guess what kind of debugger to
 /// return.
-pub fn get_debugger(
+pub async fn get_debugger(
     debugger_cmd: Option<&str>,
     debugger_type: Option<&str>,
     run_cmd: Vec<String>,
@@ -135,7 +140,7 @@ pub fn get_debugger(
             "node" => DebuggerType::Node,
             _ => panic!("Couldn't understand debugger type {}", s),
         },
-        None => match get_debugger_type(&run_cmd[0]) {
+        None => match get_debugger_type(&run_cmd[0]).await {
             Some(s) => s,
             None => match debugger_cmd {
                 Some(s) => match s {
@@ -161,24 +166,24 @@ pub fn get_debugger(
         },
     };
 
-    let mut debugger: Box<dyn DebuggerV1 + Send> = match debugger_type {
-        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
-        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
-        DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
-    };
+//    let mut debugger: lldb::ImplDebugger = match debugger_type {
+//        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
+//        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
+//        DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
+//    };
 
-    debugger.setup();
+//    debugger.setup();
 
-    Debugger::new(debugger)
+    Debugger::new()
 }
 
 /// Guesses the debugger type
-fn get_debugger_type(run_cmd: &str) -> Option<DebuggerType> {
-    if is_node(&run_cmd) {
+async fn get_debugger_type(run_cmd: &str) -> Option<DebuggerType> {
+    if is_node(&run_cmd).await {
         Some(DebuggerType::Node)
-    } else if is_python(&run_cmd) {
+    } else if is_python(&run_cmd).await {
         Some(DebuggerType::Python)
-    } else if is_lldb(&run_cmd) {
+    } else if is_lldb(&run_cmd).await {
         Some(DebuggerType::LLDB)
     } else {
         None
@@ -186,8 +191,8 @@ fn get_debugger_type(run_cmd: &str) -> Option<DebuggerType> {
 }
 
 /// Checks if the file is a binary executable
-fn is_lldb(cmd: &str) -> bool {
-    if file_is_binary_executable(cmd) {
+async fn is_lldb(cmd: &str) -> bool {
+    if file_is_binary_executable(cmd).await {
         return true;
     }
 
@@ -195,8 +200,8 @@ fn is_lldb(cmd: &str) -> bool {
 }
 
 /// Checks if the file is a NodeJS script
-fn is_node(cmd: &str) -> bool {
-    if file_is_text(cmd) && cmd.ends_with(".js") {
+async fn is_node(cmd: &str) -> bool {
+    if file_is_text(cmd).await && cmd.ends_with(".js") {
         return true;
     }
 
@@ -207,9 +212,9 @@ fn is_node(cmd: &str) -> bool {
     false
 }
 
-/// Checks if the file is a NodeJS script
-fn is_python(cmd: &str) -> bool {
-    if file_is_text(cmd) && cmd.ends_with(".py") {
+/// Checks if the file is a Python script
+async fn is_python(cmd: &str) -> bool {
+    if file_is_text(cmd).await && cmd.ends_with(".py") {
         return true;
     }
 
