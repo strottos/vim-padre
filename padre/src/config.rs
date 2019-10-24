@@ -25,6 +25,7 @@ use std::collections::HashMap;
 ///
 /// Only config items that are meaningful and have defaults can be set and
 /// retreived.
+#[derive(Clone, Debug)]
 pub struct Config<'a> {
     config: HashMap<&'a str, i64>,
 }

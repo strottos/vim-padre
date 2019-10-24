@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::io;
 
-use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation, Variable};
+use crate::debugger::{DebuggerCmd, FileLocation, Variable};
 use crate::server::{PadreCmd, PadreRequest, PadreSend, RequestCmd};
 use crate::util;
 
@@ -305,26 +305,26 @@ impl Decoder for VimCodec {
             ))),
             "run" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run)),
+                RequestCmd::DebuggerCmd(DebuggerCmd::Run),
             ))),
             "stepOver" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::StepOver)),
+                RequestCmd::DebuggerCmd(DebuggerCmd::StepOver),
             ))),
             "stepIn" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::StepIn)),
+                RequestCmd::DebuggerCmd(DebuggerCmd::StepIn),
             ))),
             "continue" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Continue)),
+                RequestCmd::DebuggerCmd(DebuggerCmd::Continue),
             ))),
             "breakpoint" => {
                 let file_location = self.get_file_location(&mut args);
                 match file_location {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
-                        RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(fl))),
+                        RequestCmd::DebuggerCmd(DebuggerCmd::Breakpoint(fl)),
                     ))),
                     None => return Ok(None),
                 }
@@ -334,7 +334,7 @@ impl Decoder for VimCodec {
                 match variable {
                     Some(v) => Ok(Some(PadreRequest::new(
                         id,
-                        RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Print(v))),
+                        RequestCmd::DebuggerCmd(DebuggerCmd::Print(v)),
                     ))),
                     None => return Ok(None),
                 }
@@ -420,7 +420,7 @@ impl Encoder for VimCodec {
 
 #[cfg(test)]
 mod tests {
-    use crate::debugger::{DebuggerCmd, DebuggerCmdV1};
+    use crate::debugger::DebuggerCmd;
     use crate::server::{Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response};
 
     use bytes::{BufMut, BytesMut};
@@ -436,10 +436,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(
-                123,
-                RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))
-            ),
+            PadreRequest::new(123, RequestCmd::DebuggerCmd(DebuggerCmd::Run)),
             padre_request
         );
     }
@@ -454,10 +451,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(
-                123,
-                RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))
-            ),
+            PadreRequest::new(123, RequestCmd::DebuggerCmd(DebuggerCmd::Run)),
             padre_request
         );
 
@@ -490,10 +484,7 @@ mod tests {
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
         assert_eq!(
-            PadreRequest::new(
-                123,
-                RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run))
-            ),
+            PadreRequest::new(123, RequestCmd::DebuggerCmd(DebuggerCmd::Run)),
             padre_request
         );
     }

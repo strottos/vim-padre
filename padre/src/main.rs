@@ -36,6 +36,7 @@ use tokio::prelude::*;
 use tokio::runtime::current_thread::Runtime;
 use tokio::timer::delay;
 use tokio_net::signal::unix::{signal, SignalKind};
+use tokio::sync::mpsc;
 
 mod config;
 mod debugger;
@@ -116,10 +117,12 @@ async fn run_padre() -> () {
         .map(|x| x.to_string())
         .collect::<Vec<String>>();
 
+    let (debugger_queue_tx, debugger_queue_rx) = mpsc::channel(128);
+
     // TODO: Do we need to wrap in Arc/Mutex any more now/when we're on new tokio 0.2? Probably in
     // the case of multiple connections but is there a way around it?
     let debugger = Arc::new(Mutex::new(
-        debugger::get_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd).await,
+        debugger::create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd, debugger_queue_rx).await,
     ));
 
     let connection_addr = get_connection(&args);
@@ -162,10 +165,9 @@ async fn run_padre() -> () {
     });
 
     while let Some(Ok(stream)) = incoming.next().await {
-        let debugger_stream = debugger.clone();
-
+        let debugger_queue_tx = debugger_queue_tx.clone();
         tokio::spawn(async move {
-            server::process_connection(stream, debugger_stream.clone());
+            server::process_connection(stream, debugger_queue_tx.clone());
         });
     }
 }

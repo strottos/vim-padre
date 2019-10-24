@@ -5,11 +5,11 @@
 //! happening then.
 
 use std::collections::HashMap;
-use std::io::BufReader;
+use std::io;
 use std::path::Path;
 #[cfg(not(test))]
 use std::process::exit;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
 use crate::debugger::{FileLocation, Variable};
@@ -21,9 +21,10 @@ use crate::util::{read_output, setup_stdin};
 
 use bytes::Bytes;
 use regex::Regex;
+use tokio::io::BufReader;
+use tokio::net::process::{Command, Child, ChildStderr, ChildStdout};
 use tokio::prelude::*;
 use tokio::sync::mpsc::Sender;
-use tokio_process::{Child, ChildStderr, ChildStdout, CommandExt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PDBStatus {
@@ -91,8 +92,10 @@ impl Process {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn_async()
+            .spawn()
             .expect("Failed to spawn debugger");
+
+        log_msg(LogLevel::INFO, &format!("Process launched with pid: {}", process.id()));
 
         self.setup_stdout(
             process
@@ -139,39 +142,35 @@ impl Process {
     /// Send a message to write to stdin
     pub fn write_stdin(&mut self, bytes: Bytes) {
         let tx = self.stdin_tx.clone();
-        tokio::spawn(
+        tokio::spawn(async move {
             tx.clone()
                 .unwrap()
                 .send(bytes)
                 .map(move |_| {})
-                .map_err(|e| eprintln!("Error sending to Python: {}", e)),
-        );
+                .await
+        });
     }
 
     /// Perform setup of reading Python stdout, analysing it and writing it back to stdout.
     fn setup_stdout(&mut self, stdout: ChildStdout) {
         let analyser = self.analyser.clone();
-        tokio::spawn(
-            read_output(BufReader::new(stdout))
-                .for_each(move |text| {
-                    print!("{}", text);
-                    analyser.lock().unwrap().analyse_stdout(&text);
-                    Ok(())
-                })
-                .map_err(|e| eprintln!("Err reading Python stdout: {}", e)),
-        );
+        tokio::spawn(async move {
+            let mut reader = read_output(BufReader::new(stdout));
+            while let Some(Ok(text)) = reader.next().await {
+                print!("{}", text);
+                analyser.lock().unwrap().analyse_stdout(&text);
+            }
+        });
     }
 
     /// Perform setup of reading Python stderr, analysing it and writing it back to stdout.
     fn setup_stderr(&mut self, stderr: ChildStderr) {
-        tokio::spawn(
-            read_output(BufReader::new(stderr))
-                .for_each(move |text| {
-                    eprint!("{}", text);
-                    Ok(())
-                })
-                .map_err(|e| eprintln!("Err reading Python stderr: {}", e)),
-        );
+        tokio::spawn(async {
+            let mut reader = read_output(BufReader::new(stderr));
+            while let Some(Ok(text)) = reader.next().await {
+                eprint!("{}", text);
+            }
+        });
     }
 }
 
@@ -347,8 +346,10 @@ impl Analyser {
     fn python_launched(&mut self) {
         self.status = PDBStatus::Running;
         match self.listeners.remove(&Listener::Launch) {
-            Some(listener) => {
-                listener.send(Event::Launched).wait().unwrap();
+            Some(mut listener) => {
+                tokio::spawn(async move {
+                    listener.send(Event::Launched).await.unwrap();
+                });
             }
             None => {}
         }
@@ -358,11 +359,13 @@ impl Analyser {
         breakpoint_set(&file, line);
         let file_location = FileLocation::new(file, line);
         match self.listeners.remove(&Listener::Breakpoint) {
-            Some(listener) => {
-                listener
-                    .send(Event::BreakpointSet(file_location))
-                    .wait()
-                    .unwrap();
+            Some(mut listener) => {
+                tokio::spawn(async move {
+                    listener
+                        .send(Event::BreakpointSet(file_location))
+                        .await
+                        .unwrap();
+                });
             }
             None => {}
         }
@@ -376,11 +379,14 @@ impl Analyser {
 
         let to = data.len() - 2;
         match self.listeners.remove(&Listener::PrintVariable) {
-            Some(listener) => {
-                listener
-                    .send(Event::PrintVariable(variable, data[0..to].to_string()))
-                    .wait()
-                    .unwrap();
+            Some(mut listener) => {
+                let event = Event::PrintVariable(variable, data[0..to].to_string());
+                tokio::spawn(async move {
+                    listener
+                        .send(event)
+                        .await
+                        .unwrap();
+                });
             }
             None => {}
         }

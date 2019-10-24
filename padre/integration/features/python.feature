@@ -5,9 +5,10 @@ Feature: Python
         Given that we have a test program './test_files/test_prog.py' that runs with 'python3' debugger of type 'python'
         When I debug the program with PADRE
         When I send a request to PADRE '{"cmd":"run"}'
-        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                    |
             | padre#debugger#Log            | [4,"Launching process"] |
+            | padre#debugger#Log            | [4,"Process launched with pid: \\d+"] |
             | padre#debugger#JumpToPosition | [".*test_prog.py",3]    |
         When I send a command 'b a' using the terminal
         Then I expect to be called with

@@ -3,22 +3,23 @@
 //! Various simple utilities for use in PADRE
 
 use std::env;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Write};
 use std::mem;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::{exit, Stdio};
-use std::thread;
+use std::task::{Context, Poll};
 
 use crate::notifier::{log_msg, LogLevel};
 
 use bytes::Bytes;
-use tokio::io::AsyncRead;
+use pin_project::{pin_project, project};
+use tokio::codec::{FramedRead, LinesCodec};
+use tokio::io::{stdin, AsyncBufRead};
 use tokio::net::process::{Child, ChildStdin, Command};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
-
-const BUFSIZE: usize = 4096;
 
 /// Get an unused port on the local system and return it. This port
 /// can subsequently be used.
@@ -84,54 +85,34 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
 
 /// Perform setup of listening and forwarding of stdin and return a sender that will forward to the
 /// stdin of a process.
-//pub fn setup_stdin(mut stdin: ChildStdin, output_stdin: bool) -> Sender<Bytes> {
-//    let (stdin_tx, stdin_rx) = mpsc::channel(1);
-//    let mut tx = stdin_tx.clone();
-//
-//    thread::spawn(move || {
-//        let mut stdin = io::stdin();
-//        loop {
-//            let mut buf = vec![0; 1024];
-//            let n = match stdin.read(&mut buf) {
-//                Err(_) | Ok(0) => break,
-//                Ok(n) => n,
-//            };
-//            buf.truncate(n);
-//            tx = match tx.send(Bytes::from(buf)).wait() {
-//                Ok(tx) => tx,
-//                Err(_) => break,
-//            };
-//        }
-//    });
-//
-//    // Current implementation needs a kick, this is all liable to change with
-//    // upcoming versions of tokio anyway so living with it for now.
-//    match stdin.write(&[13]) {
-//        Err(ref e) if e.kind() == ::std::io::ErrorKind::WouldBlock => {}
-//        _ => unreachable!(),
-//    }
-//
-//    tokio::spawn(
-//        stdin_rx
-//            .for_each(move |text| {
-//                if output_stdin {
-//                    io::stdout().write_all(&text).unwrap();
-//                }
-//                match stdin.write(&text) {
-//                    Ok(_) => {}
-//                    Err(e) => {
-//                        eprintln!("Writing stdin err e: {}", e);
-//                    }
-//                };
-//                Ok(())
-//            })
-//            .map_err(|e| {
-//                eprintln!("Reading stdin error {:?}", e);
-//            }),
-//    );
-//
-//    stdin_tx
-//}
+pub fn setup_stdin(mut child_stdin: ChildStdin, output_stdin: bool) -> Sender<Bytes> {
+    let (stdin_tx, mut stdin_rx) = mpsc::channel(1);
+    let mut tx = stdin_tx.clone();
+
+    tokio::spawn(async move {
+        let tokio_stdin = stdin();
+        let mut reader = FramedRead::new(tokio_stdin, LinesCodec::new());
+        while let Some(line) = reader.next().await {
+            tx.send(Bytes::from(line.unwrap() + "\n")).await.unwrap();
+        }
+    });
+
+    tokio::spawn(async move {
+        while let Some(text) = stdin_rx.next().await {
+            if output_stdin {
+                io::stdout().write_all(&text).unwrap();
+            }
+            match child_stdin.write(&text).await {
+                Ok(s) => {}
+                Err(e) => {
+                    eprintln!("Writing stdin err e: {}", e);
+                }
+            };
+        }
+    });
+
+    stdin_tx
+}
 
 /// Find out if a file is a binary executable (either ELF or Mach-O
 /// executable).
@@ -202,61 +183,75 @@ async fn get_file_type(cmd: &str) -> String {
 // The following largely taken from tokio::io::lines code.
 
 /// Combinator created by `read_output` method which is a stream over text on an I/O object.
+#[pin_project]
 #[derive(Debug)]
-pub struct ReadOutput<A> {
-    io: A,
-    text: String,
+pub struct ReadOutput<R> {
+    #[pin]
+    reader: R,
+    buf: Vec<u8>
 }
 
 /// Creates a new stream from the I/O object
 ///
-/// This method takes an asynchronous I/O object, `a`, and returns a `Stream` of text that the
-/// object contains. The returned stream will reach its end once `a` reaches EOF.
-pub fn read_output<A>(a: A) -> ReadOutput<A>
+/// This method takes an asynchronous I/O object, `reader`, and returns a `Stream` of text that
+/// the object contains. The returned stream will reach its end once `reader` reaches EOF.
+pub fn read_output<R>(reader: R) -> ReadOutput<R>
 where
-    A: AsyncRead + BufRead,
+    R: AsyncBufRead,
 {
     ReadOutput {
-        io: a,
-        text: String::new(),
+        reader,
+        buf: Vec::new(),
     }
 }
 
-//impl<A> Stream for ReadOutput<A>
-//where
-//    A: AsyncRead + BufRead,
-//{
-//    type Item = String;
-//    type Error = io::Error;
-//
-//    fn poll(&mut self) -> Poll<Option<String>, io::Error> {
-//        let mut buf = [0; BUFSIZE];
-//        loop {
-//            let n = match self.io.read(&mut buf) {
-//                Ok(t) => t,
-//                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-//                    return Ok(Async::NotReady);
-//                }
-//                Err(e) => return Err(e.into()),
-//            };
-//
-//            if n == 0 && self.text.len() == 0 {
-//                return Ok(None.into());
-//            }
-//
-//            if n == BUFSIZE {
-//                let bufstr = String::from_utf8_lossy(&buf[0..n]);
-//                self.text.push_str(&bufstr);
-//                continue;
-//            }
-//
-//            let bufstr = String::from_utf8_lossy(&buf[0..n]);
-//            self.text.push_str(&bufstr);
-//            break;
-//        }
-//        Ok(Some(mem::replace(&mut self.text, String::new())).into())
-//    }
-//}
+impl<R: AsyncBufRead> Stream for ReadOutput<R> {
+    type Item = io::Result<String>;
+
+    #[project]
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        #[project]
+        let ReadOutput {
+            mut reader,
+            buf,
+        } = self.project();
+
+        loop {
+            let used = {
+                match reader.as_mut().poll_fill_buf(cx) {
+                    Poll::Ready(s) => {
+                        match s {
+                            Ok(t) => {
+                                buf.extend_from_slice(t);
+                                t.len()
+                            }
+                            Err(e) => {
+                                println!("What to do here? {:?}", e);
+                                0
+                            }
+                        }
+                    }
+                    Poll::Pending => {
+                        0
+                    }
+                }
+            };
+
+            if used == 0 {
+                break;
+            }
+
+            reader.as_mut().consume(used);
+        }
+
+        if buf.len() == 0 {
+            return Poll::Pending;
+        }
+
+        let buf_freeze = mem::replace(buf, Vec::new());
+        Poll::Ready(Some(Ok(String::from_utf8(buf_freeze).unwrap())))
+    }
+}
 
 #[cfg(test)]
 mod tests {

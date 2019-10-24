@@ -11,10 +11,11 @@ use crate::config::Config;
 use crate::util::{file_is_binary_executable, file_is_text};
 
 use tokio::prelude::*;
+use tokio::sync::mpsc::Receiver;
 
 //mod lldb;
 //mod node;
-//mod python;
+mod python;
 
 /// Debuggers
 #[derive(Debug)]
@@ -52,12 +53,6 @@ impl Variable {
 /// All debugger commands
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 pub enum DebuggerCmd {
-    V1(DebuggerCmdV1),
-}
-
-/// All V1 debugger commands
-#[derive(Clone, Deserialize, Debug, PartialEq)]
-pub enum DebuggerCmdV1 {
     Run,
     Breakpoint(FileLocation),
     StepIn,
@@ -68,71 +63,49 @@ pub enum DebuggerCmdV1 {
 
 #[derive(Debug)]
 pub struct Debugger {
-    //debugger: lldb::ImplDebugger,
+    debugger: Arc<Mutex<python::ImplDebugger>>,
 }
 
 impl Debugger {
-    pub fn new() -> Debugger {
-        Debugger {}
-    }
+    pub fn new(impl_debugger: Arc<Mutex<python::ImplDebugger>>, mut queue_rx: Receiver<DebuggerCmd>) -> Debugger {
+        let debugger = Debugger {
+            debugger: impl_debugger.clone(),
+        };
 
-    //pub fn new(debugger: lldb::ImplDebugger) -> Debugger {
-    //    Debugger { debugger }
-    //}
+        let queue_processing_debugger = impl_debugger.clone();
+
+        tokio::spawn(async move {
+            while let Some(cmd) = queue_rx.next().await {
+                let mut debugger = queue_processing_debugger.lock().unwrap();
+                match cmd {
+                    DebuggerCmd::Run => debugger.run(),
+                    DebuggerCmd::Breakpoint(fl) => debugger.breakpoint(&fl),
+                    DebuggerCmd::StepIn => debugger.step_in(),
+                    DebuggerCmd::StepOver => debugger.step_over(),
+                    DebuggerCmd::Continue => debugger.continue_(),
+                    DebuggerCmd::Print(v) => debugger.print(&v),
+                };
+            };
+        });
+
+        debugger
+    }
 
     pub fn stop(&mut self) {
-        //self.debugger.teardown();
+        //self.debugger.lock().unwrap().teardown();
         std::process::exit(-1);
     }
-
-    pub async fn handle_v1_cmd(
-        &mut self,
-        cmd: &DebuggerCmdV1,
-        //config: Arc<Mutex<Config>>,
-    ) -> Result<serde_json::Value, io::Error> {
-        Ok(serde_json::json!({"status":"OK"}))
-        //        match cmd {
-        //            DebuggerCmdV1::Run => self.debugger.run(), //config),
-        //            DebuggerCmdV1::Breakpoint(fl) => self.debugger.breakpoint(fl), //, config),
-        //            DebuggerCmdV1::StepIn => self.debugger.step_in(),
-        //            DebuggerCmdV1::StepOver => self.debugger.step_over(),
-        //            DebuggerCmdV1::Continue => self.debugger.continue_(),
-        //            DebuggerCmdV1::Print(v) => self.debugger.print(v), //, config),
-        //        }
-    }
 }
-
-// /// Debugger trait that implements the basics
-// pub trait DebuggerV1: Debug {
-//     fn setup(&mut self);
-//     fn teardown(&mut self);
-//     fn run(
-//         &mut self,
-//         //config: Arc<Mutex<Config>>,
-//     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-//     fn breakpoint(
-//         &mut self,
-//         file_location: &FileLocation,
-//         //config: Arc<Mutex<Config>>,
-//     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-//     fn step_in(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-//     fn step_over(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-//     fn continue_(&mut self) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-//     fn print(
-//         &mut self,
-//         variable: &Variable,
-//         //config: Arc<Mutex<Config>>,
-//     ) -> Box<dyn Future<Item = serde_json::Value, Error = io::Error> + Send>;
-// }
 
 /// Get the debugger implementation
 ///
 /// If the debugger type is not specified it will try it's best to guess what kind of debugger to
 /// return.
-pub async fn get_debugger(
+pub async fn create_debugger(
     debugger_cmd: Option<&str>,
     debugger_type: Option<&str>,
     run_cmd: Vec<String>,
+    queue_rx: Receiver<DebuggerCmd>,
 ) -> Debugger {
     let debugger_type = match debugger_type {
         Some(s) => match s.to_ascii_lowercase().as_str() {
@@ -167,15 +140,13 @@ pub async fn get_debugger(
         },
     };
 
-    //    let mut debugger: lldb::ImplDebugger = match debugger_type {
+    let mut debugger: python::ImplDebugger = python::ImplDebugger::new(debugger_cmd, run_cmd);
     //        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
     //        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
     //        DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
     //    };
 
-    //    debugger.setup();
-
-    Debugger::new()
+    Debugger::new(Arc::new(Mutex::new(debugger)), queue_rx)
 }
 
 /// Guesses the debugger type

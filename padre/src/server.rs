@@ -8,7 +8,6 @@ use std::io;
 use std::process::{Command, Stdio};
 use std::str;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use crate::config::Config;
 use crate::debugger::{Debugger, DebuggerCmd};
@@ -18,7 +17,7 @@ use crate::vimcodec::VimCodec;
 use tokio::codec::Decoder;
 use tokio::net::TcpStream;
 use tokio::prelude::*;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Sender};
 
 // TODO: Get some of this out of pub use and just in this module?
 
@@ -147,10 +146,10 @@ pub enum PadreSend {
 /// Process a TCP socket connection.
 ///
 /// Fully sets up a new socket connection including listening for requests and sending responses.
-pub fn process_connection(stream: TcpStream, debugger: Arc<Mutex<Debugger>>) {
+pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<DebuggerCmd>) {
     let addr = stream.peer_addr().unwrap();
 
-    let config = Arc::new(Mutex::new(Config::new()));
+    let mut config = Config::new();
 
     let (mut request_tx, mut request_rx) = VimCodec::new().framed(stream).split();
 
@@ -166,7 +165,7 @@ pub fn process_connection(stream: TcpStream, debugger: Arc<Mutex<Debugger>>) {
 
     tokio::spawn(async move {
         while let Some(req) = request_rx.next().await {
-            let resp = respond(req.unwrap(), debugger.clone(), config.clone()).unwrap();
+            let resp = respond(req.unwrap(), debugger_queue_tx.clone(), &mut config).await.unwrap();
             connection_tx
                 .clone()
                 .send(PadreSend::Response(resp))
@@ -181,10 +180,10 @@ pub fn process_connection(stream: TcpStream, debugger: Arc<Mutex<Debugger>>) {
 /// Process a PadreRequest.
 ///
 /// Forwards the request to the appropriate place to handle it and responds appropriately.
-fn respond(
+async fn respond<'a>(
     request: PadreRequest,
-    debugger: Arc<Mutex<Debugger>>,
-    config: Arc<Mutex<Config>>,
+    mut debugger_queue_tx: Sender<DebuggerCmd>,
+    config: &mut Config<'a>,
 ) -> Result<Response, io::Error> {
     match request.cmd() {
         RequestCmd::PadreCmd(cmd) => {
@@ -205,22 +204,8 @@ fn respond(
             }
         }
         RequestCmd::DebuggerCmd(cmd) => {
-            //let f = match cmd {
-            //    DebuggerCmd::V1(v1cmd) => debugger.lock().unwrap().handle_v1_cmd(v1cmd, config),
-            //};
-            //
-            //Box::new(
-            //    f.timeout(Duration::new(30, 0))
-            //        .then(move |resp| match resp {
-            //            Ok(s) => Ok(Response::new(request.id(), s)),
-            //            Err(e) => {
-            //                log_msg(LogLevel::ERROR, &format!("{}", e));
-            //                let resp = serde_json::json!({"status":"ERROR"});
-            //                Ok(Response::new(request.id(), resp))
-            //            }
-            //        }),
-            //)
-            panic!("BALLS");
+            debugger_queue_tx.send(cmd.clone()).await.unwrap();
+            Ok(Response::new(request.id(), serde_json::json!({"status":"OK"})))
         }
     }
 }
@@ -235,8 +220,8 @@ fn pings() -> Result<serde_json::Value, io::Error> {
     Ok(serde_json::json!({"status":"OK"}))
 }
 
-fn get_config(config: Arc<Mutex<Config>>, key: &str) -> Result<serde_json::Value, io::Error> {
-    let value = config.lock().unwrap().get_config(key);
+fn get_config(config: &Config, key: &str) -> Result<serde_json::Value, io::Error> {
+    let value = config.get_config(key);
     match value {
         Some(v) => Ok(serde_json::json!({"status":"OK","value":v})),
         None => Ok(serde_json::json!({"status":"ERROR"})),
@@ -244,11 +229,11 @@ fn get_config(config: Arc<Mutex<Config>>, key: &str) -> Result<serde_json::Value
 }
 
 fn set_config(
-    config: Arc<Mutex<Config>>,
+    config: &mut Config,
     key: &str,
     value: i64,
 ) -> Result<serde_json::Value, io::Error> {
-    let config_set = config.lock().unwrap().set_config(key, value);
+    let config_set = config.set_config(key, value);
     match config_set {
         true => Ok(serde_json::json!({"status":"OK"})),
         false => Ok(serde_json::json!({"status":"ERROR"})),
