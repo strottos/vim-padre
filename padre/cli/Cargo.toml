@@ -1,0 +1,14 @@
+[package]
+name = "padre"
+version = "0.2.0"
+authors = ["Steven Trotter <stevetrot@gmail.com>"]
+edition = "2018"
+license = "APACHE"
+repository = "https://github.com/strottos/vim-padre"
+
+[dependencies]
+clap = "2.32.0"
+futures = "0.3.1"
+libc = "0.2.65"
+padre_core = { path = "../core", version = "0.2.0" }
+tokio = { version = "0.2.1", features = ["full"] }

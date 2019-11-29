@@ -7,8 +7,8 @@ use std::fmt::Debug;
 use std::io;
 use std::sync::{Arc, Mutex};
 
-use crate::config::Config;
-use crate::util::{file_is_binary_executable, file_is_text};
+use padre_core::config::Config;
+use padre_core::util::{file_is_binary_executable, file_is_text};
 
 use tokio::prelude::*;
 use tokio::sync::mpsc::Receiver;

@@ -5,12 +5,13 @@
 use std::collections::HashMap;
 use std::io;
 
-use crate::debugger::{DebuggerCmd, FileLocation, Variable};
-use crate::server::{PadreCmd, PadreRequest, PadreSend, RequestCmd};
+use crate::server::{
+    DebuggerCmd, FileLocation, PadreCmd, PadreRequest, PadreSend, RequestCmd, Variable,
+};
 use crate::util;
 
 use bytes::{BufMut, BytesMut};
-use tokio::codec::{Decoder, Encoder};
+use tokio_util::codec::{Decoder, Encoder};
 
 /// Decodes requests and encodes responses sent by or to VIM over VIM's socket communication
 ///
@@ -412,7 +413,7 @@ impl Encoder for VimCodec {
         };
 
         buf.reserve(response.len());
-        buf.put(&response[..]);
+        buf.put(response[..].as_bytes());
 
         Ok(())
     }
@@ -420,11 +421,12 @@ impl Encoder for VimCodec {
 
 #[cfg(test)]
 mod tests {
-    use crate::debugger::DebuggerCmd;
-    use crate::server::{Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response};
+    use crate::server::{
+        DebuggerCmd, Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response,
+    };
 
     use bytes::{BufMut, BytesMut};
-    use tokio::codec::{Decoder, Encoder};
+    use tokio_util::codec::{Decoder, Encoder};
 
     #[test]
     fn check_simple_json_decoding() {

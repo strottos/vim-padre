@@ -18,32 +18,23 @@
 //! ```
 //! will run the program `my_program arg1 arg2 3 4` in an `lldb` session.
 
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate serde_derive;
-
 use std::io;
 use std::net::SocketAddr;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use clap::{App, Arg, ArgMatches};
+use futures::prelude::*;
 use libc::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::net::TcpListener;
-use tokio::prelude::*;
-use tokio::runtime::current_thread::Runtime;
-use tokio::timer::delay;
-use tokio_net::signal::unix::{signal, SignalKind};
+use tokio::runtime::Runtime;
+use tokio::time::delay_for;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 
-mod config;
-mod debugger;
-mod notifier;
-mod server;
-mod util;
-mod vimcodec;
+use padre_core::server;
+use padre_core::util;
 
 fn get_app_args<'a>() -> ArgMatches<'a> {
     App::new("VIM Padre")
@@ -96,16 +87,16 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn exit_padre(debugger: Arc<Mutex<debugger::Debugger>>) {
-    let when = Instant::now() + Duration::new(5, 0);
+fn exit_padre() { //debugger: Arc<Mutex<debugger::Debugger>>) {
+    let when = Duration::new(5, 0);
 
     tokio::spawn(async move {
-        delay(when).await;
+        delay_for(when).await;
         println!("Timed out exiting!");
         exit(-1);
     });
 
-    debugger.lock().unwrap().stop();
+    //debugger.lock().unwrap().stop();
 }
 
 async fn run_padre() -> () {
@@ -121,46 +112,47 @@ async fn run_padre() -> () {
 
     // TODO: Do we need to wrap in Arc/Mutex any more now/when we're on new tokio 0.2? Probably in
     // the case of multiple connections but is there a way around it?
-    let debugger = Arc::new(Mutex::new(
-        debugger::create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd, debugger_queue_rx).await,
-    ));
+    // let debugger = Arc::new(Mutex::new(
+    //     debugger::create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd, debugger_queue_rx).await,
+    // ));
 
     let connection_addr = get_connection(&args);
-    let mut incoming = TcpListener::bind(&connection_addr)
+    let mut connection = TcpListener::bind(&connection_addr)
         .map(|listener| {
             println!("Listening on {}", &connection_addr);
             listener
         })
         .await
-        .expect(&format!("Can't open TCP listener on {}", &connection_addr))
-        .incoming();
+        .expect(&format!("Can't open TCP listener on {}", &connection_addr));
+
+    let mut incoming = connection.incoming();
 
     // TODO: Merge the following into one lot of signals when we know how to
 
-    let debugger_signals = debugger.clone();
+    //let debugger_signals = debugger.clone();
     tokio::spawn(async move {
         let mut signals = signal(SignalKind::interrupt()).unwrap();
 
-        while let Some(_) = signals.next().await {
-            exit_padre(debugger_signals.clone());
+        while let Some(_) = signals.recv().await {
+            exit_padre(); //debugger_signals.clone());
         }
     });
 
-    let debugger_signals = debugger.clone();
+    //let debugger_signals = debugger.clone();
     tokio::spawn(async move {
         let mut signals = signal(SignalKind::quit()).unwrap();
 
-        while let Some(_) = signals.next().await {
-            exit_padre(debugger_signals.clone());
+        while let Some(_) = signals.recv().await {
+            exit_padre(); //debugger_signals.clone());
         }
     });
 
-    let debugger_signals = debugger.clone();
+    //let debugger_signals = debugger.clone();
     tokio::spawn(async move {
         let mut signals = signal(SignalKind::terminate()).unwrap();
 
-        while let Some(_) = signals.next().await {
-            exit_padre(debugger_signals.clone());
+        while let Some(_) = signals.recv().await {
+            exit_padre(); //debugger_signals.clone());
         }
     });
 
@@ -176,8 +168,6 @@ fn main() -> io::Result<()> {
     let mut runtime = Runtime::new().unwrap();
 
     runtime.block_on(run_padre());
-
-    runtime.run().unwrap();
 
     Ok(())
 }

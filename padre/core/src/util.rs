@@ -3,7 +3,7 @@
 //! Various simple utilities for use in PADRE
 
 use std::env;
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::mem;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -14,12 +14,13 @@ use std::task::{Context, Poll};
 use crate::notifier::{log_msg, LogLevel};
 
 use bytes::Bytes;
+use futures::{Stream, StreamExt};
 use pin_project::{pin_project, project};
-use tokio::codec::{FramedRead, LinesCodec};
 use tokio::io::{stdin, AsyncBufRead};
-use tokio::net::process::{Child, ChildStdin, Command};
+use tokio::process::{Child, ChildStdin, Command};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
+use tokio_util::codec::{FramedRead, LinesCodec};
 
 /// Get an unused port on the local system and return it. This port
 /// can subsequently be used.
@@ -103,7 +104,7 @@ pub fn setup_stdin(mut child_stdin: ChildStdin, output_stdin: bool) -> Sender<By
                 io::stdout().write_all(&text).unwrap();
             }
             match child_stdin.write(&text).await {
-                Ok(s) => {}
+                Ok(_) => {}
                 Err(e) => {
                     eprintln!("Writing stdin err e: {}", e);
                 }

@@ -12,12 +12,11 @@ use std::process::exit;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
-use crate::debugger::{FileLocation, Variable};
-use crate::notifier::{breakpoint_set, jump_to_position, signal_exited};
-use crate::notifier::{log_msg, LogLevel};
+use padre::debugger::{FileLocation, Variable};
+use padre::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
 #[cfg(not(test))]
-use crate::util::{file_exists, get_file_full_path};
-use crate::util::{read_output, setup_stdin};
+use padre::util::{file_exists, get_file_full_path};
+use padre::util::{read_output, setup_stdin};
 
 use bytes::Bytes;
 use regex::Regex;

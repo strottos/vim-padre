@@ -7,19 +7,53 @@ use std::env::current_exe;
 use std::io;
 use std::process::{Command, Stdio};
 use std::str;
-use std::sync::{Arc, Mutex};
 
 use crate::config::Config;
-use crate::debugger::{Debugger, DebuggerCmd};
 use crate::notifier::{add_listener, log_msg, remove_listener, LogLevel};
 use crate::vimcodec::VimCodec;
 
-use tokio::codec::Decoder;
+use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
+use tokio_util::codec::Decoder;
 
 // TODO: Get some of this out of pub use and just in this module?
+
+/// All debugger commands
+#[derive(Clone, Deserialize, Debug, PartialEq)]
+pub enum DebuggerCmd {
+    Run,
+    Breakpoint(FileLocation),
+    StepIn,
+    StepOver,
+    Continue,
+    Print(Variable),
+}
+
+/// File location
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub struct FileLocation {
+    name: String,
+    line_num: u64,
+}
+
+impl FileLocation {
+    pub fn new(name: String, line_num: u64) -> Self {
+        FileLocation { name, line_num }
+    }
+}
+
+/// Variable name
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub struct Variable {
+    name: String,
+}
+
+impl Variable {
+    pub fn new(name: String) -> Self {
+        Variable { name }
+    }
+}
 
 /// All padre commands
 #[derive(Clone, Deserialize, Debug, PartialEq)]
@@ -153,7 +187,7 @@ pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<DebuggerC
 
     let (mut request_tx, mut request_rx) = VimCodec::new().framed(stream).split();
 
-    let (mut connection_tx, mut connection_rx) = mpsc::channel(1);
+    let (connection_tx, mut connection_rx) = mpsc::channel(1);
 
     add_listener(connection_tx.clone(), addr.clone());
 

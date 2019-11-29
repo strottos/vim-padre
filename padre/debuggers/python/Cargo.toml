@@ -1,0 +1,16 @@
+[package]
+name = "padre-python"
+version = "0.2.0"
+authors = ["Steven Trotter <stevetrot@gmail.com>"]
+edition = "2018"
+license = "MIT"
+repository = "https://github.com/strottos/vim-padre"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bytes = "0.4.12"
+regex = "1.1.2"
+padre = { path = "../../core", version = "0.2.0" }
+tokio = { git = "https://github.com/tokio-rs/tokio/", branch = "master" }
