@@ -6,9 +6,19 @@ edition = "2018"
 license = "APACHE"
 repository = "https://github.com/strottos/vim-padre"
 
+[features]
+
+default = ["python"]
+python = ["padre_python"]
+
 [dependencies]
 clap = "2.32.0"
 futures = "0.3.1"
-libc = "0.2.65"
 padre_core = { path = "../core", version = "0.2.0" }
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
 tokio = { version = "0.2.1", features = ["full"] }
+
+# The debuggers, all optional
+padre_python = { path = "../debuggers/python", optional = true, version = "0.2.0" }

@@ -3,19 +3,18 @@
 //! The main Python Debugger entry point. Handles listening for instructions and
 //! communicating through the `Process`.
 
-use std::io;
-use std::path::PathBuf;
+// use std::io;
+// use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+// use std::time::Duration;
 
-use super::process::{Event, Listener, PDBStatus, Process};
-//use crate::config::Config;
-//use crate::debugger::{FileLocation, Variable};
-//use crate::notifier::{log_msg, LogLevel};
+use super::process::Process;
+// use super::process::{Event, Listener, PDBStatus, Process};
+// use padre_core::config::Config;
+use padre_core::server::{FileLocation, Variable};
+use padre_core::notifier::{log_msg, LogLevel};
 
-use bytes::Bytes;
-use tokio::prelude::*;
 //use tokio::sync::mpsc;
 
 #[derive(Debug)]
@@ -81,13 +80,13 @@ impl ImplDebugger {
         file_location: &FileLocation,
         //config: Arc<Mutex<Config>>,
     ) {
-        log_msg(
-            LogLevel::INFO,
-            &format!(
-                "Setting breakpoint in file {} at line number {}",
-                file_location.name, file_location.line_num
-            ),
-        );
+        //log_msg(
+        //    LogLevel::INFO,
+        //    &format!(
+        //        "Setting breakpoint in file {} at line number {}",
+        //        file_location.name, file_location.line_num
+        //    ),
+        //);
 
         //        // If not started yet add as a pending breakpoint that will get set during run period.
         //        match self.process.lock().unwrap().get_status() {

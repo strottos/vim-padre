@@ -5,24 +5,23 @@
 //! happening then.
 
 use std::collections::HashMap;
-use std::io;
 use std::path::Path;
 #[cfg(not(test))]
 use std::process::exit;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
-use padre::debugger::{FileLocation, Variable};
-use padre::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
+use padre_core::server::{FileLocation, Variable};
+use padre_core::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
 #[cfg(not(test))]
-use padre::util::{file_exists, get_file_full_path};
-use padre::util::{read_output, setup_stdin};
+use padre_core::util::{file_exists, get_file_full_path};
+use padre_core::util::{read_output, setup_stdin};
 
 use bytes::Bytes;
+use futures::prelude::*;
 use regex::Regex;
 use tokio::io::BufReader;
-use tokio::net::process::{Command, Child, ChildStderr, ChildStdout};
-use tokio::prelude::*;
+use tokio::process::{Command, Child, ChildStderr, ChildStdout};
 use tokio::sync::mpsc::Sender;
 
 #[derive(Debug, Clone, PartialEq)]

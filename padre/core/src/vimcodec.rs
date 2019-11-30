@@ -15,10 +15,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 /// Decodes requests and encodes responses sent by or to VIM over VIM's socket communication
 ///
-/// Given a request of the form
-/// ```
-/// [1,{"cmd":"breakpoint","file":"test.c","line":1}]
-/// ```
+/// Given a request of the form: `[1,{"cmd":"breakpoint","file":"test.c","line":1}]`
 /// it decodes this into a PadreRequest with an `id` of `1` and a RequestCmd of `Breakpoint`
 /// with the correct file location.
 #[derive(Debug)]
@@ -433,7 +430,8 @@ mod tests {
         let mut codec = super::VimCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(19);
-        buf.put(r#"[123,{"cmd":"run"}]"#);
+        let s = r#"[123,{"cmd":"run"}]"#;
+        buf.put(s.as_bytes());
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -448,7 +446,8 @@ mod tests {
         let mut codec = super::VimCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(19);
-        buf.put(r#"[123,{"cmd":"run"}]"#);
+        let s = r#"[123,{"cmd":"run"}]"#;
+        buf.put(s.as_bytes());
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -459,7 +458,8 @@ mod tests {
 
         let mut buf = BytesMut::new();
         buf.reserve(20);
-        buf.put(r#"[124,{"cmd":"ping"}]"#);
+        let s = r#"[124,{"cmd":"ping"}]"#;
+        buf.put(s.as_bytes());
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -474,14 +474,16 @@ mod tests {
         let mut codec = super::VimCodec::new();
         let mut buf = BytesMut::new();
         buf.reserve(16);
-        buf.put(r#"[123,{"cmd":"run"#);
+        let s = r#"[123,{"cmd":"run"#;
+        buf.put(s.as_bytes());
 
         let padre_request = codec.decode(&mut buf).unwrap();
 
         assert_eq!(None, padre_request);
 
         buf.reserve(3);
-        buf.put(r#""}]"#);
+        let s = r#""}]"#;
+        buf.put(s.as_bytes());
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -500,8 +502,8 @@ mod tests {
 
         let mut expected = BytesMut::new();
         expected.reserve(22);
-        expected.put(r#"[123,{"ping":"pong"}]"#);
-        expected.put("\n");
+        let s = format!("{}{}", r#"[123,{"ping":"pong"}]"#, "\n");
+        expected.put(s.as_bytes());
 
         assert_eq!(expected, buf);
     }
@@ -518,8 +520,8 @@ mod tests {
 
         let mut expected = BytesMut::new();
         expected.reserve(31);
-        expected.put(r#"["call","cmd_test",["test",1]]"#);
-        expected.put("\n");
+        let s = format!("{}{}", r#"["call","cmd_test",["test",1]]"#, "\n");
+        expected.put(s.as_bytes());
 
         assert_eq!(expected, buf);
     }

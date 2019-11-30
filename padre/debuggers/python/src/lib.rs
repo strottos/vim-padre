@@ -1,5 +1,8 @@
 //! The Python debugger module
 
+#[macro_use]
+extern crate lazy_static;
+
 mod debugger;
 mod process;
 

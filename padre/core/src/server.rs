@@ -9,7 +9,8 @@ use std::process::{Command, Stdio};
 use std::str;
 
 use crate::config::Config;
-use crate::notifier::{add_listener, log_msg, remove_listener, LogLevel};
+// TODO: Add in remove_listener
+use crate::notifier::{add_listener, log_msg, LogLevel};
 use crate::vimcodec::VimCodec;
 
 use futures::{SinkExt, StreamExt};
@@ -72,9 +73,15 @@ pub enum PadreCmd {
 /// Examples:
 ///
 /// ```
-/// let command = RequestCmd::Cmd("run")
-/// let command = RequestCmd::CmdWithFileLocation("breakpoint", "test.c", 12)
-/// let command = RequestCmd::CmdWithVariable("print", "abc")
+/// use padre_core::server::{RequestCmd, DebuggerCmd, FileLocation, Variable};
+///
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Run);
+///
+/// let file_location = FileLocation::new("test.c".to_string(), 12);
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Breakpoint(file_location));
+///
+/// let variable = Variable::new("abc".to_string());
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Print(variable));
 /// ```
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 pub enum RequestCmd {

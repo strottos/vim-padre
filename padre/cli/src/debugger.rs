@@ -4,18 +4,18 @@
 //! and creates the main debugger objects.
 
 use std::fmt::Debug;
-use std::io;
 use std::sync::{Arc, Mutex};
 
-use padre_core::config::Config;
+use padre_core::server::DebuggerCmd;
 use padre_core::util::{file_is_binary_executable, file_is_text};
 
-use tokio::prelude::*;
+use futures::StreamExt;
 use tokio::sync::mpsc::Receiver;
 
 //mod lldb;
 //mod node;
-mod python;
+#[cfg(feature = "python")]
+use padre_python;
 
 /// Debuggers
 #[derive(Debug)]
@@ -25,49 +25,13 @@ enum DebuggerType {
     Python,
 }
 
-/// File location
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
-pub struct FileLocation {
-    name: String,
-    line_num: u64,
-}
-
-impl FileLocation {
-    pub fn new(name: String, line_num: u64) -> Self {
-        FileLocation { name, line_num }
-    }
-}
-
-/// Variable name
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
-pub struct Variable {
-    name: String,
-}
-
-impl Variable {
-    pub fn new(name: String) -> Self {
-        Variable { name }
-    }
-}
-
-/// All debugger commands
-#[derive(Clone, Deserialize, Debug, PartialEq)]
-pub enum DebuggerCmd {
-    Run,
-    Breakpoint(FileLocation),
-    StepIn,
-    StepOver,
-    Continue,
-    Print(Variable),
-}
-
 #[derive(Debug)]
 pub struct Debugger {
-    debugger: Arc<Mutex<python::ImplDebugger>>,
+    debugger: Arc<Mutex<padre_python::ImplDebugger>>,
 }
 
 impl Debugger {
-    pub fn new(impl_debugger: Arc<Mutex<python::ImplDebugger>>, mut queue_rx: Receiver<DebuggerCmd>) -> Debugger {
+    pub fn new(impl_debugger: Arc<Mutex<padre_python::ImplDebugger>>, mut queue_rx: Receiver<DebuggerCmd>) -> Debugger {
         let debugger = Debugger {
             debugger: impl_debugger.clone(),
         };
@@ -140,10 +104,10 @@ pub async fn create_debugger(
         },
     };
 
-    let mut debugger: python::ImplDebugger = python::ImplDebugger::new(debugger_cmd, run_cmd);
+    let debugger: padre_python::ImplDebugger = padre_python::ImplDebugger::new(debugger_cmd, run_cmd);
     //        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
     //        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
-    //        DebuggerType::Python => Box::new(python::ImplDebugger::new(debugger_cmd, run_cmd)),
+    //        DebuggerType::Python => Box::new(padre_python::ImplDebugger::new(debugger_cmd, run_cmd)),
     //    };
 
     Debugger::new(Arc::new(Mutex::new(debugger)), queue_rx)

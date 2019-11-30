@@ -332,8 +332,11 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "futures",
- "libc",
  "padre_core",
+ "padre_python",
+ "serde",
+ "serde_derive",
+ "serde_json",
  "tokio",
 ]
 
@@ -351,6 +354,18 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "padre_python"
+version = "0.2.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "lazy_static",
+ "padre_core",
+ "regex",
+ "tokio",
 ]
 
 [[package]]
