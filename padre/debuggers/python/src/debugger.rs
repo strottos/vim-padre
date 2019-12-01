@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::process::{Message, PDBStatus, Process};
-use padre_core::server::{FileLocation, Variable};
 use padre_core::notifier::{log_msg, LogLevel};
+use padre_core::server::{FileLocation, Variable};
 
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -36,12 +36,12 @@ impl ImplDebugger {
     /// Run python and perform any setup necessary
     pub fn run(&mut self, timeout: Instant) {
         match self.process.lock().unwrap().get_status() {
-            PDBStatus::None => {},
+            PDBStatus::None => {}
             _ => {
-                 let msg = "Process already running, not launching";
-                 eprintln!("{}", msg);
-                 log_msg(LogLevel::WARN, msg);
-                 return;
+                let msg = "Process already running, not launching";
+                eprintln!("{}", msg);
+                log_msg(LogLevel::WARN, msg);
+                return;
             }
         }
 
@@ -64,7 +64,7 @@ impl ImplDebugger {
                         // And send the breakpoint info
                         process.lock().unwrap().send_msg(Message::Breakpoint(pb));
                     }
-                },
+                }
                 None => {}
             };
         });
@@ -76,20 +76,20 @@ impl ImplDebugger {
         });
     }
 
-    pub fn breakpoint(
-        &mut self,
-        file_location: &FileLocation,
-        timeout: Instant,
-    ) {
+    pub fn breakpoint(&mut self, file_location: &FileLocation, timeout: Instant) {
         let full_file_path = PathBuf::from(format!("{}", file_location.name()));
         let full_file_name = full_file_path.canonicalize().unwrap();
-        let file_location = FileLocation::new(full_file_name.to_str().unwrap().to_string(), file_location.line_num());
+        let file_location = FileLocation::new(
+            full_file_name.to_str().unwrap().to_string(),
+            file_location.line_num(),
+        );
 
         log_msg(
             LogLevel::INFO,
             &format!(
                 "Setting breakpoint in file {} at line number {}",
-                file_location.name(), file_location.line_num()
+                file_location.name(),
+                file_location.line_num()
             ),
         );
 
@@ -105,7 +105,8 @@ impl ImplDebugger {
                     LogLevel::INFO,
                     &format!(
                         "Breakpoint pending in file {} at line number {}",
-                        file_location.name(), file_location.line_num()
+                        file_location.name(),
+                        file_location.line_num()
                     ),
                 );
 
@@ -114,7 +115,10 @@ impl ImplDebugger {
             _ => {}
         }
 
-        self.process.lock().unwrap().send_msg(Message::Breakpoint(file_location));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Breakpoint(file_location));
     }
 
     pub fn step_in(&mut self, timeout: Instant) {
@@ -144,11 +148,7 @@ impl ImplDebugger {
         self.process.lock().unwrap().send_msg(Message::Continue);
     }
 
-    pub fn print(
-        &mut self,
-        variable: &Variable,
-        timeout: Instant,
-    ) {
+    pub fn print(&mut self, variable: &Variable, timeout: Instant) {
         //        //match self.check_process_running() {
         //        //    Some(f) => return f,
         //        //    None => {}
@@ -190,6 +190,9 @@ impl ImplDebugger {
         //                io::Error::new(io::ErrorKind::Other, "Timed out printing variable")
         //            });
 
-        self.process.lock().unwrap().send_msg(Message::PrintVariable(variable.clone()));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::PrintVariable(variable.clone()));
     }
 }

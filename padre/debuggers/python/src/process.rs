@@ -10,8 +10,8 @@ use std::process::exit;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
-use padre_core::server::{FileLocation, Variable};
 use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
+use padre_core::server::{FileLocation, Variable};
 #[cfg(not(test))]
 use padre_core::util::{file_exists, get_file_full_path};
 use padre_core::util::{read_output, setup_stdin};
@@ -20,7 +20,7 @@ use bytes::Bytes;
 use futures::prelude::*;
 use regex::Regex;
 use tokio::io::BufReader;
-use tokio::process::{Command, Child, ChildStderr, ChildStdout};
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::sync::mpsc::Sender;
 
 /// You can register to listen for one of the following events:
@@ -168,7 +168,10 @@ impl Process {
             .spawn()
             .expect("Failed to spawn debugger");
 
-        log_msg(LogLevel::INFO, &format!("Process launched with pid: {}", process.id()));
+        log_msg(
+            LogLevel::INFO,
+            &format!("Process launched with pid: {}", process.id()),
+        );
 
         self.setup_stdout(
             process
@@ -224,14 +227,12 @@ impl Process {
             let msg = match message.clone() {
                 Message::Breakpoint(fl) => {
                     Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))
-                },
+                }
                 Message::StepIn => Bytes::from("step\n"),
                 Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),
                 Message::Launching => unreachable!(),
-                Message::PrintVariable(v) => {
-                    Bytes::from(format!("print({})\n", v.name()))
-                }
+                Message::PrintVariable(v) => Bytes::from(format!("print({})\n", v.name())),
             };
 
             analyser.lock().unwrap().status = PDBStatus::Processing(message);
@@ -324,7 +325,10 @@ impl Analyser {
             for cap in RE_BREAKPOINT.captures_iter(line) {
                 let file = cap[2].to_string();
                 let line = cap[3].parse::<u64>().unwrap();
-                log_msg(LogLevel::INFO, &format!("Breakpoint set at file {} and line number {}", file, line));
+                log_msg(
+                    LogLevel::INFO,
+                    &format!("Breakpoint set at file {} and line number {}", file, line),
+                );
                 self.set_listening();
             }
 
@@ -360,10 +364,10 @@ impl Analyser {
                     Message::PrintVariable(var) => {
                         self.print_variable(var.clone(), s);
                     }
-                    _ => {},
+                    _ => {}
                 };
-            },
-            _ => {},
+            }
+            _ => {}
         };
     }
 
@@ -379,7 +383,7 @@ impl Analyser {
                 tokio::spawn(async move {
                     x.send(true).await.unwrap();
                 });
-            },
+            }
             None => {}
         };
     }

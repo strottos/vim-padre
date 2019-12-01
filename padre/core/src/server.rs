@@ -221,7 +221,9 @@ pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<(Debugger
 
     tokio::spawn(async move {
         while let Some(req) = request_rx.next().await {
-            let resp = respond(req.unwrap(), debugger_queue_tx.clone(), config.clone()).await.unwrap();
+            let resp = respond(req.unwrap(), debugger_queue_tx.clone(), config.clone())
+                .await
+                .unwrap();
             connection_tx
                 .clone()
                 .send(PadreSend::Response(resp))
@@ -260,8 +262,14 @@ async fn respond<'a>(
             }
         }
         RequestCmd::DebuggerCmd(cmd, timeout) => {
-            debugger_queue_tx.send((cmd.clone(), *timeout)).await.unwrap();
-            Ok(Response::new(request.id(), serde_json::json!({"status":"OK"})))
+            debugger_queue_tx
+                .send((cmd.clone(), *timeout))
+                .await
+                .unwrap();
+            Ok(Response::new(
+                request.id(),
+                serde_json::json!({"status":"OK"}),
+            ))
         }
     }
 }

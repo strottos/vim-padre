@@ -32,7 +32,10 @@ pub struct Debugger {
 }
 
 impl Debugger {
-    pub fn new(impl_debugger: Arc<Mutex<padre_python::ImplDebugger>>, mut queue_rx: Receiver<(DebuggerCmd, Instant)>) -> Debugger {
+    pub fn new(
+        impl_debugger: Arc<Mutex<padre_python::ImplDebugger>>,
+        mut queue_rx: Receiver<(DebuggerCmd, Instant)>,
+    ) -> Debugger {
         let debugger = Debugger {
             debugger: impl_debugger.clone(),
         };
@@ -50,7 +53,7 @@ impl Debugger {
                     DebuggerCmd::Continue => debugger.continue_(cmd.1),
                     DebuggerCmd::Print(v) => debugger.print(&v, cmd.1),
                 };
-            };
+            }
         });
 
         debugger
@@ -104,7 +107,8 @@ pub async fn create_debugger(
         },
     };
 
-    let debugger: padre_python::ImplDebugger = padre_python::ImplDebugger::new(debugger_cmd, run_cmd);
+    let debugger: padre_python::ImplDebugger =
+        padre_python::ImplDebugger::new(debugger_cmd, run_cmd);
     //        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
     //        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
     //        DebuggerType::Python => Box::new(padre_python::ImplDebugger::new(debugger_cmd, run_cmd)),

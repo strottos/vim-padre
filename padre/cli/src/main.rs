@@ -28,9 +28,9 @@ use clap::{App, Arg, ArgMatches};
 use futures::prelude::*;
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
-use tokio::time::delay_for;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
+use tokio::time::delay_for;
 
 use padre_core::server;
 use padre_core::util;
@@ -114,7 +114,13 @@ async fn run_padre() -> () {
     // TODO: Do we need to wrap in Arc/Mutex any more now/when we're on new tokio 0.2? Probably in
     // the case of multiple connections but is there a way around it?
     let debugger = Arc::new(Mutex::new(
-        debugger::create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd, debugger_queue_rx).await,
+        debugger::create_debugger(
+            args.value_of("debugger"),
+            args.value_of("type"),
+            debug_cmd,
+            debugger_queue_rx,
+        )
+        .await,
     ));
 
     let connection_addr = get_connection(&args);
