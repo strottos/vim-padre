@@ -34,7 +34,7 @@ impl ImplDebugger {
     }
 
     /// Run python and perform any setup necessary
-    pub fn run(&mut self, timeout: Instant) {
+    pub fn run(&mut self, _timeout: Instant) {
         match self.process.lock().unwrap().get_status() {
             PDBStatus::None => {}
             _ => {
@@ -76,7 +76,7 @@ impl ImplDebugger {
         });
     }
 
-    pub fn breakpoint(&mut self, file_location: &FileLocation, timeout: Instant) {
+    pub fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
         let full_file_path = PathBuf::from(format!("{}", file_location.name()));
         let full_file_name = full_file_path.canonicalize().unwrap();
         let file_location = FileLocation::new(
@@ -121,7 +121,7 @@ impl ImplDebugger {
             .send_msg(Message::Breakpoint(file_location));
     }
 
-    pub fn step_in(&mut self, timeout: Instant) {
+    pub fn step_in(&mut self, _timeout: Instant) {
         //match self.check_process_running() {
         //    Some(f) => return f,
         //    None => {}
@@ -130,7 +130,7 @@ impl ImplDebugger {
         self.process.lock().unwrap().send_msg(Message::StepIn);
     }
 
-    pub fn step_over(&mut self, timeout: Instant) {
+    pub fn step_over(&mut self, _timeout: Instant) {
         //match self.check_process_running() {
         //    Some(f) => return f,
         //    None => {}
@@ -139,7 +139,7 @@ impl ImplDebugger {
         self.process.lock().unwrap().send_msg(Message::StepOver);
     }
 
-    pub fn continue_(&mut self, timeout: Instant) {
+    pub fn continue_(&mut self, _timeout: Instant) {
         //match self.check_process_running() {
         //    Some(f) => return f,
         //    None => {}
@@ -148,7 +148,7 @@ impl ImplDebugger {
         self.process.lock().unwrap().send_msg(Message::Continue);
     }
 
-    pub fn print(&mut self, variable: &Variable, timeout: Instant) {
+    pub fn print(&mut self, variable: &Variable, _timeout: Instant) {
         //        //match self.check_process_running() {
         //        //    Some(f) => return f,
         //        //    None => {}
