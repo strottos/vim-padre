@@ -13,7 +13,7 @@ use std::task::{Context, Poll};
 
 use crate::notifier::{log_msg, LogLevel};
 
-use bytes::{Bytes, BufMut};
+use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use pin_project::{pin_project, project};
 use tokio::io::{stdin, AsyncBufRead};

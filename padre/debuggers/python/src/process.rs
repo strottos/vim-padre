@@ -395,19 +395,6 @@ impl Analyser {
         let msg = format!("variable {}={}", variable.name(), &data[0..to]);
 
         log_msg(LogLevel::INFO, &msg);
-
-        // match self.listeners.remove(&Listener::PrintVariable) {
-        //     Some(mut listener) => {
-        //         let event = Event::PrintVariable(variable, data[0..to].to_string());
-        //         tokio::spawn(async move {
-        //             listener
-        //                 .send(event)
-        //                 .await
-        //                 .unwrap();
-        //         });
-        //     }
-        //     None => {}
-        // }
     }
 }
 

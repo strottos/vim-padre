@@ -8,7 +8,7 @@ use std::io;
 use std::process::{Command, Stdio};
 use std::str;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::config::Config;
 // TODO: Add in remove_listener
@@ -87,15 +87,16 @@ pub enum PadreCmd {
 /// Examples:
 ///
 /// ```
+/// use std::time::{Duration, Instant};
 /// use padre_core::server::{RequestCmd, DebuggerCmd, FileLocation, Variable};
 ///
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Run);
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Run, Instant::now() + Duration::new(5,0));
 ///
 /// let file_location = FileLocation::new("test.c".to_string(), 12);
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Breakpoint(file_location));
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Breakpoint(file_location), Instant::now() + Duration::new(5,0));
 ///
 /// let variable = Variable::new("abc".to_string());
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Print(variable));
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Print(variable), Instant::now() + Duration::new(5,0));
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum RequestCmd {

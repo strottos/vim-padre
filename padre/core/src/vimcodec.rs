@@ -489,6 +489,9 @@ impl<'a> Encoder for VimCodec<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use crate::config::Config;
     use crate::server::{
         DebuggerCmd, Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response,
     };
@@ -498,7 +501,9 @@ mod tests {
 
     #[test]
     fn check_simple_json_decoding() {
-        let mut codec = super::VimCodec::new();
+        let config = Arc::new(Mutex::new(Config::new()));
+
+        let mut codec = super::VimCodec::new(config);
         let mut buf = BytesMut::new();
         buf.reserve(19);
         let s = r#"[123,{"cmd":"run"}]"#;
@@ -506,15 +511,21 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(
-            PadreRequest::new(123, RequestCmd::DebuggerCmd(DebuggerCmd::Run)),
-            padre_request
-        );
+        assert_eq!(123, padre_request.id());
+
+        match padre_request.cmd() {
+            RequestCmd::DebuggerCmd(cmd, _) => {
+                assert_eq!(DebuggerCmd::Run, *cmd);
+            }
+            _ => panic!("Wrong command type"),
+        }
     }
 
     #[test]
     fn check_two_simple_json_decoding() {
-        let mut codec = super::VimCodec::new();
+        let config = Arc::new(Mutex::new(Config::new()));
+
+        let mut codec = super::VimCodec::new(config);
         let mut buf = BytesMut::new();
         buf.reserve(19);
         let s = r#"[123,{"cmd":"run"}]"#;
@@ -522,10 +533,14 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(
-            PadreRequest::new(123, RequestCmd::DebuggerCmd(DebuggerCmd::Run)),
-            padre_request
-        );
+        assert_eq!(123, padre_request.id());
+
+        match padre_request.cmd() {
+            RequestCmd::DebuggerCmd(cmd, _) => {
+                assert_eq!(DebuggerCmd::Run, *cmd);
+            }
+            _ => panic!("Wrong command type"),
+        }
 
         let mut buf = BytesMut::new();
         buf.reserve(20);
@@ -534,15 +549,21 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(
-            PadreRequest::new(124, RequestCmd::PadreCmd(PadreCmd::Ping)),
-            padre_request
-        );
+        assert_eq!(124, padre_request.id());
+
+        match padre_request.cmd() {
+            RequestCmd::PadreCmd(cmd) => {
+                assert_eq!(PadreCmd::Ping, *cmd);
+            }
+            _ => panic!("Wrong command type"),
+        }
     }
 
     #[test]
     fn check_two_buffers_json_decodings() {
-        let mut codec = super::VimCodec::new();
+        let config = Arc::new(Mutex::new(Config::new()));
+
+        let mut codec = super::VimCodec::new(config);
         let mut buf = BytesMut::new();
         buf.reserve(16);
         let s = r#"[123,{"cmd":"run"#;
@@ -558,15 +579,21 @@ mod tests {
 
         let padre_request = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(
-            PadreRequest::new(123, RequestCmd::DebuggerCmd(DebuggerCmd::Run)),
-            padre_request
-        );
+        assert_eq!(123, padre_request.id());
+
+        match padre_request.cmd() {
+            RequestCmd::DebuggerCmd(cmd, _) => {
+                assert_eq!(DebuggerCmd::Run, *cmd);
+            }
+            _ => panic!("Wrong command type"),
+        }
     }
 
     #[test]
     fn check_json_encoding_response() {
-        let mut codec = super::VimCodec::new();
+        let config = Arc::new(Mutex::new(Config::new()));
+
+        let mut codec = super::VimCodec::new(config);
         let resp = PadreSend::Response(Response::new(123, serde_json::json!({"ping":"pong"})));
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf).unwrap();
@@ -581,7 +608,9 @@ mod tests {
 
     #[test]
     fn check_json_encoding_notify() {
-        let mut codec = super::VimCodec::new();
+        let config = Arc::new(Mutex::new(Config::new()));
+
+        let mut codec = super::VimCodec::new(config);
         let resp = PadreSend::Notification(Notification::new(
             "cmd_test".to_string(),
             vec![serde_json::json!("test"), serde_json::json!(1)],
