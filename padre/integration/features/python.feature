@@ -80,11 +80,21 @@ Feature: Python
             | padre#debugger#JumpToPosition | [".*test_prog.py",6] |
         When I send a request to PADRE '{"cmd":"stepOver"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                         |
-            | padre#debugger#JumpToPosition | [".*test_prog.py",22]        |
-            | padre#debugger#Log            | [4,"Returning.*test string"] |
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.py",7] |
+        When I send a request to PADRE '{"cmd":"stepOver"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                           |
+            | padre#debugger#JumpToPosition | [".*test_prog.py",7]           |
+            | padre#debugger#Log            | [4,"Returning.*'test string'"] |
+        When I send a request to PADRE '{"cmd":"continue"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.py",22] |
         When I send a request to PADRE '{"cmd":"print","variable":"b"}'
-        Then I receive a response '{"status":"OK","variable":"b","value":"123"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function           | args                 |
+            | padre#debugger#Log | [4,"variable b=123"] |
         When I send a request to PADRE '{"cmd":"continue"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                  |

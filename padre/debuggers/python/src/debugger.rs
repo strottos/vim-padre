@@ -8,11 +8,10 @@ use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use super::process::{PDBStatus, Process};
+use super::process::{Message, PDBStatus, Process};
 use padre_core::server::{FileLocation, Variable};
 use padre_core::notifier::{log_msg, LogLevel};
 
-use bytes::Bytes;
 use futures::StreamExt;
 use tokio::sync::mpsc;
 
@@ -35,7 +34,7 @@ impl ImplDebugger {
     }
 
     /// Run python and perform any setup necessary
-    pub fn run(&mut self, timeout: Instant) { //, config: Arc<Mutex<Config>>) {
+    pub fn run(&mut self, timeout: Instant) {
         match self.process.lock().unwrap().get_status() {
             PDBStatus::None => {},
             _ => {
@@ -58,18 +57,12 @@ impl ImplDebugger {
                     for pb in pbs {
                         // Check we're actually listening
                         let (tx, mut rx) = mpsc::channel(1);
-                        process.lock().unwrap().add_listener(tx);
+                        process.lock().unwrap().add_awakener(tx);
                         rx.next().await.unwrap();
-                        process.lock().unwrap().drop_listener();
+                        process.lock().unwrap().drop_awakener();
 
                         // And send the breakpoint info
-                        let stmt = format!(
-                            "break {}:{}\n",
-                            pb.name(),
-                            pb.line_num()
-                        );
-
-                        process.lock().unwrap().write_stdin(Bytes::from(stmt));
+                        process.lock().unwrap().send_msg(Message::Breakpoint(pb));
                     }
                 },
                 None => {}
@@ -88,6 +81,10 @@ impl ImplDebugger {
         file_location: &FileLocation,
         timeout: Instant,
     ) {
+        let full_file_path = PathBuf::from(format!("{}", file_location.name()));
+        let full_file_name = full_file_path.canonicalize().unwrap();
+        let file_location = FileLocation::new(full_file_name.to_str().unwrap().to_string(), file_location.line_num());
+
         log_msg(
             LogLevel::INFO,
             &format!(
@@ -117,16 +114,7 @@ impl ImplDebugger {
             _ => {}
         }
 
-        // TODO: Timeout and error
-        let full_file_path = PathBuf::from(format!("{}", file_location.name()));
-        let full_file_name = full_file_path.canonicalize().unwrap();
-        let stmt = format!(
-            "break {}:{}\n",
-            full_file_name.to_str().unwrap(),
-            file_location.line_num()
-        );
-
-        self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
+        self.process.lock().unwrap().send_msg(Message::Breakpoint(file_location));
     }
 
     pub fn step_in(&mut self, timeout: Instant) {
@@ -135,10 +123,7 @@ impl ImplDebugger {
         //    None => {}
         //};
 
-        self.process
-            .lock()
-            .unwrap()
-            .write_stdin(Bytes::from("step\n"));
+        self.process.lock().unwrap().send_msg(Message::StepIn);
     }
 
     pub fn step_over(&mut self, timeout: Instant) {
@@ -147,10 +132,7 @@ impl ImplDebugger {
         //    None => {}
         //};
 
-        self.process
-            .lock()
-            .unwrap()
-            .write_stdin(Bytes::from("next\n"));
+        self.process.lock().unwrap().send_msg(Message::StepOver);
     }
 
     pub fn continue_(&mut self, timeout: Instant) {
@@ -159,10 +141,7 @@ impl ImplDebugger {
         //    None => {}
         //};
 
-        self.process
-            .lock()
-            .unwrap()
-            .write_stdin(Bytes::from("continue\n"));
+        self.process.lock().unwrap().send_msg(Message::Continue);
     }
 
     pub fn print(
@@ -210,11 +189,7 @@ impl ImplDebugger {
         //                eprintln!("Reading stdin error {:?}", e);
         //                io::Error::new(io::ErrorKind::Other, "Timed out printing variable")
         //            });
-        //
-        //        let stmt = format!("print({})\n", variable.name);
-        //
-        //        self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
-        //
-        //        Box::new(f)
+
+        self.process.lock().unwrap().send_msg(Message::PrintVariable(variable.clone()));
     }
 }

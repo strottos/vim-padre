@@ -64,6 +64,10 @@ impl Variable {
     pub fn new(name: String) -> Self {
         Variable { name }
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// All padre commands

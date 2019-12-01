@@ -4,7 +4,6 @@
 //! the pdb module. It will analyse the output of the text and work out what is
 //! happening then.
 
-use std::collections::HashMap;
 use std::path::Path;
 #[cfg(not(test))]
 use std::process::exit;
@@ -24,148 +23,28 @@ use tokio::io::BufReader;
 use tokio::process::{Command, Child, ChildStderr, ChildStdout};
 use tokio::sync::mpsc::Sender;
 
+/// You can register to listen for one of the following events:
+/// - Launching
+/// - Breakpoint
+/// - StepIn
+/// - StepOver
+/// - Continue
+/// - PrintVariable
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum Message {
+    Launching,
+    Breakpoint(FileLocation),
+    StepIn,
+    StepOver,
+    Continue,
+    PrintVariable(Variable),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PDBStatus {
     None,
     Listening,
-    Processing,
-}
-
-/// You can register to listen for one of the following events:
-/// - Breakpoint: A breakpoint event has happened
-/// - PrintVariable: A variable printing event
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub enum Listener {
-    Launch,
-    Breakpoint,
-    PrintVariable,
-}
-
-/// Main handler for spawning the Python process
-#[derive(Debug)]
-pub struct Process {
-    debugger_cmd: Option<String>,
-    run_cmd: Option<Vec<String>>,
-    process: Option<Child>,
-    stdin_tx: Option<Sender<Bytes>>,
-    analyser: Arc<Mutex<Analyser>>,
-}
-
-impl Process {
-    /// Create a new Process
-    pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
-        Process {
-            debugger_cmd: Some(debugger_cmd),
-            run_cmd: Some(run_cmd),
-            process: None,
-            stdin_tx: None,
-            analyser: Arc::new(Mutex::new(Analyser::new())),
-        }
-    }
-
-    /// Run Python program including loading the pdb module for debugging
-    ///
-    /// Includes spawning the Python process and setting up all the relevant stdio handlers.
-    /// In particular:
-    /// - Sets up a `ReadOutput` from `util.rs` in order to read stdout and stderr;
-    /// - Sets up a thread to read stdin and forward it onto Python interpreter;
-    /// - Checks that Python and the program to be ran both exist, otherwise panics.
-    pub fn run(&mut self) {
-        let debugger_cmd = self.debugger_cmd.take().unwrap();
-        let run_cmd = self.run_cmd.take().unwrap();
-
-        let args = get_python_args(&debugger_cmd[..], run_cmd.iter().map(|x| &x[..]).collect());
-
-        let mut process = Command::new(&debugger_cmd)
-            .args(&args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn debugger");
-
-        log_msg(LogLevel::INFO, &format!("Process launched with pid: {}", process.id()));
-
-        self.setup_stdout(
-            process
-                .stdout()
-                .take()
-                .expect("Python process did not have a handle to stdout"),
-        );
-        self.setup_stderr(
-            process
-                .stderr()
-                .take()
-                .expect("Python process did not have a handle to stderr"),
-        );
-        let stdin_tx = setup_stdin(
-            process
-                .stdin()
-                .take()
-                .expect("Python process did not have a handle to stdin"),
-            true,
-        );
-
-        self.analyser.lock().unwrap().set_pid(process.id() as u64);
-
-        self.stdin_tx = Some(stdin_tx);
-        self.process = Some(process);
-    }
-
-    /// Adds a Sender object that gets awoken when we are listening.
-    ///
-    /// Should only add a sender when we're about to go into or currently in the
-    /// processing status otherwise this will never wake up.
-    pub fn add_listener(&self, sender: Sender<bool>) {
-        self.analyser.lock().unwrap().add_listener(sender);
-    }
-
-    /// Drop the listener
-    pub fn drop_listener(&mut self) {
-        self.analyser.lock().unwrap().drop_listener();
-    }
-
-    /// Check the current status, either not running (None), running Python code
-    /// (Processing) or listening for a message on PDB (Listening).
-    pub fn get_status(&self) -> PDBStatus {
-        self.analyser.lock().unwrap().get_status()
-    }
-
-    /// Send a message to write to stdin
-    pub fn write_stdin(&mut self, bytes: Bytes) {
-        let tx = self.stdin_tx.clone();
-        let analyser = self.analyser.clone();
-        tokio::spawn(async move {
-            analyser.lock().unwrap().status = PDBStatus::Processing;
-            tx.clone()
-                .unwrap()
-                .send(bytes)
-                .map(move |_| {})
-                .await
-        });
-    }
-
-    /// Perform setup of reading Python stdout, analysing it and writing it back to stdout.
-    fn setup_stdout(&mut self, stdout: ChildStdout) {
-        let analyser = self.analyser.clone();
-        tokio::spawn(async move {
-            let mut reader = read_output(BufReader::new(stdout));
-            while let Some(Ok(text)) = reader.next().await {
-                print!("{}", text);
-                analyser.lock().unwrap().analyse_stdout(&text);
-            }
-        });
-    }
-
-    /// Perform setup of reading Python stderr, analysing it and writing it back to stdout.
-    fn setup_stderr(&mut self, stderr: ChildStderr) {
-        tokio::spawn(async {
-            let mut reader = read_output(BufReader::new(stderr));
-            while let Some(Ok(text)) = reader.next().await {
-                eprint!("{}", text);
-            }
-        });
-    }
+    Processing(Message),
 }
 
 /// Work out the arguments to send to python based on the python command given and the
@@ -246,11 +125,152 @@ fn get_python_args<'a>(debugger_cmd: &str, run_cmd: Vec<&'a str>) -> Vec<&'a str
     python_args
 }
 
+/// Main handler for spawning the Python process
+#[derive(Debug)]
+pub struct Process {
+    debugger_cmd: Option<String>,
+    run_cmd: Option<Vec<String>>,
+    process: Option<Child>,
+    stdin_tx: Option<Sender<Bytes>>,
+    analyser: Arc<Mutex<Analyser>>,
+}
+
+impl Process {
+    /// Create a new Process
+    pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
+        Process {
+            debugger_cmd: Some(debugger_cmd),
+            run_cmd: Some(run_cmd),
+            process: None,
+            stdin_tx: None,
+            analyser: Arc::new(Mutex::new(Analyser::new())),
+        }
+    }
+
+    /// Run Python program including loading the pdb module for debugging
+    ///
+    /// Includes spawning the Python process and setting up all the relevant stdio handlers.
+    /// In particular:
+    /// - Sets up a `ReadOutput` from `util.rs` in order to read stdout and stderr;
+    /// - Sets up a thread to read stdin and forward it onto Python interpreter;
+    /// - Checks that Python and the program to be ran both exist, otherwise panics.
+    pub fn run(&mut self) {
+        let debugger_cmd = self.debugger_cmd.take().unwrap();
+        let run_cmd = self.run_cmd.take().unwrap();
+
+        let args = get_python_args(&debugger_cmd[..], run_cmd.iter().map(|x| &x[..]).collect());
+
+        let mut process = Command::new(&debugger_cmd)
+            .args(&args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn debugger");
+
+        log_msg(LogLevel::INFO, &format!("Process launched with pid: {}", process.id()));
+
+        self.setup_stdout(
+            process
+                .stdout()
+                .take()
+                .expect("Python process did not have a handle to stdout"),
+        );
+        self.setup_stderr(
+            process
+                .stderr()
+                .take()
+                .expect("Python process did not have a handle to stderr"),
+        );
+        let stdin_tx = setup_stdin(
+            process
+                .stdin()
+                .take()
+                .expect("Python process did not have a handle to stdin"),
+            true,
+        );
+
+        self.analyser.lock().unwrap().set_pid(process.id() as u64);
+
+        self.stdin_tx = Some(stdin_tx);
+        self.process = Some(process);
+    }
+
+    /// Adds a Sender object that gets awoken when we are listening.
+    ///
+    /// Should only add a sender when we're about to go into or currently in the
+    /// processing status otherwise this will never wake up.
+    pub fn add_awakener(&self, sender: Sender<bool>) {
+        self.analyser.lock().unwrap().add_awakener(sender);
+    }
+
+    /// Drop the awakener
+    pub fn drop_awakener(&mut self) {
+        self.analyser.lock().unwrap().drop_awakener();
+    }
+
+    /// Check the current status, either not running (None), running something
+    /// (Processing) or listening for a message on PDB (Listening).
+    pub fn get_status(&self) -> PDBStatus {
+        self.analyser.lock().unwrap().get_status()
+    }
+
+    /// Send a message to write to stdin
+    pub fn send_msg(&mut self, message: Message) {
+        let tx = self.stdin_tx.clone();
+        let analyser = self.analyser.clone();
+
+        tokio::spawn(async move {
+            let msg = match message.clone() {
+                Message::Breakpoint(fl) => {
+                    Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))
+                },
+                Message::StepIn => Bytes::from("step\n"),
+                Message::StepOver => Bytes::from("next\n"),
+                Message::Continue => Bytes::from("continue\n"),
+                Message::Launching => unreachable!(),
+                Message::PrintVariable(v) => {
+                    Bytes::from(format!("print({})\n", v.name()))
+                }
+            };
+
+            analyser.lock().unwrap().status = PDBStatus::Processing(message);
+            tx.clone()
+                .unwrap()
+                .send(Bytes::from(msg))
+                .map(move |_| {})
+                .await
+        });
+    }
+
+    /// Perform setup of reading Python stdout, analysing it and writing it back to stdout.
+    fn setup_stdout(&mut self, stdout: ChildStdout) {
+        let analyser = self.analyser.clone();
+        tokio::spawn(async move {
+            let mut reader = read_output(BufReader::new(stdout));
+            while let Some(Ok(text)) = reader.next().await {
+                print!("{}", text);
+                analyser.lock().unwrap().analyse_stdout(&text);
+            }
+        });
+    }
+
+    /// Perform setup of reading Python stderr, analysing it and writing it back to stdout.
+    fn setup_stderr(&mut self, stderr: ChildStderr) {
+        tokio::spawn(async {
+            let mut reader = read_output(BufReader::new(stderr));
+            while let Some(Ok(text)) = reader.next().await {
+                eprint!("{}", text);
+            }
+        });
+    }
+}
+
 #[derive(Debug)]
 pub struct Analyser {
     status: PDBStatus,
     pid: Option<u64>,
-    listener: Option<Sender<bool>>,
+    awakener: Option<Sender<bool>>,
 }
 
 impl Analyser {
@@ -258,7 +278,7 @@ impl Analyser {
         Analyser {
             status: PDBStatus::None,
             pid: None,
-            listener: None,
+            awakener: None,
         }
     }
 
@@ -266,14 +286,14 @@ impl Analyser {
         self.status.clone()
     }
 
-    /// Add the listener to ping when we awaken
-    pub fn add_listener(&mut self, sender: Sender<bool>) {
-        self.listener = Some(sender);
+    /// Add the awakener to send a message to when we awaken
+    pub fn add_awakener(&mut self, sender: Sender<bool>) {
+        self.awakener = Some(sender);
     }
 
-    /// Drop the listener to ping when we awaken
-    pub fn drop_listener(&mut self) {
-        self.listener = None;
+    /// Drop the awakener
+    pub fn drop_awakener(&mut self) {
+        self.awakener = None;
     }
 
     pub fn analyse_stdout(&mut self, s: &str) {
@@ -292,14 +312,14 @@ impl Analyser {
         }
 
         for line in s.split("\n") {
-            if line.contains("(Pdb) ") {
-                match self.status {
-                    PDBStatus::None => {
-                        self.status = PDBStatus::Processing;
+            match self.status {
+                PDBStatus::None => {
+                    if line.contains("(Pdb) ") {
+                        self.status = PDBStatus::Processing(Message::Launching);
                     }
-                    _ => {}
-                };
-            }
+                }
+                _ => {}
+            };
 
             for cap in RE_BREAKPOINT.captures_iter(line) {
                 let file = cap[2].to_string();
@@ -334,12 +354,17 @@ impl Analyser {
             }
         }
 
-//        match self.status.clone() {
-//            PDBStatus::Printing(var) => {
-//                self.print_variable(var, s);
-//            }
-//            _ => {}
-//        }
+        match &self.status {
+            PDBStatus::Processing(msg) => {
+                match msg {
+                    Message::PrintVariable(var) => {
+                        self.print_variable(var.clone(), s);
+                    }
+                    _ => {},
+                };
+            },
+            _ => {},
+        };
     }
 
     pub fn set_pid(&mut self, pid: u64) {
@@ -348,8 +373,8 @@ impl Analyser {
 
     fn set_listening(&mut self) {
         self.status = PDBStatus::Listening;
-        let listener = self.listener.take();
-        match listener {
+        let awakener = self.awakener.take();
+        match awakener {
             Some(mut x) => {
                 tokio::spawn(async move {
                     x.send(true).await.unwrap();
@@ -359,13 +384,18 @@ impl Analyser {
         };
     }
 
-    fn print_variable(&mut self, variable: Variable, data: &str) {
+    fn print_variable(&self, variable: Variable, data: &str) {
         let len = data.len();
         if len < 2 {
             return;
         }
 
         let to = data.len() - 2;
+
+        let msg = format!("variable {}={}", variable.name(), &data[0..to]);
+
+        log_msg(LogLevel::INFO, &msg);
+
         // match self.listeners.remove(&Listener::PrintVariable) {
         //     Some(mut listener) => {
         //         let event = Event::PrintVariable(variable, data[0..to].to_string());
