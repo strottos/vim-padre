@@ -6,6 +6,10 @@ steps:
     displayName: Install rust
 
   - script: |
+        echo "PATH"
+        echo $PATH
+        which rustc
+        which cargo
         rustc -Vv
         cargo -V
     displayName: Query rust and cargo versions
