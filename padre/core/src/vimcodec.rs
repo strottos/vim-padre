@@ -492,9 +492,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::config::Config;
-    use crate::server::{
-        DebuggerCmd, Notification, PadreCmd, PadreRequest, PadreSend, RequestCmd, Response,
-    };
+    use crate::server::{DebuggerCmd, Notification, PadreCmd, PadreSend, RequestCmd, Response};
 
     use bytes::{BufMut, BytesMut};
     use tokio_util::codec::{Decoder, Encoder};
