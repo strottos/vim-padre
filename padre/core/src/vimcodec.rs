@@ -4,7 +4,10 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
+use crate::config::Config;
 use crate::server::{
     DebuggerCmd, FileLocation, PadreCmd, PadreRequest, PadreSend, RequestCmd, Variable,
 };
@@ -19,14 +22,16 @@ use tokio_util::codec::{Decoder, Encoder};
 /// it decodes this into a PadreRequest with an `id` of `1` and a RequestCmd of `Breakpoint`
 /// with the correct file location.
 #[derive(Debug)]
-pub struct VimCodec {}
+pub struct VimCodec<'a> {
+    config: Arc<Mutex<Config<'a>>>,
+}
 
-impl VimCodec {
+impl<'a> VimCodec<'a> {
     /// Constructor for creating a new VimCodec
     ///
     /// Just creates the object at present.
-    pub fn new() -> Self {
-        VimCodec {}
+    pub fn new(config: Arc<Mutex<Config<'a>>>) -> Self {
+        VimCodec { config }
     }
 
     /// Get and remove a `file location` from the arguments
@@ -166,7 +171,7 @@ impl VimCodec {
     }
 }
 
-impl Decoder for VimCodec {
+impl<'a> Decoder for VimCodec<'a> {
     type Item = PadreRequest;
     type Error = io::Error;
 
@@ -303,26 +308,81 @@ impl Decoder for VimCodec {
             ))),
             "run" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::Run),
+                RequestCmd::DebuggerCmd(
+                    DebuggerCmd::Run,
+                    Instant::now()
+                        + Duration::new(
+                            self.config
+                                .lock()
+                                .unwrap()
+                                .get_config("ProcessSpawnTimeout")
+                                .unwrap() as u64,
+                            0,
+                        ),
+                ),
             ))),
             "stepOver" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::StepOver),
+                RequestCmd::DebuggerCmd(
+                    DebuggerCmd::StepOver,
+                    Instant::now()
+                        + Duration::new(
+                            self.config
+                                .lock()
+                                .unwrap()
+                                .get_config("StepTimeout")
+                                .unwrap() as u64,
+                            0,
+                        ),
+                ),
             ))),
             "stepIn" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::StepIn),
+                RequestCmd::DebuggerCmd(
+                    DebuggerCmd::StepIn,
+                    Instant::now()
+                        + Duration::new(
+                            self.config
+                                .lock()
+                                .unwrap()
+                                .get_config("StepTimeout")
+                                .unwrap() as u64,
+                            0,
+                        ),
+                ),
             ))),
             "continue" => Ok(Some(PadreRequest::new(
                 id,
-                RequestCmd::DebuggerCmd(DebuggerCmd::Continue),
+                RequestCmd::DebuggerCmd(
+                    DebuggerCmd::Continue,
+                    Instant::now()
+                        + Duration::new(
+                            self.config
+                                .lock()
+                                .unwrap()
+                                .get_config("StepTimeout")
+                                .unwrap() as u64,
+                            0,
+                        ),
+                ),
             ))),
             "breakpoint" => {
                 let file_location = self.get_file_location(&mut args);
                 match file_location {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
-                        RequestCmd::DebuggerCmd(DebuggerCmd::Breakpoint(fl)),
+                        RequestCmd::DebuggerCmd(
+                            DebuggerCmd::Breakpoint(fl),
+                            Instant::now()
+                                + Duration::new(
+                                    self.config
+                                        .lock()
+                                        .unwrap()
+                                        .get_config("BreakpointTimeout")
+                                        .unwrap() as u64,
+                                    0,
+                                ),
+                        ),
                     ))),
                     None => return Ok(None),
                 }
@@ -332,7 +392,18 @@ impl Decoder for VimCodec {
                 match variable {
                     Some(v) => Ok(Some(PadreRequest::new(
                         id,
-                        RequestCmd::DebuggerCmd(DebuggerCmd::Print(v)),
+                        RequestCmd::DebuggerCmd(
+                            DebuggerCmd::Print(v),
+                            Instant::now()
+                                + Duration::new(
+                                    self.config
+                                        .lock()
+                                        .unwrap()
+                                        .get_config("PrintVariableTimeout")
+                                        .unwrap() as u64,
+                                    0,
+                                ),
+                        ),
                     ))),
                     None => return Ok(None),
                 }
@@ -389,7 +460,7 @@ impl Decoder for VimCodec {
     }
 }
 
-impl Encoder for VimCodec {
+impl<'a> Encoder for VimCodec<'a> {
     type Item = PadreSend;
     type Error = io::Error;
 

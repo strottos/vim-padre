@@ -5,6 +5,7 @@
 
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use padre_core::server::DebuggerCmd;
 use padre_core::util::{file_is_binary_executable, file_is_text};
@@ -31,7 +32,7 @@ pub struct Debugger {
 }
 
 impl Debugger {
-    pub fn new(impl_debugger: Arc<Mutex<padre_python::ImplDebugger>>, mut queue_rx: Receiver<DebuggerCmd>) -> Debugger {
+    pub fn new(impl_debugger: Arc<Mutex<padre_python::ImplDebugger>>, mut queue_rx: Receiver<(DebuggerCmd, Instant)>) -> Debugger {
         let debugger = Debugger {
             debugger: impl_debugger.clone(),
         };
@@ -41,13 +42,13 @@ impl Debugger {
         tokio::spawn(async move {
             while let Some(cmd) = queue_rx.next().await {
                 let mut debugger = queue_processing_debugger.lock().unwrap();
-                match cmd {
-                    DebuggerCmd::Run => debugger.run(),
-                    DebuggerCmd::Breakpoint(fl) => debugger.breakpoint(&fl),
-                    DebuggerCmd::StepIn => debugger.step_in(),
-                    DebuggerCmd::StepOver => debugger.step_over(),
-                    DebuggerCmd::Continue => debugger.continue_(),
-                    DebuggerCmd::Print(v) => debugger.print(&v),
+                match cmd.0 {
+                    DebuggerCmd::Run => debugger.run(cmd.1),
+                    DebuggerCmd::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
+                    DebuggerCmd::StepIn => debugger.step_in(cmd.1),
+                    DebuggerCmd::StepOver => debugger.step_over(cmd.1),
+                    DebuggerCmd::Continue => debugger.continue_(cmd.1),
+                    DebuggerCmd::Print(v) => debugger.print(&v, cmd.1),
                 };
             };
         });
@@ -56,8 +57,7 @@ impl Debugger {
     }
 
     pub fn stop(&mut self) {
-        //self.debugger.lock().unwrap().teardown();
-        std::process::exit(-1);
+        self.debugger.lock().unwrap().teardown();
     }
 }
 
@@ -69,7 +69,7 @@ pub async fn create_debugger(
     debugger_cmd: Option<&str>,
     debugger_type: Option<&str>,
     run_cmd: Vec<String>,
-    queue_rx: Receiver<DebuggerCmd>,
+    queue_rx: Receiver<(DebuggerCmd, Instant)>,
 ) -> Debugger {
     let debugger_type = match debugger_type {
         Some(s) => match s.to_ascii_lowercase().as_str() {

@@ -7,6 +7,8 @@ use std::env::current_exe;
 use std::io;
 use std::process::{Command, Stdio};
 use std::str;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::config::Config;
 // TODO: Add in remove_listener
@@ -21,7 +23,7 @@ use tokio_util::codec::Decoder;
 // TODO: Get some of this out of pub use and just in this module?
 
 /// All debugger commands
-#[derive(Clone, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DebuggerCmd {
     Run,
     Breakpoint(FileLocation),
@@ -32,7 +34,7 @@ pub enum DebuggerCmd {
 }
 
 /// File location
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FileLocation {
     name: String,
     line_num: u64,
@@ -42,10 +44,18 @@ impl FileLocation {
     pub fn new(name: String, line_num: u64) -> Self {
         FileLocation { name, line_num }
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn line_num(&self) -> u64 {
+        self.line_num
+    }
 }
 
 /// Variable name
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Variable {
     name: String,
 }
@@ -57,7 +67,7 @@ impl Variable {
 }
 
 /// All padre commands
-#[derive(Clone, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PadreCmd {
     Ping,
     Pings,
@@ -83,14 +93,14 @@ pub enum PadreCmd {
 /// let variable = Variable::new("abc".to_string());
 /// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Print(variable));
 /// ```
-#[derive(Clone, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum RequestCmd {
     PadreCmd(PadreCmd),
-    DebuggerCmd(DebuggerCmd),
+    DebuggerCmd(DebuggerCmd, Instant),
 }
 
 /// Contains full details of a request including an id to respond to and a `RequestCmd`
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct PadreRequest {
     id: u64,
     cmd: RequestCmd,
@@ -187,12 +197,12 @@ pub enum PadreSend {
 /// Process a TCP socket connection.
 ///
 /// Fully sets up a new socket connection including listening for requests and sending responses.
-pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<DebuggerCmd>) {
+pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<(DebuggerCmd, Instant)>) {
     let addr = stream.peer_addr().unwrap();
 
-    let mut config = Config::new();
+    let config = Arc::new(Mutex::new(Config::new()));
 
-    let (mut request_tx, mut request_rx) = VimCodec::new().framed(stream).split();
+    let (mut request_tx, mut request_rx) = VimCodec::new(config.clone()).framed(stream).split();
 
     let (connection_tx, mut connection_rx) = mpsc::channel(1);
 
@@ -206,7 +216,7 @@ pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<DebuggerC
 
     tokio::spawn(async move {
         while let Some(req) = request_rx.next().await {
-            let resp = respond(req.unwrap(), debugger_queue_tx.clone(), &mut config).await.unwrap();
+            let resp = respond(req.unwrap(), debugger_queue_tx.clone(), config.clone()).await.unwrap();
             connection_tx
                 .clone()
                 .send(PadreSend::Response(resp))
@@ -223,8 +233,8 @@ pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<DebuggerC
 /// Forwards the request to the appropriate place to handle it and responds appropriately.
 async fn respond<'a>(
     request: PadreRequest,
-    mut debugger_queue_tx: Sender<DebuggerCmd>,
-    config: &mut Config<'a>,
+    mut debugger_queue_tx: Sender<(DebuggerCmd, Instant)>,
+    config: Arc<Mutex<Config<'a>>>,
 ) -> Result<Response, io::Error> {
     match request.cmd() {
         RequestCmd::PadreCmd(cmd) => {
@@ -244,8 +254,8 @@ async fn respond<'a>(
                 }
             }
         }
-        RequestCmd::DebuggerCmd(cmd) => {
-            debugger_queue_tx.send(cmd.clone()).await.unwrap();
+        RequestCmd::DebuggerCmd(cmd, timeout) => {
+            debugger_queue_tx.send((cmd.clone(), *timeout)).await.unwrap();
             Ok(Response::new(request.id(), serde_json::json!({"status":"OK"})))
         }
     }
@@ -261,8 +271,8 @@ fn pings() -> Result<serde_json::Value, io::Error> {
     Ok(serde_json::json!({"status":"OK"}))
 }
 
-fn get_config(config: &Config, key: &str) -> Result<serde_json::Value, io::Error> {
-    let value = config.get_config(key);
+fn get_config(config: Arc<Mutex<Config>>, key: &str) -> Result<serde_json::Value, io::Error> {
+    let value = config.lock().unwrap().get_config(key);
     match value {
         Some(v) => Ok(serde_json::json!({"status":"OK","value":v})),
         None => Ok(serde_json::json!({"status":"ERROR"})),
@@ -270,11 +280,11 @@ fn get_config(config: &Config, key: &str) -> Result<serde_json::Value, io::Error
 }
 
 fn set_config(
-    config: &mut Config,
+    config: Arc<Mutex<Config>>,
     key: &str,
     value: i64,
 ) -> Result<serde_json::Value, io::Error> {
-    let config_set = config.set_config(key, value);
+    let config_set = config.lock().unwrap().set_config(key, value);
     match config_set {
         true => Ok(serde_json::json!({"status":"OK"})),
         false => Ok(serde_json::json!({"status":"ERROR"})),

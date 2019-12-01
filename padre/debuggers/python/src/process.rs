@@ -12,7 +12,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
 use padre_core::server::{FileLocation, Variable};
-use padre_core::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
+use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
 #[cfg(not(test))]
 use padre_core::util::{file_exists, get_file_full_path};
 use padre_core::util::{read_output, setup_stdin};
@@ -27,8 +27,8 @@ use tokio::sync::mpsc::Sender;
 #[derive(Debug, Clone, PartialEq)]
 pub enum PDBStatus {
     None,
-    Running,
-    Printing(Variable),
+    Listening,
+    Processing,
 }
 
 /// You can register to listen for one of the following events:
@@ -39,15 +39,6 @@ pub enum Listener {
     Launch,
     Breakpoint,
     PrintVariable,
-}
-
-/// A Python event is something that can be registered for being listened to and can be triggered
-/// when these events occur such that the listener is informed of them and passed some details
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub enum Event {
-    Launched,
-    BreakpointSet(FileLocation),
-    PrintVariable(Variable, String),
 }
 
 /// Main handler for spawning the Python process
@@ -121,26 +112,31 @@ impl Process {
         self.process = Some(process);
     }
 
-    pub fn add_listener(&self, kind: Listener, sender: Sender<Event>) {
-        self.analyser.lock().unwrap().add_listener(kind, sender);
+    /// Adds a Sender object that gets awoken when we are listening.
+    ///
+    /// Should only add a sender when we're about to go into or currently in the
+    /// processing status otherwise this will never wake up.
+    pub fn add_listener(&self, sender: Sender<bool>) {
+        self.analyser.lock().unwrap().add_listener(sender);
     }
 
-    pub fn get_pid(&self) -> u64 {
-        self.process.as_ref().unwrap().id() as u64
+    /// Drop the listener
+    pub fn drop_listener(&mut self) {
+        self.analyser.lock().unwrap().drop_listener();
     }
 
+    /// Check the current status, either not running (None), running Python code
+    /// (Processing) or listening for a message on PDB (Listening).
     pub fn get_status(&self) -> PDBStatus {
         self.analyser.lock().unwrap().get_status()
-    }
-
-    pub fn set_status(&self, status: PDBStatus) {
-        self.analyser.lock().unwrap().status = status;
     }
 
     /// Send a message to write to stdin
     pub fn write_stdin(&mut self, bytes: Bytes) {
         let tx = self.stdin_tx.clone();
+        let analyser = self.analyser.clone();
         tokio::spawn(async move {
+            analyser.lock().unwrap().status = PDBStatus::Processing;
             tx.clone()
                 .unwrap()
                 .send(bytes)
@@ -254,7 +250,7 @@ fn get_python_args<'a>(debugger_cmd: &str, run_cmd: Vec<&'a str>) -> Vec<&'a str
 pub struct Analyser {
     status: PDBStatus,
     pid: Option<u64>,
-    listeners: HashMap<Listener, Sender<Event>>,
+    listener: Option<Sender<bool>>,
 }
 
 impl Analyser {
@@ -262,12 +258,22 @@ impl Analyser {
         Analyser {
             status: PDBStatus::None,
             pid: None,
-            listeners: HashMap::new(),
+            listener: None,
         }
     }
 
     pub fn get_status(&mut self) -> PDBStatus {
         self.status.clone()
+    }
+
+    /// Add the listener to ping when we awaken
+    pub fn add_listener(&mut self, sender: Sender<bool>) {
+        self.listener = Some(sender);
+    }
+
+    /// Drop the listener to ping when we awaken
+    pub fn drop_listener(&mut self) {
+        self.listener = None;
     }
 
     pub fn analyse_stdout(&mut self, s: &str) {
@@ -289,7 +295,7 @@ impl Analyser {
             if line.contains("(Pdb) ") {
                 match self.status {
                     PDBStatus::None => {
-                        self.python_launched();
+                        self.status = PDBStatus::Processing;
                     }
                     _ => {}
                 };
@@ -298,7 +304,8 @@ impl Analyser {
             for cap in RE_BREAKPOINT.captures_iter(line) {
                 let file = cap[2].to_string();
                 let line = cap[3].parse::<u64>().unwrap();
-                self.found_breakpoint(file, line);
+                log_msg(LogLevel::INFO, &format!("Breakpoint set at file {} and line number {}", file, line));
+                self.set_listening();
             }
 
             for cap in RE_RETURNING.captures_iter(line) {
@@ -306,6 +313,7 @@ impl Analyser {
                 let line = cap[2].parse::<u64>().unwrap();
                 let return_value = cap[3].to_string();
                 jump_to_position(&file, line);
+                self.set_listening();
                 log_msg(LogLevel::INFO, &format!("Returning value {}", return_value));
             }
 
@@ -313,6 +321,7 @@ impl Analyser {
                 let file = cap[1].to_string();
                 let line = cap[2].parse::<u64>().unwrap();
                 jump_to_position(&file, line);
+                self.set_listening();
             }
 
             for _ in RE_PROCESS_EXITED.captures_iter(line) {
@@ -325,48 +334,29 @@ impl Analyser {
             }
         }
 
-        match self.status.clone() {
-            PDBStatus::Printing(var) => {
-                self.print_variable(var, s);
-            }
-            _ => {}
-        }
-    }
-
-    pub fn add_listener(&mut self, kind: Listener, sender: Sender<Event>) {
-        self.listeners.insert(kind, sender);
+//        match self.status.clone() {
+//            PDBStatus::Printing(var) => {
+//                self.print_variable(var, s);
+//            }
+//            _ => {}
+//        }
     }
 
     pub fn set_pid(&mut self, pid: u64) {
         self.pid = Some(pid);
     }
 
-    fn python_launched(&mut self) {
-        self.status = PDBStatus::Running;
-        match self.listeners.remove(&Listener::Launch) {
-            Some(mut listener) => {
+    fn set_listening(&mut self) {
+        self.status = PDBStatus::Listening;
+        let listener = self.listener.take();
+        match listener {
+            Some(mut x) => {
                 tokio::spawn(async move {
-                    listener.send(Event::Launched).await.unwrap();
+                    x.send(true).await.unwrap();
                 });
-            }
+            },
             None => {}
-        }
-    }
-
-    fn found_breakpoint(&mut self, file: String, line: u64) {
-        breakpoint_set(&file, line);
-        let file_location = FileLocation::new(file, line);
-        match self.listeners.remove(&Listener::Breakpoint) {
-            Some(mut listener) => {
-                tokio::spawn(async move {
-                    listener
-                        .send(Event::BreakpointSet(file_location))
-                        .await
-                        .unwrap();
-                });
-            }
-            None => {}
-        }
+        };
     }
 
     fn print_variable(&mut self, variable: Variable, data: &str) {
@@ -376,18 +366,18 @@ impl Analyser {
         }
 
         let to = data.len() - 2;
-        match self.listeners.remove(&Listener::PrintVariable) {
-            Some(mut listener) => {
-                let event = Event::PrintVariable(variable, data[0..to].to_string());
-                tokio::spawn(async move {
-                    listener
-                        .send(event)
-                        .await
-                        .unwrap();
-                });
-            }
-            None => {}
-        }
+        // match self.listeners.remove(&Listener::PrintVariable) {
+        //     Some(mut listener) => {
+        //         let event = Event::PrintVariable(variable, data[0..to].to_string());
+        //         tokio::spawn(async move {
+        //             listener
+        //                 .send(event)
+        //                 .await
+        //                 .unwrap();
+        //         });
+        //     }
+        //     None => {}
+        // }
     }
 }
 

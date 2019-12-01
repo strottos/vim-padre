@@ -122,15 +122,6 @@ pub fn jump_to_position(file: &str, line: u64) {
     NOTIFIER.lock().unwrap().send_msg(msg);
 }
 
-/// Notify that a breakpoint has been set
-pub fn breakpoint_set(file: &str, line: u64) {
-    let msg = Notification::new(
-        "padre#debugger#BreakpointSet".to_string(),
-        vec![serde_json::json!(file), serde_json::json!(line)],
-    );
-    NOTIFIER.lock().unwrap().send_msg(msg);
-}
-
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};

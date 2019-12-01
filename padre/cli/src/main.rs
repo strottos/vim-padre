@@ -18,9 +18,6 @@
 //! ```
 //! will run the program `my_program arg1 arg2 3 4` in an `lldb` session.
 
-#[macro_use]
-extern crate serde_derive;
-
 use std::io;
 use std::net::SocketAddr;
 use std::process::exit;

@@ -237,3 +237,5 @@ Feature: Basics
         Then I receive a response '{"status":"OK","value":25}' on connection 0
         When I send a request to PADRE '{"cmd":"getConfig","key":"BackPressure"}' on connection 1
         Then I receive a response '{"status":"OK","value":20}' on connection 1
+        When I terminate padre
+        Then padre is not running

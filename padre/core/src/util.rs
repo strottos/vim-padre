@@ -13,14 +13,14 @@ use std::task::{Context, Poll};
 
 use crate::notifier::{log_msg, LogLevel};
 
-use bytes::Bytes;
+use bytes::{Bytes, BufMut};
 use futures::{Stream, StreamExt};
 use pin_project::{pin_project, project};
 use tokio::io::{stdin, AsyncBufRead};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, Sender};
-use tokio_util::codec::{FramedRead, LinesCodec};
+use tokio_util::codec::{FramedRead, BytesCodec};
 
 /// Get an unused port on the local system and return it. This port
 /// can subsequently be used.
@@ -92,9 +92,10 @@ pub fn setup_stdin(mut child_stdin: ChildStdin, output_stdin: bool) -> Sender<By
 
     tokio::spawn(async move {
         let tokio_stdin = stdin();
-        let mut reader = FramedRead::new(tokio_stdin, LinesCodec::new());
+        let mut reader = FramedRead::new(tokio_stdin, BytesCodec::new());
         while let Some(line) = reader.next().await {
-            tx.send(Bytes::from(line.unwrap() + "\n")).await.unwrap();
+            let buf = line.unwrap().freeze();
+            tx.send(buf).await.unwrap();
         }
     });
 

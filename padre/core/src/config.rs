@@ -38,6 +38,7 @@ impl<'a> Config<'a> {
         config.insert("ProcessSpawnTimeout", 10);
         config.insert("BreakpointTimeout", 2);
         config.insert("PrintVariableTimeout", 2);
+        config.insert("StepTimeout", 2);
         Config { config }
     }
 
