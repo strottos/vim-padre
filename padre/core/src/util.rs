@@ -13,14 +13,14 @@ use std::task::{Context, Poll};
 
 use crate::notifier::{log_msg, LogLevel};
 
-use bytes::{Bytes, BufMut};
+use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use pin_project::{pin_project, project};
 use tokio::io::{stdin, AsyncBufRead};
-use tokio::process::{Child, ChildStdin, Command};
 use tokio::prelude::*;
+use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::mpsc::{self, Sender};
-use tokio_util::codec::{FramedRead, BytesCodec};
+use tokio_util::codec::{BytesCodec, FramedRead};
 
 /// Get an unused port on the local system and return it. This port
 /// can subsequently be used.
@@ -186,7 +186,7 @@ async fn get_file_type(cmd: &str) -> String {
 pub struct ReadOutput<R> {
     #[pin]
     reader: R,
-    buf: Vec<u8>
+    buf: Vec<u8>,
 }
 
 /// Creates a new stream from the I/O object
@@ -209,29 +209,22 @@ impl<R: AsyncBufRead> Stream for ReadOutput<R> {
     #[project]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         #[project]
-        let ReadOutput {
-            mut reader,
-            buf,
-        } = self.project();
+        let ReadOutput { mut reader, buf } = self.project();
 
         loop {
             let used = {
                 match reader.as_mut().poll_fill_buf(cx) {
-                    Poll::Ready(s) => {
-                        match s {
-                            Ok(t) => {
-                                buf.extend_from_slice(t);
-                                t.len()
-                            }
-                            Err(e) => {
-                                println!("What to do here? {:?}", e);
-                                0
-                            }
+                    Poll::Ready(s) => match s {
+                        Ok(t) => {
+                            buf.extend_from_slice(t);
+                            t.len()
                         }
-                    }
-                    Poll::Pending => {
-                        0
-                    }
+                        Err(e) => {
+                            println!("What to do here? {:?}", e);
+                            0
+                        }
+                    },
+                    Poll::Pending => 0,
                 }
             };
 

@@ -8,7 +8,7 @@ use std::io;
 use std::process::{Command, Stdio};
 use std::str;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::config::Config;
 // TODO: Add in remove_listener
@@ -87,15 +87,16 @@ pub enum PadreCmd {
 /// Examples:
 ///
 /// ```
+/// use std::time::{Duration, Instant};
 /// use padre_core::server::{RequestCmd, DebuggerCmd, FileLocation, Variable};
 ///
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Run);
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Run, Instant::now() + Duration::new(5,0));
 ///
 /// let file_location = FileLocation::new("test.c".to_string(), 12);
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Breakpoint(file_location));
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Breakpoint(file_location), Instant::now() + Duration::new(5,0));
 ///
 /// let variable = Variable::new("abc".to_string());
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Print(variable));
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Print(variable), Instant::now() + Duration::new(5,0));
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum RequestCmd {
@@ -220,7 +221,9 @@ pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<(Debugger
 
     tokio::spawn(async move {
         while let Some(req) = request_rx.next().await {
-            let resp = respond(req.unwrap(), debugger_queue_tx.clone(), config.clone()).await.unwrap();
+            let resp = respond(req.unwrap(), debugger_queue_tx.clone(), config.clone())
+                .await
+                .unwrap();
             connection_tx
                 .clone()
                 .send(PadreSend::Response(resp))
@@ -259,8 +262,14 @@ async fn respond<'a>(
             }
         }
         RequestCmd::DebuggerCmd(cmd, timeout) => {
-            debugger_queue_tx.send((cmd.clone(), *timeout)).await.unwrap();
-            Ok(Response::new(request.id(), serde_json::json!({"status":"OK"})))
+            debugger_queue_tx
+                .send((cmd.clone(), *timeout))
+                .await
+                .unwrap();
+            Ok(Response::new(
+                request.id(),
+                serde_json::json!({"status":"OK"}),
+            ))
         }
     }
 }
