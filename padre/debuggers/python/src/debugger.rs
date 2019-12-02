@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use super::process::{Message, PDBStatus, Process};
 use padre_core::notifier::{log_msg, LogLevel};
-use padre_core::server::{FileLocation, Variable};
+use padre_core::server::{FileLocation, Variable, DebuggerV1};
 
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -28,13 +28,18 @@ impl ImplDebugger {
             pending_breakpoints: Some(vec![]),
         }
     }
+}
 
-    pub fn teardown(&mut self) {
+impl DebuggerV1 for ImplDebugger {
+
+    fn setup(&mut self) {}
+
+    fn teardown(&mut self) {
         exit(0);
     }
 
     /// Run python and perform any setup necessary
-    pub fn run(&mut self, _timeout: Instant) {
+    fn run(&mut self, _timeout: Instant) {
         match self.process.lock().unwrap().get_status() {
             PDBStatus::None => {}
             _ => {
@@ -76,7 +81,7 @@ impl ImplDebugger {
         });
     }
 
-    pub fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
+    fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
         let full_file_path = PathBuf::from(format!("{}", file_location.name()));
         let full_file_name = full_file_path.canonicalize().unwrap();
         let file_location = FileLocation::new(
@@ -121,7 +126,17 @@ impl ImplDebugger {
             .send_msg(Message::Breakpoint(file_location));
     }
 
-    pub fn step_in(&mut self, _timeout: Instant) {
+    fn unbreakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
+        let full_file_path = PathBuf::from(format!("{}", file_location.name()));
+        let full_file_name = full_file_path.canonicalize().unwrap();
+        let file_location = FileLocation::new(
+            full_file_name.to_str().unwrap().to_string(),
+            file_location.line_num(),
+        );
+
+    }
+
+    fn step_in(&mut self, _timeout: Instant) {
         //match self.check_process_running() {
         //    Some(f) => return f,
         //    None => {}
@@ -130,7 +145,7 @@ impl ImplDebugger {
         self.process.lock().unwrap().send_msg(Message::StepIn);
     }
 
-    pub fn step_over(&mut self, _timeout: Instant) {
+    fn step_over(&mut self, _timeout: Instant) {
         //match self.check_process_running() {
         //    Some(f) => return f,
         //    None => {}
@@ -139,7 +154,7 @@ impl ImplDebugger {
         self.process.lock().unwrap().send_msg(Message::StepOver);
     }
 
-    pub fn continue_(&mut self, _timeout: Instant) {
+    fn continue_(&mut self, _timeout: Instant) {
         //match self.check_process_running() {
         //    Some(f) => return f,
         //    None => {}
@@ -148,7 +163,7 @@ impl ImplDebugger {
         self.process.lock().unwrap().send_msg(Message::Continue);
     }
 
-    pub fn print(&mut self, variable: &Variable, _timeout: Instant) {
+    fn print(&mut self, variable: &Variable, _timeout: Instant) {
         //        //match self.check_process_running() {
         //        //    Some(f) => return f,
         //        //    None => {}

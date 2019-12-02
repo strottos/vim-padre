@@ -7,33 +7,38 @@ use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use padre_core::server::DebuggerCmd;
+use padre_core::server::{DebuggerCmd, DebuggerV1};
 use padre_core::util::{file_is_binary_executable, file_is_text};
 
 use futures::StreamExt;
 use tokio::sync::mpsc::Receiver;
 
-//mod lldb;
-//mod node;
+#[cfg(feature = "lldb")]
+mod lldb;
+#[cfg(feature = "node")]
+mod node;
 #[cfg(feature = "python")]
 use padre_python;
 
 /// Debuggers
 #[derive(Debug)]
 enum DebuggerType {
+    #[cfg(feature = "lldb")]
     LLDB,
+    #[cfg(feature = "node")]
     Node,
+    #[cfg(feature = "python")]
     Python,
 }
 
 #[derive(Debug)]
 pub struct Debugger {
-    debugger: Arc<Mutex<padre_python::ImplDebugger>>,
+    debugger: Arc<Mutex<dyn DebuggerV1 + Send>>,
 }
 
 impl Debugger {
     pub fn new(
-        impl_debugger: Arc<Mutex<padre_python::ImplDebugger>>,
+        impl_debugger: Arc<Mutex<dyn DebuggerV1 + Send>>,
         mut queue_rx: Receiver<(DebuggerCmd, Instant)>,
     ) -> Debugger {
         let debugger = Debugger {
@@ -76,8 +81,11 @@ pub async fn create_debugger(
 ) -> Debugger {
     let debugger_type = match debugger_type {
         Some(s) => match s.to_ascii_lowercase().as_str() {
+            #[cfg(feature = "lldb")]
             "lldb" => DebuggerType::LLDB,
+            #[cfg(feature = "python")]
             "python" => DebuggerType::Python,
+            #[cfg(feature = "node")]
             "node" => DebuggerType::Node,
             _ => panic!("Couldn't understand debugger type {}", s),
         },
@@ -85,8 +93,11 @@ pub async fn create_debugger(
             Some(s) => s,
             None => match debugger_cmd {
                 Some(s) => match s {
+                    #[cfg(feature = "lldb")]
                     "lldb" => DebuggerType::LLDB,
+                    #[cfg(feature = "python")]
                     "python" | "python3" => DebuggerType::Python,
+                    #[cfg(feature = "node")]
                     "node" => DebuggerType::Node,
                     _ => panic!(
                         "Can't find debugger type for {}, try specifying with -d or -t",
@@ -101,33 +112,45 @@ pub async fn create_debugger(
     let debugger_cmd = match debugger_cmd {
         Some(s) => s.to_string(),
         None => match debugger_type {
+            #[cfg(feature = "lldb")]
             DebuggerType::LLDB => "lldb".to_string(),
+            #[cfg(feature = "node")]
             DebuggerType::Node => "node".to_string(),
+            #[cfg(feature = "python")]
             DebuggerType::Python => "python3".to_string(),
         },
     };
 
-    let debugger: padre_python::ImplDebugger =
-        padre_python::ImplDebugger::new(debugger_cmd, run_cmd);
-    //        DebuggerType::LLDB => Box::new(lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
-    //        DebuggerType::Node => Box::new(node::ImplDebugger::new(debugger_cmd, run_cmd)),
-    //        DebuggerType::Python => Box::new(padre_python::ImplDebugger::new(debugger_cmd, run_cmd)),
-    //    };
+    let debugger: Arc<Mutex<dyn DebuggerV1 + Send>> = match debugger_type {
+        #[cfg(feature = "lldb")]
+        DebuggerType::LLDB => Arc::new(Mutex::new(padre_lldb::ImplDebugger::new(debugger_cmd, run_cmd))),
+        #[cfg(feature = "node")]
+        DebuggerType::Node => Arc::new(Mutex::new(padre_node::ImplDebugger::new(debugger_cmd, run_cmd))),
+        #[cfg(feature = "python")]
+        DebuggerType::Python => Arc::new(Mutex::new(padre_python::ImplDebugger::new(debugger_cmd, run_cmd))),
+    };
 
-    Debugger::new(Arc::new(Mutex::new(debugger)), queue_rx)
+    debugger.lock().unwrap().setup();
+    // let debugger: padre_python::ImplDebugger =
+    //     padre_python::ImplDebugger::new(debugger_cmd, run_cmd);
+
+    Debugger::new(debugger, queue_rx)
 }
 
 /// Guesses the debugger type
 async fn get_debugger_type(run_cmd: &str) -> Option<DebuggerType> {
     if is_node(&run_cmd).await {
-        Some(DebuggerType::Node)
+        #[cfg(feature = "node")]
+        return Some(DebuggerType::Node);
     } else if is_python(&run_cmd).await {
-        Some(DebuggerType::Python)
+        #[cfg(feature = "python")]
+        return Some(DebuggerType::Python);
     } else if is_lldb(&run_cmd).await {
-        Some(DebuggerType::LLDB)
-    } else {
-        None
+        #[cfg(feature = "lldb")]
+        return Some(DebuggerType::LLDB);
     }
+
+    None
 }
 
 /// Checks if the file is a binary executable
