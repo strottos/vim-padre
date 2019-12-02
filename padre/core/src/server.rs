@@ -4,6 +4,7 @@
 //! padre and debuggers for actioning.
 
 use std::env::current_exe;
+use std::fmt::Debug;
 use std::io;
 use std::process::{Command, Stdio};
 use std::str;
@@ -197,6 +198,19 @@ impl Notification {
 pub enum PadreSend {
     Response(Response),
     Notification(Notification),
+}
+
+/// Debugger trait that implements the basics
+pub trait DebuggerV1: Debug {
+    fn setup(&mut self);
+    fn teardown(&mut self);
+    fn run(&mut self, timeout: Instant);
+    fn breakpoint(&mut self, file_location: &FileLocation, timeout: Instant);
+    fn unbreakpoint(&mut self, file_location: &FileLocation, timeout: Instant);
+    fn step_in(&mut self, timeout: Instant);
+    fn step_over(&mut self, timeout: Instant);
+    fn continue_(&mut self, timeout: Instant);
+    fn print(&mut self, variable: &Variable, _timeout: Instant);
 }
 
 /// Process a TCP socket connection.
