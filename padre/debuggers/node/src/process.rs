@@ -2,14 +2,14 @@
 //!
 //! This module performs the basic setup and spawning of the Node process.
 
-use std::io::BufReader;
-
-use crate::util::{check_and_spawn_process, read_output, setup_stdin};
+use padre_core::util::{check_and_spawn_process, read_output, setup_stdin};
 
 use regex::Regex;
+use futures::prelude::*;
+use tokio::io::BufReader;
 use tokio::prelude::*;
+use tokio::process::{Child, ChildStderr, ChildStdout};
 use tokio::sync::mpsc::Sender;
-use tokio_process::{Child, ChildStderr, ChildStdout};
 
 /// Main handler for spawning the Node process
 #[derive(Debug)]
@@ -72,14 +72,12 @@ impl Process {
 
     /// Perform setup of reading Node stdout and writing it back to PADRE stdout.
     fn setup_stdout(&mut self, stdout: ChildStdout) {
-        tokio::spawn(
-            read_output(BufReader::new(stdout))
-                .for_each(move |text| {
-                    print!("{}", text);
-                    Ok(())
-                })
-                .map_err(|e| eprintln!("Err reading Node stdout: {}", e)),
-        );
+        tokio::spawn(async move {
+            let mut reader = read_output(BufReader::new(stdout));
+            while let Some(Ok(text)) = reader.next().await {
+                print!("{}", text);
+            }
+        });
     }
 
     /// Perform setup of reading Node stderr and writing it back to PADRE stderr.
@@ -87,30 +85,37 @@ impl Process {
     /// Also checks for the line about where the Debugger is listening as this is
     /// required for the websocket setup.
     fn setup_stderr(&mut self, stderr: ChildStderr, tx: Sender<String>) {
-        lazy_static! {
-            static ref RE_NODE_STARTED: Regex =
-                Regex::new("^Debugger listening on (ws://127.0.0.1:\\d+/.*)$").unwrap();
-        }
+        tokio::spawn(async move {
+            lazy_static! {
+                static ref RE_NODE_STARTED: Regex =
+                    Regex::new("^Debugger listening on (ws://127.0.0.1:\\d+/.*)$").unwrap();
+            }
 
-        let mut node_setup = false;
+            let mut node_setup = false;
 
-        tokio::spawn(
-            read_output(BufReader::new(stderr))
-                .for_each(move |text| {
-                    if !node_setup {
-                        'node_setup_start: for line in text.split("\n") {
-                            for cap in RE_NODE_STARTED.captures_iter(&line) {
-                                tx.clone().send(cap[1].to_string()).wait().unwrap();
-                                node_setup = true;
+            let mut reader = read_output(BufReader::new(stderr));
+
+            while let Some(Ok(text)) = reader.next().await {
+
+                if !node_setup {
+                    'node_setup_start: for line in text.split("\n") {
+                        let mut uri = None;
+                        for cap in RE_NODE_STARTED.captures_iter(&line) {
+                            uri = Some(cap[1].to_string().clone());
+                            node_setup = true;
+                        }
+                        match uri {
+                            Some(uri) => {
+                                tx.clone().send(uri).await.unwrap();
                                 break 'node_setup_start;
                             }
-                        }
-                    } else {
-                        eprint!("{}", text);
+                            None => {}
+                        };
                     }
-                    Ok(())
-                })
-                .map_err(|e| eprintln!("Err reading Node stderr: {}", e)),
-        );
+                } else {
+                    eprint!("{}", text);
+                }
+            }
+        });
     }
 }

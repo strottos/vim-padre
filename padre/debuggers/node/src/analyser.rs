@@ -5,11 +5,10 @@
 use std::sync::{Arc, Mutex};
 
 use super::ws::WSHandler;
-use crate::debugger::FileLocation;
-use crate::notifier::{breakpoint_set, jump_to_position, log_msg, signal_exited, LogLevel};
+use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
+use padre_core::server::FileLocation;
 
 use tokio::prelude::*;
-use websocket::OwnedMessage;
 
 /// Node script, indicated by receiving a 'Debugger.scriptParsed' message from Node
 #[derive(Debug, Eq, PartialEq)]
@@ -125,54 +124,54 @@ impl Analyser {
         let mut i = 0;
 
         while i != self.pending_breakpoints.len() {
-            if self.pending_breakpoints[i].name == file {
-                let bkpt = self.pending_breakpoints.remove(i);
+            //if self.pending_breakpoints[i].name() == file {
+            //    let bkpt = self.pending_breakpoints.remove(i);
 
-                let msg = OwnedMessage::Text(format!(
-                    "{{\
-                     \"method\":\"Debugger.setBreakpoint\",\
-                     \"params\":{{\
-                     \"location\":{{\
-                     \"scriptId\":\"{}\",\
-                     \"lineNumber\":{}\
-                     }}\
-                     }}\
-                     }}",
-                    script_id,
-                    bkpt.line_num - 1
-                ));
+            //    let msg = OwnedMessage::Text(format!(
+            //        "{{\
+            //         \"method\":\"Debugger.setBreakpoint\",\
+            //         \"params\":{{\
+            //         \"location\":{{\
+            //         \"scriptId\":\"{}\",\
+            //         \"lineNumber\":{}\
+            //         }}\
+            //         }}\
+            //         }}",
+            //        script_id,
+            //        bkpt.line_num() - 1
+            //    ));
 
-                let file = file.clone();
+            //    let file = file.clone();
 
-                let ws_handler = self.ws_handler.clone();
+            //    let ws_handler = self.ws_handler.clone();
 
-                tokio::spawn(
-                    ws_handler
-                        .lock()
-                        .unwrap()
-                        .send_and_receive_message(msg)
-                        .map(move |response| {
-                            if response["error"].is_null() {
-                                breakpoint_set(&file, bkpt.line_num);
-                            } else {
-                                log_msg(
-                                    LogLevel::CRITICAL,
-                                    &format!("Can't set breakpoint {:?}", bkpt),
-                                );
-                                panic!("Can't set breakpoint, panicking");
-                            }
-                        })
-                        .map_err(|e| {
-                            log_msg(
-                                LogLevel::CRITICAL,
-                                &format!("Can't set breakpoint, error: {}", e),
-                            );
-                            panic!("Can't set breakpoint, panicking");
-                        }),
-                );
-            } else {
-                i += 1;
-            }
+            //    tokio::spawn(
+            //        ws_handler
+            //            .lock()
+            //            .unwrap()
+            //            .send_and_receive_message(msg)
+            //            .map(move |response| {
+            //                if response["error"].is_null() {
+            //                    //breakpoint_set(&file, bkpt.line_num);
+            //                } else {
+            //                    log_msg(
+            //                        LogLevel::CRITICAL,
+            //                        &format!("Can't set breakpoint {:?}", bkpt),
+            //                    );
+            //                    panic!("Can't set breakpoint, panicking");
+            //                }
+            //            })
+            //            .map_err(|e| {
+            //                log_msg(
+            //                    LogLevel::CRITICAL,
+            //                    &format!("Can't set breakpoint, error: {}", e),
+            //                );
+            //                panic!("Can't set breakpoint, panicking");
+            //            }),
+            //    );
+            //} else {
+            //    i += 1;
+            //}
         }
 
         self.scripts.push(Script::new(file, script_id, is_internal));
