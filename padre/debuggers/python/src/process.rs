@@ -23,13 +23,7 @@ use tokio::io::BufReader;
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::sync::mpsc::Sender;
 
-/// You can register to listen for one of the following events:
-/// - Launching
-/// - Breakpoint
-/// - StepIn
-/// - StepOver
-/// - Continue
-/// - PrintVariable
+/// Messages that can be sent to PDB for processing
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum Message {
     Launching,
@@ -40,6 +34,7 @@ pub enum Message {
     PrintVariable(Variable),
 }
 
+/// Current status of PDB
 #[derive(Debug, Clone, PartialEq)]
 pub enum PDBStatus {
     None,
@@ -238,7 +233,7 @@ impl Process {
             analyser.lock().unwrap().status = PDBStatus::Processing(message);
             tx.clone()
                 .unwrap()
-                .send(Bytes::from(msg))
+                .send(msg)
                 .map(move |_| {})
                 .await
         });

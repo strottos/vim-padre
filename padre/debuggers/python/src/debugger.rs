@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use super::process::{Message, PDBStatus, Process};
 use padre_core::notifier::{log_msg, LogLevel};
-use padre_core::server::{FileLocation, Variable, DebuggerV1};
+use padre_core::server::{DebuggerV1, FileLocation, Variable};
 
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -31,7 +31,8 @@ impl ImplDebugger {
 }
 
 impl DebuggerV1 for ImplDebugger {
-
+    // Ideally this would be async but currently we don't have async traits yet.
+    // Means that we can be waiting for setup still when we start using PADRE.
     fn setup(&mut self) {}
 
     fn teardown(&mut self) {
@@ -133,7 +134,6 @@ impl DebuggerV1 for ImplDebugger {
             full_file_name.to_str().unwrap().to_string(),
             file_location.line_num(),
         );
-
     }
 
     fn step_in(&mut self, _timeout: Instant) {

@@ -14,9 +14,9 @@ use futures::StreamExt;
 use tokio::sync::mpsc::Receiver;
 
 #[cfg(feature = "lldb")]
-mod lldb;
+use padre_lldb;
 #[cfg(feature = "node")]
-mod node;
+use padre_node;
 #[cfg(feature = "python")]
 use padre_python;
 
@@ -123,16 +123,23 @@ pub async fn create_debugger(
 
     let debugger: Arc<Mutex<dyn DebuggerV1 + Send>> = match debugger_type {
         #[cfg(feature = "lldb")]
-        DebuggerType::LLDB => Arc::new(Mutex::new(padre_lldb::ImplDebugger::new(debugger_cmd, run_cmd))),
+        DebuggerType::LLDB => Arc::new(Mutex::new(padre_lldb::ImplDebugger::new(
+            debugger_cmd,
+            run_cmd,
+        ))),
         #[cfg(feature = "node")]
-        DebuggerType::Node => Arc::new(Mutex::new(padre_node::ImplDebugger::new(debugger_cmd, run_cmd))),
+        DebuggerType::Node => Arc::new(Mutex::new(padre_node::ImplDebugger::new(
+            debugger_cmd,
+            run_cmd,
+        ))),
         #[cfg(feature = "python")]
-        DebuggerType::Python => Arc::new(Mutex::new(padre_python::ImplDebugger::new(debugger_cmd, run_cmd))),
+        DebuggerType::Python => Arc::new(Mutex::new(padre_python::ImplDebugger::new(
+            debugger_cmd,
+            run_cmd,
+        ))),
     };
 
     debugger.lock().unwrap().setup();
-    // let debugger: padre_python::ImplDebugger =
-    //     padre_python::ImplDebugger::new(debugger_cmd, run_cmd);
 
     Debugger::new(debugger, queue_rx)
 }

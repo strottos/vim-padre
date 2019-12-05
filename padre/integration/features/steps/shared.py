@@ -381,6 +381,16 @@ def padre_debugger(context):
     context.padre.get_children()
 
 
+@when("I give PADRE chance to start")
+def sleep_at_startup(context):
+    """
+    This is a bit rubbish but it's for tests that interfere with writing to
+    stdin. This gives PADRE a chance to fully startup before we start confusing
+    it.
+    """
+    time.sleep(1)
+
+
 @when("I open another connection to PADRE")
 def connect_padre(context):
     """
