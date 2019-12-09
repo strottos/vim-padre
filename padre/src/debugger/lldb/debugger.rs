@@ -175,6 +175,7 @@ impl DebuggerV1 for ImplDebugger {
             .map(move |event| match event.0.unwrap() {
                 Event::BreakpointSet(_) => serde_json::json!({"status":"OK"}),
                 Event::BreakpointPending => serde_json::json!({"status":"PENDING"}),
+                Event::BreakpointMultiple => serde_json::json!({"status":"OK"}),
                 _ => unreachable!(),
             })
             .map_err(|e| {
