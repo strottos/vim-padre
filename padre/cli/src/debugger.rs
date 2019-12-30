@@ -19,6 +19,8 @@ use padre_lldb;
 use padre_node;
 #[cfg(feature = "python")]
 use padre_python;
+#[cfg(feature = "godlv")]
+use padre_godlv;
 
 /// Debuggers
 #[derive(Debug)]
@@ -29,6 +31,8 @@ enum DebuggerType {
     Node,
     #[cfg(feature = "python")]
     Python,
+    #[cfg(feature = "godlv")]
+    GoDlv,
 }
 
 #[derive(Debug)]
@@ -88,6 +92,8 @@ pub async fn create_debugger(
             "python" => DebuggerType::Python,
             #[cfg(feature = "node")]
             "node" => DebuggerType::Node,
+            #[cfg(feature = "godlv")]
+            "godlv" => DebuggerType::GoDlv,
             _ => panic!("Couldn't understand debugger type {}", s),
         },
         None => match get_debugger_type(&run_cmd[0]).await {
@@ -100,6 +106,8 @@ pub async fn create_debugger(
                     "python" | "python3" => DebuggerType::Python,
                     #[cfg(feature = "node")]
                     "node" => DebuggerType::Node,
+                    #[cfg(feature = "godlv")]
+                    "godlv" => DebuggerType::GoDlv,
                     _ => panic!(
                         "Can't find debugger type for {}, try specifying with -d or -t",
                         s
@@ -119,6 +127,8 @@ pub async fn create_debugger(
             DebuggerType::Node => "node".to_string(),
             #[cfg(feature = "python")]
             DebuggerType::Python => "python3".to_string(),
+            #[cfg(feature = "godlv")]
+            DebuggerType::GoDlv => "godlv".to_string(),
         },
     };
 
@@ -135,6 +145,11 @@ pub async fn create_debugger(
         ))),
         #[cfg(feature = "python")]
         DebuggerType::Python => Arc::new(Mutex::new(padre_python::ImplDebugger::new(
+            debugger_cmd,
+            run_cmd,
+        ))),
+        #[cfg(feature = "godlv")]
+        DebuggerType::GoDlv => Arc::new(Mutex::new(padre_godlv::ImplDebugger::new(
             debugger_cmd,
             run_cmd,
         ))),

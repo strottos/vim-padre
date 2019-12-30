@@ -569,6 +569,7 @@ dependencies = [
  "clap",
  "futures",
  "padre_core",
+ "padre_godlv",
  "padre_lldb",
  "padre_node",
  "padre_python",
@@ -592,6 +593,18 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "padre_godlv"
+version = "0.1.0"
+dependencies = [
+ "bytes 0.5.2",
+ "futures",
+ "lazy_static",
+ "padre_core",
+ "regex",
+ "tokio",
 ]
 
 [[package]]
