@@ -15,26 +15,28 @@ use futures::prelude::*;
 use regex::Regex;
 use tokio::io::{stdin, BufReader};
 use tokio::prelude::*;
-use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout};
+use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::mpsc::{self, Sender};
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 /// Messages that can be sent to LLDB for processing
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
     ProcessLaunching,
     Breakpoint(FileLocation),
+    Unbreakpoint(FileLocation),
     UnknownBreakpoint,
     StepIn,
     StepOver,
     Continue,
     PrintVariable(Variable),
+    Custom,
 }
 
 /// Current status of LLDB
 #[derive(Debug, Clone, PartialEq)]
 pub enum LLDBStatus {
-    None,
+    NotLaunched,
     Listening,
     Processing(Message),
 }
@@ -63,120 +65,103 @@ impl VariableValue {
 /// Main handler for spawning the LLDB process
 #[derive(Debug)]
 pub struct LLDBProcess {
-    debugger_cmd: Option<String>,
-    run_cmd: Option<Vec<String>>,
     lldb_process: Option<Child>,
-    lldb_stdin_tx: Option<Sender<Bytes>>,
-    analyser: Arc<Mutex<Analyser>>,
+    lldb_status: Arc<Mutex<LLDBStatus>>,
+    lldb_stdin_tx: Sender<Bytes>,
 }
 
 impl LLDBProcess {
-    /// Create a new LLDBProcess
-    pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
-        LLDBProcess {
-            debugger_cmd: Some(debugger_cmd),
-            run_cmd: Some(run_cmd),
-            lldb_process: None,
-            lldb_stdin_tx: None,
-            analyser: Arc::new(Mutex::new(Analyser::new())),
-        }
-    }
-
-    /// Setup LLDB
+    /// Create and setup LLDB
     ///
     /// Includes spawning the LLDB process and all the relevant stdio handlers. In particular:
-    /// - Sets up a `ReadOutput` from `util.rs` in order to read stdout and stderr;
+    /// - Sets up a `ReadOutput` from `util.rs` in order to read output from LLDB;
     /// - Sets up a thread to read stdin and forward it onto LLDB stdin;
     /// - Checks that LLDB and the program to be ran both exist, otherwise panics.
-    pub fn setup(&mut self) {
-        let mut lldb_process = check_and_spawn_process(
-            vec![self.debugger_cmd.take().unwrap()],
-            self.run_cmd.take().unwrap(),
-        );
+    pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
+        let mut lldb_process = check_and_spawn_process(vec![debugger_cmd], run_cmd);
 
-        self.setup_stdout(
+        let lldb_status = Arc::new(Mutex::new(LLDBStatus::NotLaunched));
+
+        LLDBProcess::setup_stdout(
             lldb_process
                 .stdout()
                 .take()
                 .expect("LLDB process did not have a handle to stdout"),
+            lldb_status,
         );
-        self.setup_stderr(
-            lldb_process
-                .stderr()
-                .take()
-                .expect("LLDB process did not have a handle to stderr"),
-        );
-        self.setup_stdin(
+        let stdin_tx = LLDBProcess::setup_stdin(
             lldb_process
                 .stdin()
                 .take()
                 .expect("Python process did not have a handle to stdin"),
-            true,
         );
 
-        self.lldb_process = Some(lldb_process);
+        LLDBProcess {
+            lldb_process: Some(lldb_process),
+            lldb_status,
+            lldb_stdin_tx: stdin_tx,
+        }
     }
 
     pub fn teardown(&mut self) {
         self.lldb_process = None;
     }
 
+    pub fn get_status(&self) -> LLDBStatus {
+        self.lldb_status.lock().unwrap().clone()
+    }
+
     /// Send a message to write to stdin
-    pub fn write_stdin(&mut self, bytes: Bytes) {
-        let lldb_stdin_tx = self.lldb_stdin_tx.clone();
+    fn write_stdin(&mut self, bytes: Bytes) {
+        let mut lldb_stdin_tx = self.lldb_stdin_tx.clone();
         tokio::spawn(async move {
-            lldb_stdin_tx.clone()
-                .unwrap()
+            lldb_stdin_tx
                 .send(bytes)
                 .map(move |_| {})
                 .await;
         });
     }
 
-    pub fn send_msg(&mut self, message: Message) {
-        let msg_bytes = match message.clone() {
-            Message::ProcessLaunching => Bytes::from("process launch\n"),
-            Message::Breakpoint(fl) => {
-                Bytes::from(format!(
-                    "breakpoint set --file {} --line {}\n",
-                    fl.name(), fl.line_num()
-                ))
-            },
-            Message::UnknownBreakpoint => unreachable!(),
-            Message::StepIn => Bytes::from("thread step-in\n"),
-            Message::StepOver => Bytes::from("thread step-over\n"),
-            Message::Continue => Bytes::from("thread continue\n"),
-            Message::PrintVariable(v) => Bytes::from(format!("frame variable {}\n", v.name())),
-        };
+    // pub fn send_msg(&mut self, message: Message) {
+    //     let msg_bytes = match message.clone() {
+    //         Message::ProcessLaunching => Bytes::from("process launch\n"),
+    //         Message::Breakpoint(fl) => Bytes::from(format!(
+    //             "breakpoint set --file {} --line {}\n",
+    //             fl.name(),
+    //             fl.line_num()
+    //         )),
+    //         Message::UnknownBreakpoint => unreachable!(),
+    //         Message::StepIn => Bytes::from("thread step-in\n"),
+    //         Message::StepOver => Bytes::from("thread step-over\n"),
+    //         Message::Continue => Bytes::from("thread continue\n"),
+    //         Message::PrintVariable(v) => Bytes::from(format!("frame variable {}\n", v.name())),
+    //     };
 
-        self.analyser.lock().unwrap().status = LLDBStatus::Processing(message);
-        self.write_stdin(msg_bytes);
-    }
+    //     self.write_stdin(msg_bytes);
+    // }
 
-    /// Adds a Sender object that gets awoken when we are listening.
-    ///
-    /// Should only add a sender when we're about to go into or currently in the
-    /// processing status otherwise this will never wake up.
-    pub fn add_awakener(&mut self, sender: Sender<bool>) {
-        self.analyser.lock().unwrap().add_awakener(sender);
-    }
+    // /// Adds a Sender object that gets awoken when we are listening.
+    // ///
+    // /// Should only add a sender when we're about to go into or currently in the
+    // /// processing status otherwise this will never wake up.
+    // pub fn add_awakener(&mut self, sender: Sender<bool>) {
+    //     self.analyser.lock().unwrap().add_awakener(sender);
+    // }
 
-    /// Drop the awakener
-    pub fn drop_awakener(&mut self) {
-        self.analyser.lock().unwrap().drop_awakener();
-    }
+    // /// Drop the awakener
+    // pub fn drop_awakener(&mut self) {
+    //     self.analyser.lock().unwrap().drop_awakener();
+    // }
 
-    pub fn is_process_running(&self) -> bool {
-        self.analyser.lock().unwrap().is_process_running()
-    }
+    // pub fn is_process_running(&self) -> bool {
+    //     self.analyser.lock().unwrap().is_process_running()
+    // }
 
     /// Perform setup of listening and forwarding of stdin and return a sender that will forward to the
     /// stdin of a process.
-    fn setup_stdin(&mut self, mut child_stdin: ChildStdin, output_stdin: bool) {
+    fn setup_stdin(mut child_stdin: ChildStdin) -> Sender<Bytes> {
         let (stdin_tx, mut stdin_rx) = mpsc::channel(32);
         let mut tx = stdin_tx.clone();
-
-        let analyser = self.analyser.clone();
 
         tokio::spawn(async move {
             let tokio_stdin = stdin();
@@ -201,11 +186,11 @@ impl LLDBProcess {
                     println!("stuff {:?}", &buf[start..start + 11]);
                 }
 
-                if (buf.len() >= start + 2 && buf[start..start + 2] == b"b "[..]) ||
-                        (buf.len() >= start + 3 && buf[start..start + 3] == b"br "[..]) ||
-                        (buf.len() >= start + 11 && buf[start..start + 11] == b"breakpoint "[..]) {
+                if (buf.len() >= start + 2 && buf[start..start + 2] == b"b "[..])
+                    || (buf.len() >= start + 3 && buf[start..start + 3] == b"br "[..])
+                    || (buf.len() >= start + 11 && buf[start..start + 11] == b"breakpoint "[..])
+                {
                     println!("UNKNOWN BREAKPOINT");
-                    analyser.lock().unwrap().status = LLDBStatus::Processing(Message::UnknownBreakpoint);
                 }
 
                 tx.send(buf).await.unwrap();
@@ -214,9 +199,7 @@ impl LLDBProcess {
 
         tokio::spawn(async move {
             while let Some(text) = stdin_rx.next().await {
-                if output_stdin {
-                    io::stdout().write_all(&text).unwrap();
-                }
+                io::stdout().write_all(&text).unwrap();
                 match child_stdin.write(&text).await {
                     Ok(_) => {}
                     Err(e) => {
@@ -226,29 +209,18 @@ impl LLDBProcess {
             }
         });
 
-        self.lldb_stdin_tx = Some(stdin_tx);
+        stdin_tx
     }
 
     /// Perform setup of reading LLDB stdout, analysing it and writing it back to stdout.
-    fn setup_stdout(&mut self, stdout: ChildStdout) {
-        let analyser = self.analyser.clone();
+    fn setup_stdout(stdout: ChildStdout, lldb_status: Arc<Mutex<LLDBStatus>>) {
         tokio::spawn(async move {
             let mut reader = read_output(BufReader::new(stdout));
+            let mut analyser = Analyser::new(lldb_status);
             while let Some(Ok(text)) = reader.next().await {
                 print!("{}", text);
-                analyser.lock().unwrap().analyse_stdout(&text);
-            }
-        });
-    }
-
-    /// Perform setup of reading LLDB stderr, analysing it and writing it back to stdout.
-    fn setup_stderr(&mut self, stderr: ChildStderr) {
-        let analyser = self.analyser.clone();
-        tokio::spawn(async move {
-            let mut reader = read_output(BufReader::new(stderr));
-            while let Some(Ok(text)) = reader.next().await {
-                eprint!("{}", text);
-                analyser.lock().unwrap().analyse_stderr(&text);
+                io::stdout().flush().unwrap();
+                analyser.analyse_output(&text[..]);
             }
         });
     }
@@ -256,19 +228,17 @@ impl LLDBProcess {
 
 #[derive(Debug)]
 pub struct Analyser {
-    status: LLDBStatus,
+    lldb_status: Arc<Mutex<LLDBStatus>>,
     stdout: String,
-    stderr: String,
     process_pid: Option<u64>,
     awakener: Option<Sender<bool>>,
 }
 
 impl Analyser {
-    pub fn new() -> Self {
+    pub fn new(lldb_status: Arc<Mutex<LLDBStatus>>) -> Self {
         Analyser {
-            status: LLDBStatus::None,
+            lldb_status,
             stdout: "".to_string(),
-            stderr: "".to_string(),
             process_pid: None,
             awakener: None,
         }
@@ -284,11 +254,7 @@ impl Analyser {
         self.awakener = None;
     }
 
-    pub fn get_status(&self) -> &LLDBStatus {
-        &self.status
-    }
-
-    pub fn analyse_stdout(&mut self, s: &str) {
+    pub fn analyse_output(&mut self, s: &str) {
         self.stdout.push_str(s);
 
         lazy_static! {
@@ -318,6 +284,8 @@ impl Analyser {
             static ref RE_PROCESS_NOT_RUNNING: Regex =
                 Regex::new("error: invalid process$").unwrap();
             static ref RE_SETTINGS: Regex = Regex::new("settings ").unwrap();
+            static ref RE_VARIABLE_NOT_FOUND: Regex =
+                Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
         }
 
         let s = self.stdout.clone();
@@ -402,22 +370,7 @@ impl Analyser {
             for _ in RE_SETTINGS.captures_iter(line) {
                 self.set_listening();
             }
-        }
 
-        self.clear_analyser();
-    }
-
-    pub fn analyse_stderr(&mut self, s: &str) {
-        self.stderr.push_str(s);
-
-        lazy_static! {
-            static ref RE_VARIABLE_NOT_FOUND: Regex =
-                Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
-        }
-
-        let s = self.stderr.clone();
-
-        for line in s.split("\n") {
             for cap in RE_VARIABLE_NOT_FOUND.captures_iter(line) {
                 let variable = cap[1].to_string();
                 self.variable_not_found(variable);
@@ -428,7 +381,10 @@ impl Analyser {
     }
 
     fn set_listening(&mut self) {
-        self.status = LLDBStatus::Listening;
+        {
+            let status = self.lldb_status.lock().unwrap();
+            *status = LLDBStatus::Listening;
+        }
         let awakener = self.awakener.take();
         match awakener {
             Some(mut x) => {
@@ -442,7 +398,6 @@ impl Analyser {
 
     fn clear_analyser(&mut self) {
         self.stdout = "".to_string();
-        self.stderr = "".to_string();
     }
 
     pub fn is_process_running(&self) -> bool {
@@ -467,7 +422,8 @@ impl Analyser {
     }
 
     fn found_breakpoint(&mut self, file: String, line: u64) {
-        match &self.status {
+        let status = *self.lldb_status.lock().unwrap();
+        match status {
             LLDBStatus::Processing(msg) => {
                 match msg {
                     Message::Breakpoint(_) | Message::UnknownBreakpoint => {
@@ -475,11 +431,11 @@ impl Analyser {
                             LogLevel::INFO,
                             &format!("Breakpoint set at file {} and line number {}", file, line),
                         );
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 };
-            },
-            _ => {},
+            }
+            _ => {}
         };
         //breakpoint_set(&file, line);
         //let file_location = FileLocation::new(file, line);
@@ -563,5 +519,21 @@ impl Analyser {
         //    }
         //    None => {}
         //}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_startup() {
+        // analyser.analyse_stdout("> /Users/me/test.py(1)<module>()\r\n-> abc = 123\r\n");
+        // assert_eq!(
+        //     analyser.get_status(),
+        //     PDBStatus::Processing(Message::Launching)
+        // );
+        // analyser.analyse_stdout("(Pdb) ");
+        // assert_eq!(analyser.get_status(), PDBStatus::Listening);
     }
 }

@@ -13,7 +13,7 @@ use crate::server::{
 };
 use crate::util;
 
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
 /// Decodes requests and encodes responses sent by or to VIM over VIM's socket communication
@@ -200,7 +200,7 @@ impl<'a> Decoder for VimCodec<'a> {
                         }
                     };
 
-                    src.split_to(src.len());
+                    src.advance(src.len());
 
                     util::send_error_and_debug(
                         "Must be valid JSON",
@@ -220,7 +220,7 @@ impl<'a> Decoder for VimCodec<'a> {
             }
         };
 
-        src.split_to(src.len());
+        src.advance(src.len());
 
         if !v.is_array() {
             util::send_error_and_debug(
@@ -373,6 +373,27 @@ impl<'a> Decoder for VimCodec<'a> {
                         id,
                         RequestCmd::DebuggerCmd(
                             DebuggerCmd::Breakpoint(fl),
+                            Instant::now()
+                                + Duration::new(
+                                    self.config
+                                        .lock()
+                                        .unwrap()
+                                        .get_config("BreakpointTimeout")
+                                        .unwrap() as u64,
+                                    0,
+                                ),
+                        ),
+                    ))),
+                    None => return Ok(None),
+                }
+            }
+            "unbreakpoint" => {
+                let file_location = self.get_file_location(&mut args);
+                match file_location {
+                    Some(fl) => Ok(Some(PadreRequest::new(
+                        id,
+                        RequestCmd::DebuggerCmd(
+                            DebuggerCmd::Unbreakpoint(fl),
                             Instant::now()
                                 + Duration::new(
                                     self.config

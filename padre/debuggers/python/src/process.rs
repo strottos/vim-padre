@@ -4,6 +4,8 @@
 //! the pdb module. It will analyse the output of the text and work out what is
 //! happening then.
 
+use std::env;
+use std::io::{self, Write};
 use std::path::Path;
 #[cfg(not(test))]
 use std::process::exit;
@@ -20,18 +22,20 @@ use bytes::Bytes;
 use futures::prelude::*;
 use regex::Regex;
 use tokio::io::BufReader;
-use tokio::process::{Child, ChildStderr, ChildStdout, Command};
+use tokio::process::{Child, ChildStdout, Command};
 use tokio::sync::mpsc::Sender;
 
 /// Messages that can be sent to PDB for processing
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
     Launching,
     Breakpoint(FileLocation),
+    Unbreakpoint(FileLocation),
     StepIn,
     StepOver,
     Continue,
     PrintVariable(Variable),
+    Custom,
 }
 
 /// Current status of PDB
@@ -155,7 +159,14 @@ impl Process {
 
         let args = get_python_args(&debugger_cmd[..], run_cmd.iter().map(|x| &x[..]).collect());
 
-        let mut process = Command::new(&debugger_cmd)
+        let mut pty_wrapper = env::current_exe().unwrap();
+        pty_wrapper.pop();
+        pty_wrapper.pop();
+        pty_wrapper.pop();
+        pty_wrapper.push("ptywrapper.py");
+
+        let mut process = Command::new(pty_wrapper)
+            .arg(&debugger_cmd)
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -174,18 +185,12 @@ impl Process {
                 .take()
                 .expect("Python process did not have a handle to stdout"),
         );
-        self.setup_stderr(
-            process
-                .stderr()
-                .take()
-                .expect("Python process did not have a handle to stderr"),
-        );
         let stdin_tx = setup_stdin(
             process
                 .stdin()
                 .take()
                 .expect("Python process did not have a handle to stdin"),
-            true,
+            false,
         );
 
         self.analyser.lock().unwrap().set_pid(process.id() as u64);
@@ -219,23 +224,24 @@ impl Process {
         let analyser = self.analyser.clone();
 
         tokio::spawn(async move {
-            let msg = match message.clone() {
+            let msg = match &message {
                 Message::Breakpoint(fl) => {
                     Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))
                 }
+                Message::Unbreakpoint(fl) => {
+                    Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
+                },
                 Message::StepIn => Bytes::from("step\n"),
                 Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),
                 Message::Launching => unreachable!(),
                 Message::PrintVariable(v) => Bytes::from(format!("print({})\n", v.name())),
+                Message::Custom => todo!(),
             };
 
-            analyser.lock().unwrap().status = PDBStatus::Processing(message);
-            tx.clone()
-                .unwrap()
-                .send(msg)
-                .map(move |_| {})
-                .await
+            analyser.lock().unwrap().analyse_message(message);
+
+            tx.clone().unwrap().send(msg).map(move |_| {}).await
         });
     }
 
@@ -246,17 +252,8 @@ impl Process {
             let mut reader = read_output(BufReader::new(stdout));
             while let Some(Ok(text)) = reader.next().await {
                 print!("{}", text);
+                io::stdout().flush().unwrap();
                 analyser.lock().unwrap().analyse_stdout(&text);
-            }
-        });
-    }
-
-    /// Perform setup of reading Python stderr, analysing it and writing it back to stdout.
-    fn setup_stderr(&mut self, stderr: ChildStderr) {
-        tokio::spawn(async {
-            let mut reader = read_output(BufReader::new(stderr));
-            while let Some(Ok(text)) = reader.next().await {
-                eprint!("{}", text);
             }
         });
     }
@@ -267,6 +264,8 @@ pub struct Analyser {
     status: PDBStatus,
     pid: Option<u64>,
     awakener: Option<Sender<bool>>,
+    // For keeping track of the variable that we were told to print
+    variable_value: String,
 }
 
 impl Analyser {
@@ -275,6 +274,7 @@ impl Analyser {
             status: PDBStatus::None,
             pid: None,
             awakener: None,
+            variable_value: "".to_string(),
         }
     }
 
@@ -294,10 +294,6 @@ impl Analyser {
 
     pub fn analyse_stdout(&mut self, s: &str) {
         lazy_static! {
-            static ref RE_BREAKPOINT: Regex =
-                Regex::new("^Breakpoint (\\d*) at (.*):(\\d*)$").unwrap();
-            static ref RE_JUMP_TO_POSITION: Regex =
-                Regex::new("^> (.*)\\((\\d*)\\)[<>\\w]*\\(\\)$").unwrap();
             static ref RE_RETURNING: Regex =
                 Regex::new("^> (.*)\\((\\d*)\\)[<>\\w]*\\(\\)->(.*)$").unwrap();
             static ref RE_PROCESS_EXITED: Regex =
@@ -307,25 +303,80 @@ impl Analyser {
                     .unwrap();
         }
 
-        for line in s.split("\n") {
-            match self.status {
-                PDBStatus::None => {
-                    if line.contains("(Pdb) ") {
-                        self.status = PDBStatus::Processing(Message::Launching);
-                    }
-                }
-                _ => {}
-            };
+        match self.get_status() {
+            PDBStatus::Processing(msg) => {
+                match msg {
+                    Message::PrintVariable(var) => {
+                        let mut from = 0;
+                        let mut to = s.len();
 
-            for cap in RE_BREAKPOINT.captures_iter(line) {
-                let file = cap[2].to_string();
-                let line = cap[3].parse::<u64>().unwrap();
-                log_msg(
-                    LogLevel::INFO,
-                    &format!("Breakpoint set at file {} and line number {}", file, line),
-                );
-                self.set_listening();
+                        let print_cmd_size = 7 + var.name().len();
+                        if to >= print_cmd_size + 2
+                            && &s[0..print_cmd_size] == &format!("print({})", var.name())
+                        {
+                            // 2 extra for \r\n
+                            from += print_cmd_size + 2;
+                        }
+
+                        println!("s: {}", s);
+                        println!("from: {}", from);
+                        println!("to: {}", to);
+
+                        let pdb_length = "(Pdb) ".len();
+                        if to >= pdb_length && &s[to - pdb_length..to] == "(Pdb) " {
+                            to -= pdb_length;
+                        }
+
+                        self.variable_value += &s[from..to];
+                    }
+                    _ => {}
+                }
             }
+            _ => {}
+        }
+
+        for line in s.split("\r\n") {
+            if line == "(Pdb) " {
+                match self.get_status() {
+                    PDBStatus::Processing(msg) => match msg {
+                        Message::PrintVariable(var) => {
+                            let mut to = self.variable_value.len();
+                            if to >= 2 && &self.variable_value[to - 2..to] == "\r\n" {
+                                to -= 2;
+                            }
+                            let msg = format!("{}={}", var.name(), &self.variable_value[0..to]);
+                            log_msg(LogLevel::INFO, &msg);
+                            self.variable_value = "".to_string();
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+
+                self.set_listening();
+                return;
+            }
+
+            match self.get_status() {
+                PDBStatus::None => {
+                    self.check_location(line);
+                    self.status = PDBStatus::Processing(Message::Launching)
+                }
+                PDBStatus::Listening => self.status = PDBStatus::Processing(Message::Custom),
+                PDBStatus::Processing(msg) => match msg {
+                    Message::Breakpoint(_) => {
+                        self.check_breakpoint(line);
+                    }
+                    Message::StepIn | Message::StepOver | Message::Continue => {
+                        self.check_location(line);
+                    }
+                    Message::Custom => {
+                        self.check_breakpoint(line);
+                        self.check_location(line);
+                    }
+                    _ => {}
+                },
+            };
 
             for cap in RE_RETURNING.captures_iter(line) {
                 let file = cap[1].to_string();
@@ -334,13 +385,6 @@ impl Analyser {
                 jump_to_position(&file, line);
                 self.set_listening();
                 log_msg(LogLevel::INFO, &format!("Returning value {}", return_value));
-            }
-
-            for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
-                let file = cap[1].to_string();
-                let line = cap[2].parse::<u64>().unwrap();
-                jump_to_position(&file, line);
-                self.set_listening();
             }
 
             for _ in RE_PROCESS_EXITED.captures_iter(line) {
@@ -352,18 +396,10 @@ impl Analyser {
                 signal_exited(self.pid.unwrap(), exit_code);
             }
         }
+    }
 
-        match &self.status {
-            PDBStatus::Processing(msg) => {
-                match msg {
-                    Message::PrintVariable(var) => {
-                        self.print_variable(var.clone(), s);
-                    }
-                    _ => {}
-                };
-            }
-            _ => {}
-        };
+    pub fn analyse_message(&mut self, msg: Message) {
+        self.status = PDBStatus::Processing(msg);
     }
 
     pub fn set_pid(&mut self, pid: u64) {
@@ -383,43 +419,61 @@ impl Analyser {
         };
     }
 
-    fn print_variable(&self, variable: Variable, data: &str) {
-        let len = data.len();
-        if len < 2 {
-            return;
+    fn check_breakpoint(&self, line: &str) {
+        lazy_static! {
+            static ref RE_BREAKPOINT: Regex =
+                Regex::new("^Breakpoint (\\d*) at (.*):(\\d*)$").unwrap();
         }
 
-        let to = data.len() - 2;
+        for cap in RE_BREAKPOINT.captures_iter(line) {
+            let file = cap[2].to_string();
+            let line = cap[3].parse::<u64>().unwrap();
+            log_msg(
+                LogLevel::INFO,
+                &format!("Breakpoint set at file {} and line number {}", file, line),
+            );
+        }
+    }
 
-        let msg = format!("variable {}={}", variable.name(), &data[0..to]);
+    fn check_location(&self, line: &str) {
+        lazy_static! {
+            static ref RE_JUMP_TO_POSITION: Regex =
+                Regex::new("^> (.*)\\((\\d*)\\)[<>\\w]*\\(\\)$").unwrap();
+        }
 
-        log_msg(LogLevel::INFO, &msg);
+        for cap in RE_JUMP_TO_POSITION.captures_iter(line) {
+            let file = cap[1].to_string();
+            let line = cap[2].parse::<u64>().unwrap();
+            jump_to_position(&file, line);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn check_get_args_basic_command() {
-        let args = super::get_python_args("/usr/bin/python3", vec!["test.py", "arg1"]);
+        let args = get_python_args("/usr/bin/python3", vec!["test.py", "arg1"]);
         assert_eq!(args, vec!["-m", "pdb", "--", "test.py", "arg1"]);
     }
 
     #[test]
     fn check_get_args_recognises_matching_python_command() {
-        let args = super::get_python_args("/usr/bin/python3", vec!["python3", "test.py", "arg1"]);
+        let args = get_python_args("/usr/bin/python3", vec!["python3", "test.py", "arg1"]);
         assert_eq!(args, vec!["-m", "pdb", "test.py", "arg1"]);
     }
 
     #[test]
     fn check_get_args_leaves_non_matching_python_command() {
-        let args = super::get_python_args("/usr/bin/python3.7", vec!["python3", "test.py", "arg1"]);
+        let args = get_python_args("/usr/bin/python3.7", vec!["python3", "test.py", "arg1"]);
         assert_eq!(args, vec!["-m", "pdb", "--", "python3", "test.py", "arg1"]);
     }
 
     #[test]
     fn check_get_args_accepts_module_running() {
-        let args = super::get_python_args(
+        let args = get_python_args(
             "/usr/bin/python3",
             vec!["python3", "-m", "abc", "--", "arg1"],
         );
@@ -428,10 +482,63 @@ mod tests {
 
     #[test]
     fn check_get_args_accepts_command_arguments() {
-        let args = super::get_python_args(
+        let args = get_python_args(
             "/usr/bin/python3",
             vec!["python3", "-c", "print('Hello, World!')"],
         );
         assert_eq!(args, vec!["-m", "pdb", "-c", "print('Hello, World!')"]);
+    }
+
+    #[test]
+    fn analyser_startup() {
+        let mut analyser = Analyser::new();
+        assert_eq!(analyser.get_status(), PDBStatus::None);
+        analyser.analyse_stdout("> /Users/me/test.py(1)<module>()\r\n-> abc = 123\r\n");
+        assert_eq!(
+            analyser.get_status(),
+            PDBStatus::Processing(Message::Launching)
+        );
+        analyser.analyse_stdout("(Pdb) ");
+        assert_eq!(analyser.get_status(), PDBStatus::Listening);
+    }
+
+    #[test]
+    fn analyser_custom_syntax_error() {
+        let mut analyser = Analyser::new();
+        analyser.analyse_stdout("> /Users/me/test.py(1)<module>()\r\n-> abc = 123\r\n(Pdb) ");
+        analyser.analyse_stdout("do something nonsensical\r\n");
+        assert_eq!(
+            analyser.get_status(),
+            PDBStatus::Processing(Message::Custom)
+        );
+        analyser.analyse_stdout("*** SyntaxError: invalid syntax\r\n(Pdb) ");
+        assert_eq!(analyser.get_status(), PDBStatus::Listening);
+    }
+
+    #[test]
+    fn analyser_padre_message() {
+        let mut analyser = Analyser::new();
+        analyser.analyse_stdout("> /Users/me/test.py(1)<module>()\r\n-> abc = 123\r\n(Pdb) ");
+        let msg = Message::Breakpoint(FileLocation::new("test.py".to_string(), 2));
+        analyser.analyse_message(msg.clone());
+        assert_eq!(analyser.get_status(), PDBStatus::Processing(msg));
+        analyser.analyse_stdout("Breakpoint 1 at test.py:2\r\n(Pdb) ");
+        assert_eq!(analyser.get_status(), PDBStatus::Listening);
+    }
+
+    #[test]
+    fn analyser_print_message() {
+        let mut analyser = Analyser::new();
+        analyser.analyse_stdout("> /Users/me/test.py(1)<module>()\r\n-> abc = 123\r\n(Pdb) ");
+        let msg = Message::PrintVariable(Variable::new("abc".to_string()));
+        analyser.analyse_message(msg.clone());
+        analyser.analyse_stdout("print(abc)\r\n");
+        analyser.analyse_stdout("123\r\n");
+        assert_eq!(analyser.variable_value, "123\r\n");
+        analyser.analyse_stdout("(Pdb) ");
+        analyser.analyse_message(msg.clone());
+        analyser.analyse_stdout("print(abc)\r\n\"abcd1234\"\r\n");
+        assert_eq!(analyser.variable_value, "\"abcd1234\"\r\n");
+        analyser.analyse_stdout("(Pdb) ");
     }
 }

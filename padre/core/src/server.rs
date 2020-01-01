@@ -28,6 +28,7 @@ use tokio_util::codec::Decoder;
 pub enum DebuggerCmd {
     Run,
     Breakpoint(FileLocation),
+    Unbreakpoint(FileLocation),
     StepIn,
     StepOver,
     Continue,
@@ -56,7 +57,7 @@ impl FileLocation {
 }
 
 /// Variable name
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Variable {
     name: String,
 }
@@ -70,6 +71,14 @@ impl Variable {
         &self.name
     }
 }
+
+impl PartialEq for Variable {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for Variable {}
 
 /// All padre commands
 #[derive(Clone, Debug, PartialEq)]

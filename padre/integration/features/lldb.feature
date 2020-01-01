@@ -1,5 +1,5 @@
 Feature: LLDB
-    Debug with PADRE for a program needing LLDB
+    Debug with PADRE a program needing LLDB
 
     Scenario: Debug a basic program with LLDB using the LLDB command line
         Given that we have a file 'test_prog.c'
@@ -40,7 +40,6 @@ Feature: LLDB
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function           | args                                   |
             | padre#debugger#Log | [4, ".*test_prog.c.*17"]               |
-            | padre#debugger#Log | [4, "Breakpoint set.*test_prog.c.*17"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"not_exists.c","line":17}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function           | args                     |

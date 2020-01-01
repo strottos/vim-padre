@@ -4,8 +4,8 @@
 
 use padre_core::util::{check_and_spawn_process, read_output, setup_stdin};
 
-use regex::Regex;
 use futures::prelude::*;
+use regex::Regex;
 use tokio::io::BufReader;
 use tokio::prelude::*;
 use tokio::process::{Child, ChildStderr, ChildStdout};
@@ -96,7 +96,6 @@ impl Process {
             let mut reader = read_output(BufReader::new(stderr));
 
             while let Some(Ok(text)) = reader.next().await {
-
                 if !node_setup {
                     'node_setup_start: for line in text.split("\n") {
                         let mut uri = None;

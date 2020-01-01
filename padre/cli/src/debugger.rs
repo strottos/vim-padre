@@ -8,9 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use padre_core::server::{DebuggerCmd, DebuggerV1};
-use padre_core::util::{file_is_binary_executable, file_is_text};
 
 use futures::StreamExt;
+use tokio::process::Command;
 use tokio::sync::mpsc::Receiver;
 
 #[cfg(feature = "lldb")]
@@ -53,6 +53,7 @@ impl Debugger {
                 match cmd.0 {
                     DebuggerCmd::Run => debugger.run(cmd.1),
                     DebuggerCmd::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
+                    DebuggerCmd::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
                     DebuggerCmd::StepIn => debugger.step_in(cmd.1),
                     DebuggerCmd::StepOver => debugger.step_over(cmd.1),
                     DebuggerCmd::Continue => debugger.continue_(cmd.1),
@@ -193,4 +194,66 @@ async fn is_python(cmd: &str) -> bool {
     // }
 
     false
+}
+
+/// Find out if a file is a binary executable (either ELF or Mach-O
+/// executable).
+async fn file_is_binary_executable(cmd: &str) -> bool {
+    let output = get_file_type(cmd).await;
+
+    if output.contains("ELF")
+        || (output.contains("Mach-O") && output.to_ascii_lowercase().contains("executable"))
+    {
+        true
+    } else {
+        false
+    }
+}
+
+/// Find out if a file is a text file (either ASCII or UTF-8).
+async fn file_is_text(cmd: &str) -> bool {
+    let output = get_file_type(cmd).await;
+
+    if output.contains("ASCII") || output.contains("UTF-8") {
+        true
+    } else {
+        false
+    }
+}
+
+/// Get the file type as output by the UNIX `file` command.
+async fn get_file_type(cmd: &str) -> String {
+    let output = Command::new("file")
+        .arg("-L") // Follow symlinks
+        .arg(cmd)
+        .output();
+    let output = output
+        .await
+        .expect(&format!("Can't run file on {} to find file type", cmd));
+
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn is_file_executable() {
+        assert_eq!(
+            true,
+            super::file_is_binary_executable("../test_files/node").await
+        );
+        assert_eq!(
+            false,
+            super::file_is_binary_executable("../test_files/test_node.js").await
+        );
+    }
+
+    #[tokio::test]
+    async fn is_file_text() {
+        assert_eq!(false, super::file_is_text("../test_files/node").await);
+        assert_eq!(
+            true,
+            super::file_is_text("../test_files/test_node.js").await
+        );
+    }
 }
