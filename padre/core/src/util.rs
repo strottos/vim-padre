@@ -116,31 +116,6 @@ pub fn setup_stdin(mut child_stdin: ChildStdin, output_stdin: bool) -> Sender<By
     stdin_tx
 }
 
-/// Find out if a file is a binary executable (either ELF or Mach-O
-/// executable).
-pub async fn file_is_binary_executable(cmd: &str) -> bool {
-    let output = get_file_type(cmd).await;
-
-    if output.contains("ELF")
-        || (output.contains("Mach-O") && output.to_ascii_lowercase().contains("executable"))
-    {
-        true
-    } else {
-        false
-    }
-}
-
-/// Find out if a file is a text file (either ASCII or UTF-8).
-pub async fn file_is_text(cmd: &str) -> bool {
-    let output = get_file_type(cmd).await;
-
-    if output.contains("ASCII") || output.contains("UTF-8") {
-        true
-    } else {
-        false
-    }
-}
-
 /// Find out the full path of a file based on the PATH environment variable.
 pub fn get_file_full_path(cmd: &str) -> String {
     let cmd_full_path_buf = env::var_os("PATH")
@@ -165,20 +140,7 @@ pub fn file_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
 
-/// Get the file type as output by the UNIX `file` command.
-async fn get_file_type(cmd: &str) -> String {
-    let output = Command::new("file")
-        .arg("-L") // Follow symlinks
-        .arg(cmd)
-        .output();
-    let output = output
-        .await
-        .expect(&format!("Can't run file on {} to find file type", cmd));
-
-    String::from_utf8_lossy(&output.stdout).to_string()
-}
-
-// The following largely taken from tokio::io::lines code.
+// The following largely taken from tokio::io::lines code but for our bytes specific needs.
 
 /// Combinator created by `read_output` method which is a stream over text on an I/O object.
 #[pin_project]
@@ -220,7 +182,7 @@ impl<R: AsyncBufRead> Stream for ReadOutput<R> {
                             t.len()
                         }
                         Err(e) => {
-                            println!("What to do here? {:?}", e);
+                            println!("TODO: What to do here? Error reading: {:?}", e);
                             0
                         }
                     },
@@ -257,23 +219,4 @@ mod tests {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
         assert_eq!(listener.local_addr().unwrap().port(), port);
     }
-
-    //#[test]
-    //fn is_file_executable() {
-    //    tokio::spawn(async move {
-    //        assert_eq!(true, super::file_is_binary_executable("./test_files/node").await);
-    //        assert_eq!(
-    //            false,
-    //            super::file_is_binary_executable("./test_files/test_node.js").await
-    //        );
-    //    });
-    //}
-
-    //#[test]
-    //fn is_file_text() {
-    //    tokio::spawn(async move {
-    //        assert_eq!(false, super::file_is_text("./test_files/node").await);
-    //        assert_eq!(true, super::file_is_text("./test_files/test_node.js").await);
-    //    });
-    //}
 }

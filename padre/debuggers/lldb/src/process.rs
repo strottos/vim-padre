@@ -15,12 +15,12 @@ use futures::prelude::*;
 use regex::Regex;
 use tokio::io::{stdin, BufReader};
 use tokio::prelude::*;
-use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 use tokio::sync::mpsc::{self, Sender};
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 /// Messages that can be sent to LLDB for processing
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
     ProcessLaunching,
     Breakpoint(FileLocation),
@@ -125,7 +125,8 @@ impl LLDBProcess {
     pub fn write_stdin(&mut self, bytes: Bytes) {
         let lldb_stdin_tx = self.lldb_stdin_tx.clone();
         tokio::spawn(async move {
-            lldb_stdin_tx.clone()
+            lldb_stdin_tx
+                .clone()
                 .unwrap()
                 .send(bytes)
                 .map(move |_| {})
@@ -136,12 +137,11 @@ impl LLDBProcess {
     pub fn send_msg(&mut self, message: Message) {
         let msg_bytes = match message.clone() {
             Message::ProcessLaunching => Bytes::from("process launch\n"),
-            Message::Breakpoint(fl) => {
-                Bytes::from(format!(
-                    "breakpoint set --file {} --line {}\n",
-                    fl.name(), fl.line_num()
-                ))
-            },
+            Message::Breakpoint(fl) => Bytes::from(format!(
+                "breakpoint set --file {} --line {}\n",
+                fl.name(),
+                fl.line_num()
+            )),
             Message::UnknownBreakpoint => unreachable!(),
             Message::StepIn => Bytes::from("thread step-in\n"),
             Message::StepOver => Bytes::from("thread step-over\n"),
@@ -201,11 +201,13 @@ impl LLDBProcess {
                     println!("stuff {:?}", &buf[start..start + 11]);
                 }
 
-                if (buf.len() >= start + 2 && buf[start..start + 2] == b"b "[..]) ||
-                        (buf.len() >= start + 3 && buf[start..start + 3] == b"br "[..]) ||
-                        (buf.len() >= start + 11 && buf[start..start + 11] == b"breakpoint "[..]) {
+                if (buf.len() >= start + 2 && buf[start..start + 2] == b"b "[..])
+                    || (buf.len() >= start + 3 && buf[start..start + 3] == b"br "[..])
+                    || (buf.len() >= start + 11 && buf[start..start + 11] == b"breakpoint "[..])
+                {
                     println!("UNKNOWN BREAKPOINT");
-                    analyser.lock().unwrap().status = LLDBStatus::Processing(Message::UnknownBreakpoint);
+                    analyser.lock().unwrap().status =
+                        LLDBStatus::Processing(Message::UnknownBreakpoint);
                 }
 
                 tx.send(buf).await.unwrap();
@@ -475,11 +477,11 @@ impl Analyser {
                             LogLevel::INFO,
                             &format!("Breakpoint set at file {} and line number {}", file, line),
                         );
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 };
-            },
-            _ => {},
+            }
+            _ => {}
         };
         //breakpoint_set(&file, line);
         //let file_location = FileLocation::new(file, line);

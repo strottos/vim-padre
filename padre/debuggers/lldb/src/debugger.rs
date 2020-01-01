@@ -85,7 +85,10 @@ impl DebuggerV1 for ImplDebugger {
                 rx.next().await.unwrap();
                 process.lock().unwrap().drop_awakener();
 
-                process.lock().unwrap().write_stdin(Bytes::from(msg.as_bytes()));
+                process
+                    .lock()
+                    .unwrap()
+                    .write_stdin(Bytes::from(msg.as_bytes()));
             }
         });
 

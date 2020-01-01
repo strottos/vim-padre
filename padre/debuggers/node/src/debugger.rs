@@ -64,13 +64,10 @@ impl DebuggerV1 for ImplDebugger {
             // the thread but can live with it while starting up the process
             thread::sleep(Duration::new(2, 0));
 
-            ws_handler
-                .lock()
-                .unwrap()
-                .connect(&uri, move |msg| {
-                    analyser.lock().unwrap().analyse_message(msg);
-                    None
-                });
+            ws_handler.lock().unwrap().connect(&uri, move |msg| {
+                analyser.lock().unwrap().analyse_message(msg);
+                None
+            });
 
             //let msg = OwnedMessage::Text("{\"method\":\"Runtime.enable\"}".to_string());
             //let resp1 = ws_handler

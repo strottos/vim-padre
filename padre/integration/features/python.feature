@@ -93,8 +93,8 @@ Feature: Python
             | padre#debugger#JumpToPosition | [".*test_prog.py",22] |
         When I send a request to PADRE '{"cmd":"print","variable":"b"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function           | args                 |
-            | padre#debugger#Log | [4,"variable b=123"] |
+            | function           | args        |
+            | padre#debugger#Log | [4,"b=123"] |
         When I send a request to PADRE '{"cmd":"continue"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                  |
