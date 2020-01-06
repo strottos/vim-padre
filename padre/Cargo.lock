@@ -154,12 +154,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7ca8a5221364ef15ce201e8ed2f609fc312682a8f4e0e3d4aa5879764e0fa3b"
 
 [[package]]
-name = "difference"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
-
-[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -169,25 +163,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "downcast"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bb454f0228b18c7f4c3b0ebbee346ed9c52e7443b0999cd543ff3571205701d"
-
-[[package]]
 name = "fake-simd"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
-
-[[package]]
-name = "float-cmp"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75224bec9bfe1a65e2d34132933f2de7fe79900c96a0174307554244ece8150e"
-dependencies = [
- "num-traits",
-]
 
 [[package]]
 name = "fnv"
@@ -209,12 +188,6 @@ name = "foreign-types-shared"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
-
-[[package]]
-name = "fragile"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f8140122fa0d5dcb9fc8627cfce2b37cc1500f752636d46ea28bc26785c2f9"
 
 [[package]]
 name = "fuchsia-zircon"
@@ -512,33 +485,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mockall"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b95a7e7cfbce0e99ebbf5356a085d3b5e320a7ef300f77cd50a7148aa362e7c2"
-dependencies = [
- "cfg-if",
- "downcast",
- "fragile",
- "lazy_static",
- "mockall_derive",
- "predicates",
- "predicates-tree",
-]
-
-[[package]]
-name = "mockall_derive"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5a615a1ad92048ad5d9633251edb7492b8abc057d7a679a9898476aef173935"
-dependencies = [
- "cfg-if",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -565,21 +511,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "winapi 0.3.8",
-]
-
-[[package]]
-name = "normalize-line-endings"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e0a1a39eab95caf4f5556da9289b9e68f0aafac901b2ce80daaf020d3b733a8"
-
-[[package]]
-name = "num-traits"
-version = "0.2.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4c81ffc11c212fa327657cb19dd85eb7419e163b5b076bede2bdb5c974c07e4"
-dependencies = [
- "autocfg",
 ]
 
 [[package]]
@@ -701,7 +632,6 @@ dependencies = [
  "bytes 0.5.3",
  "futures",
  "lazy_static",
- "mockall",
  "padre_core",
  "regex",
  "tokio",
@@ -756,35 +686,6 @@ name = "ppv-lite86"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74490b50b9fbe561ac330df47c08f3f33073d2d00c150f719147d7c54522fa1b"
-
-[[package]]
-name = "predicates"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9bfe52247e5cc9b2f943682a85a5549fb9662245caf094504e69a2f03fe64d4"
-dependencies = [
- "difference",
- "float-cmp",
- "normalize-line-endings",
- "predicates-core",
- "regex",
-]
-
-[[package]]
-name = "predicates-core"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06075c3a3e92559ff8929e7a280684489ea27fe44805174c3ebd9328dcb37178"
-
-[[package]]
-name = "predicates-tree"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e63c4859013b38a76eca2414c64911fba30def9e3202ac461a2d22831220124"
-dependencies = [
- "predicates-core",
- "treeline",
-]
 
 [[package]]
 name = "proc-macro-hack"
@@ -1102,12 +1003,6 @@ dependencies = [
  "pin-project-lite",
  "tokio",
 ]
-
-[[package]]
-name = "treeline"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7f741b240f1a48843f9b8e0444fb55fb2a4ff67293b50a9179dfd5ea67f8d41"
 
 [[package]]
 name = "tungstenite"

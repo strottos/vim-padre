@@ -31,8 +31,6 @@ impl ImplDebugger {
 }
 
 impl DebuggerV1 for ImplDebugger {
-    // Ideally this would be async but currently we don't have async traits yet.
-    // Means that we can be waiting for setup still when we start using PADRE.
     fn setup(&mut self) {}
 
     fn teardown(&mut self) {
@@ -84,7 +82,8 @@ impl DebuggerV1 for ImplDebugger {
 
     fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
         let full_file_path = PathBuf::from(format!("{}", file_location.name()));
-        // TODO: Hard errors when doesn't exist
+
+        // TODO: What happens when it doesn't exist
         let full_file_name = full_file_path.canonicalize().unwrap();
         let file_location = FileLocation::new(
             full_file_name.to_str().unwrap().to_string(),
@@ -135,6 +134,55 @@ impl DebuggerV1 for ImplDebugger {
             full_file_name.to_str().unwrap().to_string(),
             file_location.line_num(),
         );
+
+        log_msg(
+            LogLevel::INFO,
+            &format!(
+                "Removing breakpoint in file {} at line number {}",
+                file_location.name(),
+                file_location.line_num()
+            ),
+        );
+
+        // If not started yet remove any pending breakpoint that will get set during run period.
+        match self.process.lock().unwrap().get_status() {
+            PDBStatus::None => {
+                match self.pending_breakpoints {
+                    Some(ref mut x) => {
+                        let mut index = None;
+                        for (i, elem) in x.iter().enumerate() {
+                            if *elem == file_location {
+                                index = Some(i);
+                            }
+                        }
+                        match index {
+                            Some(i) => {
+                                x.remove(i);
+                            },
+                            None => {}
+                        };
+                    },
+                    None => {}
+                };
+
+                log_msg(
+                    LogLevel::INFO,
+                    &format!(
+                        "Pending breakpoint removed in file {} at line number {}",
+                        file_location.name(),
+                        file_location.line_num()
+                    ),
+                );
+
+                return;
+            }
+            _ => {}
+        }
+
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Unbreakpoint(file_location));
     }
 
     fn step_in(&mut self, _timeout: Instant) {

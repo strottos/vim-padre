@@ -65,7 +65,7 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
 
     let mut args = vec![];
 
-    for arg in &debugger_cmd[1..] {
+    for arg in &debugger_cmd[0..] {
         args.push(&arg[..]);
     }
 
@@ -75,7 +75,13 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
         args.push(&arg[..]);
     }
 
-    Command::new(&debugger_cmd[0])
+    let mut pty_wrapper = env::current_exe().unwrap();
+    pty_wrapper.pop();
+    pty_wrapper.pop();
+    pty_wrapper.pop();
+    pty_wrapper.push("ptywrapper.py");
+
+    Command::new(pty_wrapper)
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

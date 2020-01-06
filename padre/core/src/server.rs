@@ -28,6 +28,7 @@ use tokio_util::codec::Decoder;
 pub enum DebuggerCmd {
     Run,
     Breakpoint(FileLocation),
+    Unbreakpoint(FileLocation),
     StepIn,
     StepOver,
     Continue,

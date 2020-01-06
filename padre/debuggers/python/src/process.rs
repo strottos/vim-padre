@@ -25,16 +25,12 @@ use tokio::io::BufReader;
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::sync::mpsc::Sender;
 
-#[cfg(test)]
-use mockall::predicate::*;
-#[cfg(test)]
-use mockall::*;
-
 /// Messages that can be sent to PDB for processing
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
     Launching,
     Breakpoint(FileLocation),
+    Unbreakpoint(FileLocation),
     StepIn,
     StepOver,
     Continue,
@@ -232,6 +228,9 @@ impl Process {
                 Message::Breakpoint(fl) => {
                     Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))
                 }
+                Message::Unbreakpoint(fl) => {
+                    Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
+                },
                 Message::StepIn => Bytes::from("step\n"),
                 Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),
@@ -447,19 +446,6 @@ impl Analyser {
             let line = cap[2].parse::<u64>().unwrap();
             jump_to_position(&file, line);
         }
-    }
-
-    fn print_variable(&self, variable: Variable, data: &str) {
-        let len = data.len();
-        if len < 2 {
-            return;
-        }
-
-        let to = data.len() - 2;
-
-        let msg = format!("variable {}={}", variable.name(), &data[0..to]);
-
-        log_msg(LogLevel::INFO, &msg);
     }
 }
 

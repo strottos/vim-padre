@@ -68,31 +68,31 @@ impl DebuggerV1 for ImplDebugger {
     /// - startup lldb and setup the stdio analyser
     /// - perform initial setup so we can analyse LLDB properly
     fn setup(&mut self) {
-        let process = self.process.clone();
+        //let process = self.process.clone();
 
-        tokio::spawn(async move {
-            let msgs = [
-                "settings set stop-line-count-after 0\n",
-                "settings set stop-line-count-before 0\n",
-                "settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n",
-                "breakpoint set --name main\n",
-            ];
+        //tokio::spawn(async move {
+        //    let msgs = [
+        //        "settings set stop-line-count-after 0\n",
+        //        "settings set stop-line-count-before 0\n",
+        //        "settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n",
+        //        "breakpoint set --name main\n",
+        //    ];
 
-            for msg in msgs.iter() {
-                // Check we're actually listening
-                let (tx, mut rx) = mpsc::channel(1);
-                process.lock().unwrap().add_awakener(tx);
-                rx.next().await.unwrap();
-                process.lock().unwrap().drop_awakener();
+        //    for msg in msgs.iter() {
+        //        // Check we're actually listening
+        //        let (tx, mut rx) = mpsc::channel(1);
+        //        process.lock().unwrap().add_awakener(tx);
+        //        rx.next().await.unwrap();
+        //        process.lock().unwrap().drop_awakener();
 
-                process
-                    .lock()
-                    .unwrap()
-                    .write_stdin(Bytes::from(msg.as_bytes()));
-            }
-        });
+        //        process
+        //            .lock()
+        //            .unwrap()
+        //            .write_stdin(Bytes::from(msg.as_bytes()));
+        //    }
+        //});
 
-        self.process.lock().unwrap().setup();
+        //self.process.lock().unwrap().setup();
     }
 
     fn teardown(&mut self) {
@@ -176,10 +176,10 @@ impl DebuggerV1 for ImplDebugger {
             ),
         );
 
-        self.process
-            .lock()
-            .unwrap()
-            .send_msg(Message::Breakpoint(file_location.clone()));
+        //self.process
+        //    .lock()
+        //    .unwrap()
+        //    .send_msg(Message::Breakpoint(file_location.clone()));
     }
 
     fn unbreakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {}

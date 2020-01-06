@@ -52,6 +52,16 @@ Feature: Python
             | function           | args                      |
             | padre#debugger#Log | [4, "Setting breakpoint.*test_prog.py.*23"] |
             | padre#debugger#Log | [4, "Breakpoint pending.*test_prog.py.*23"] |
+        When I send a request to PADRE '{"cmd":"breakpoint","file":"`pwd`/test_files/test_prog.py","line":24}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function           | args                      |
+            | padre#debugger#Log | [4, "Setting breakpoint.*test_prog.py.*24"] |
+            | padre#debugger#Log | [4, "Breakpoint pending.*test_prog.py.*24"] |
+        When I send a request to PADRE '{"cmd":"unbreakpoint","file":"`pwd`/test_files/test_prog.py","line":24}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                                                |
+            | padre#debugger#Log            | [4,"Removing breakpoint.*test_prog.py.*24"]         |
+            | padre#debugger#Log            | [4,"Pending breakpoint removed.*test_prog.py.*24"]  |
         When I send a request to PADRE '{"cmd":"run"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                                   |
@@ -66,6 +76,10 @@ Feature: Python
             | function                      | args                                       |
             | padre#debugger#Log            | [4,"Setting breakpoint.*test_prog.py.*24"] |
             | padre#debugger#Log            | [4,"Breakpoint set.*test_prog.py.*24"]     |
+        When I send a request to PADRE '{"cmd":"unbreakpoint","file":"`pwd`/test_files/test_prog.py","line":24}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                                        |
+            | padre#debugger#Log            | [4,"Removing breakpoint.*test_prog.py.*24"] |
         When I send a request to PADRE '{"cmd":"stepOver"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                 |
@@ -99,10 +113,6 @@ Feature: Python
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                  |
             | padre#debugger#JumpToPosition | [".*test_prog.py",23] |
-        When I send a request to PADRE '{"cmd":"continue"}'
-        Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                  |
-            | padre#debugger#JumpToPosition | [".*test_prog.py",24] |
         When I send a request to PADRE '{"cmd":"continue"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                   |

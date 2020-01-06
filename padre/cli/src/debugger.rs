@@ -53,6 +53,7 @@ impl Debugger {
                 match cmd.0 {
                     DebuggerCmd::Run => debugger.run(cmd.1),
                     DebuggerCmd::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
+                    DebuggerCmd::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
                     DebuggerCmd::StepIn => debugger.step_in(cmd.1),
                     DebuggerCmd::StepOver => debugger.step_over(cmd.1),
                     DebuggerCmd::Continue => debugger.continue_(cmd.1),

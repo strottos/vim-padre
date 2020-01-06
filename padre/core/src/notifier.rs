@@ -113,6 +113,8 @@ pub fn log_msg(level: LogLevel, msg: &str) {
     NOTIFIER.lock().unwrap().send_msg(msg);
 }
 
+/// TODO: Allow to send to a specific socket
+
 /// Notify about a code position change
 pub fn jump_to_position(file: &str, line: u64) {
     let msg = Notification::new(
