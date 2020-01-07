@@ -292,10 +292,12 @@ def copy_file(context, source):
     Copy the contents of the file to a temporary directory and change dir
     to that directory
     """
+    context.starting_dir = os.getcwd()
     context.tmpdir = TemporaryDirectory()
     copyfile(
         os.path.join(TEST_FILES_DIR, source), os.path.join(context.tmpdir.name, source)
     )
+    os.chdir(context.tmpdir.name)
 
 
 @given(
@@ -727,6 +729,8 @@ def terminate_program(context):
     """
     Close PADRE
     """
+    os.chdir(context.starting_dir)
+
     subprocess.run(
         ["kill", "-SIGINT", "{}".format(context.padre.process.pid)],
         stdout=subprocess.PIPE,

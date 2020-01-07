@@ -8,8 +8,8 @@ repository = "https://github.com/strottos/vim-padre"
 
 [features]
 default = ["python", "godlv"]
-lldb = ["padre_lldb"]
-node = ["padre_node"]
+#lldb = ["padre_lldb"]
+#node = ["padre_node"]
 python = ["padre_python"]
 godlv = ["padre_godlv"]
 
@@ -23,7 +23,7 @@ serde_json = "1.0"
 tokio = { version = "0.2.6", features = ["full"] }
 
 # The debuggers, all optional
-padre_lldb = { path = "../debuggers/lldb", optional = true, version = "0.2.0" }
-padre_node = { path = "../debuggers/node", optional = true, version = "0.2.0" }
+#padre_lldb = { path = "../debuggers/lldb", optional = true, version = "0.2.0" }
+#padre_node = { path = "../debuggers/node", optional = true, version = "0.2.0" }
 padre_python = { path = "../debuggers/python", optional = true, version = "0.2.0" }
 padre_godlv = { path = "../debuggers/godlv", optional = true, version = "0.1.0" }
