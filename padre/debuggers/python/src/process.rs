@@ -230,7 +230,7 @@ impl Process {
                 }
                 Message::Unbreakpoint(fl) => {
                     Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
-                },
+                }
                 Message::StepIn => Bytes::from("step\n"),
                 Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),

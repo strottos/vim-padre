@@ -11,8 +11,8 @@ use super::process::{Message, Process};
 use padre_core::notifier::{log_msg, LogLevel};
 use padre_core::server::{DebuggerV1, FileLocation, Variable};
 
-use tokio::time::delay_for;
 use tokio::sync::oneshot;
+use tokio::time::delay_for;
 
 #[derive(Debug)]
 pub struct ImplDebugger {
@@ -82,7 +82,10 @@ impl DebuggerV1 for ImplDebugger {
             process.lock().unwrap().send_msg(Message::Continue);
         });
 
-        self.process.lock().unwrap().send_msg(Message::LaunchProcess);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::LaunchProcess);
     }
 
     fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
@@ -103,7 +106,10 @@ impl DebuggerV1 for ImplDebugger {
             ),
         );
 
-        self.process.lock().unwrap().send_msg(Message::Breakpoint(file_location));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Breakpoint(file_location));
     }
 
     fn unbreakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {}
@@ -121,6 +127,9 @@ impl DebuggerV1 for ImplDebugger {
     }
 
     fn print(&mut self, variable: &Variable, _timeout: Instant) {
-        self.process.lock().unwrap().send_msg(Message::PrintVariable(variable.clone()));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::PrintVariable(variable.clone()));
     }
 }

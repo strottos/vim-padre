@@ -158,10 +158,10 @@ impl DebuggerV1 for ImplDebugger {
                         match index {
                             Some(i) => {
                                 x.remove(i);
-                            },
+                            }
                             None => {}
                         };
-                    },
+                    }
                     None => {}
                 };
 

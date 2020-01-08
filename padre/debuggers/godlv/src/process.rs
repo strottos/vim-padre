@@ -5,7 +5,7 @@
 
 use std::env;
 use std::io::{self, Write};
-use std::process::{Stdio, exit};
+use std::process::{exit, Stdio};
 use std::sync::{Arc, Mutex};
 
 use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
@@ -128,7 +128,7 @@ impl Process {
                 }
                 Message::Unbreakpoint(fl) => {
                     Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
-                },
+                }
                 Message::StepIn => Bytes::from("si\n"),
                 Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),
@@ -168,8 +168,9 @@ impl Process {
                     let status = analyser_lock.status.clone();
                     match status {
                         DelveStatus::Listening => {
-                            analyser_lock.status = DelveStatus::Processing(Message::Custom(buf.clone()));
-                        },
+                            analyser_lock.status =
+                                DelveStatus::Processing(Message::Custom(buf.clone()));
+                        }
                         _ => {}
                     }
                 }
@@ -237,12 +238,15 @@ impl Analyser {
                                     self.print_variable.len() - 1
                                 };
 
-                                log_msg(LogLevel::INFO, &format!("{}={}", var.name(), &self.print_variable[0..to]));
+                                log_msg(
+                                    LogLevel::INFO,
+                                    &format!("{}={}", var.name(), &self.print_variable[0..to]),
+                                );
                                 self.print_variable = "".to_string();
-                            },
-                            _ => {},
+                            }
+                            _ => {}
                         };
-                    },
+                    }
                     _ => {}
                 };
 
@@ -253,8 +257,8 @@ impl Analyser {
                         tokio::spawn(async move {
                             awakener.send(true).unwrap();
                         });
-                    },
-                    None => {},
+                    }
+                    None => {}
                 }
             }
 
@@ -263,22 +267,25 @@ impl Analyser {
                     match msg {
                         Message::LaunchProcess => {
                             self.check_process_launched(line);
-                        },
+                        }
                         Message::Breakpoint(_) => {
                             self.check_breakpoint(line);
-                        },
-                        Message::StepIn | Message::StepOver | Message::Continue | Message::Custom(_) => {
+                        }
+                        Message::StepIn
+                        | Message::StepOver
+                        | Message::Continue
+                        | Message::Custom(_) => {
                             self.check_position(line);
                             self.check_exited(line);
-                        },
+                        }
                         Message::PrintVariable(var) => {
                             if line != &format!("print {}", var.name()) && line != "" {
                                 self.print_variable += &format!("{}\n", line);
                             }
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     };
-                },
+                }
                 _ => {}
             };
         }
@@ -290,10 +297,10 @@ impl Analyser {
                         if s != &format!("print {}\r\n", var.name()) {
                             log_msg(LogLevel::INFO, s);
                         }
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 };
-            },
+            }
             _ => {}
         };
     }
