@@ -282,10 +282,17 @@ function! padre#debugger#Log(level, text)
   call padre#layout#OpenTabWithBuffer('PADRE_Logs_' . s:PadreNumber)
 
   let l:current_window = winnr()
-  let l:logs_window = padre#layout#GetLogsWindow()
+  let l:logs_window = padre#layout#GetDataWindow()
 
   if l:current_window != l:logs_window
     execute l:logs_window . ' wincmd w'
+  endif
+
+  let l:current_bufnr = bufnr()
+  let l:logs_bufnr = padre#layout#GetDataBufnr("Logs")
+
+  if l:current_bufnr != l:logs_bufnr
+    execute 'buffer ' . l:logs_bufnr
   endif
 
   call padre#buffer#AppendBuffer(strftime('%y/%m/%d %H:%M:%S ') . l:level . a:text, 0)
@@ -299,4 +306,12 @@ function! padre#debugger#Log(level, text)
   endif
 
   redraw
+endfunction
+
+function! padre#debugger#ThreadsBufferEnter()
+  call padre#buffer#AppendBuffer("TODO: Populate with threads", 0)
+endfunction
+
+function! padre#debugger#ThreadActivate()
+  call padre#buffer#AppendBuffer("TODO: Activate thread", 0)
 endfunction

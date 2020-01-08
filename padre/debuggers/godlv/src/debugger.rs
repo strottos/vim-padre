@@ -4,15 +4,14 @@
 //! communicating through the `Process`.
 
 use std::path::PathBuf;
-use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use super::process::{Message, Process};
 use padre_core::notifier::{log_msg, LogLevel};
 use padre_core::server::{DebuggerV1, FileLocation, Variable};
 
+use tokio::time::delay_for;
 use tokio::sync::oneshot;
 
 #[derive(Debug)]
@@ -49,26 +48,41 @@ impl DebuggerV1 for ImplDebugger {
                 process2.lock().unwrap().send_msg(Message::Continue);
             });
 
-            process.lock().unwrap().send_msg(Message::Custom("b main.main".to_string()));
+            process.lock().unwrap().send_msg(Message::MainBreakpoint);
         });
 
         let process = self.process.clone();
 
-        // Sleep just to make sure vim has had time to connect
-        sleep(Duration::new(1, 0));
-
         tokio::spawn(async move {
+            // Sleep just to make sure vim has had time to connect
+            delay_for(Duration::new(1, 0)).await;
+
             process.lock().unwrap().run();
         });
     }
 
     fn teardown(&mut self) {
-        exit(0);
+        self.process.lock().unwrap().teardown();
     }
 
     /// Run Delve and perform any setup necessary
     fn run(&mut self, _timeout: Instant) {
         log_msg(LogLevel::INFO, "Launching process");
+
+        // Awakener
+        let (tx, rx) = oneshot::channel();
+
+        self.process.lock().unwrap().add_awakener(tx);
+
+        let process = self.process.clone();
+
+        tokio::spawn(async move {
+            rx.await.unwrap();
+
+            process.lock().unwrap().send_msg(Message::Continue);
+        });
+
+        self.process.lock().unwrap().send_msg(Message::LaunchProcess);
     }
 
     fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {

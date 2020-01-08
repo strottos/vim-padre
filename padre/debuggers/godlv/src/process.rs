@@ -5,7 +5,7 @@
 
 use std::env;
 use std::io::{self, Write};
-use std::process::Stdio;
+use std::process::{Stdio, exit};
 use std::sync::{Arc, Mutex};
 
 use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
@@ -25,13 +25,15 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 /// Messages that can be sent to Delve for processing
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
+    LaunchProcess,
+    MainBreakpoint,
     Breakpoint(FileLocation),
     Unbreakpoint(FileLocation),
     StepIn,
     StepOver,
     Continue,
     PrintVariable(Variable),
-    Custom(String),
+    Custom(Bytes),
 }
 
 /// Current status of Delve
@@ -76,7 +78,7 @@ impl Process {
 
         let mut process = Command::new(pty_wrapper)
             .arg(&debugger_cmd)
-            .arg("debug")
+            .arg("exec")
             .arg("--")
             .args(&run_cmd)
             .stdin(Stdio::piped())
@@ -106,6 +108,12 @@ impl Process {
         self.process = Some(process);
     }
 
+    pub fn teardown(&mut self) {
+        let mut process = self.process.take().unwrap();
+        process.kill().expect("Can't kill dlv");
+        exit(0);
+    }
+
     /// Send a message to write to stdin
     pub fn send_msg(&mut self, message: Message) {
         let tx = self.stdin_tx.clone();
@@ -113,6 +121,8 @@ impl Process {
 
         tokio::spawn(async move {
             let msg = match &message {
+                Message::LaunchProcess => Bytes::from("restart\n"),
+                Message::MainBreakpoint => Bytes::from("break main.main\n"),
                 Message::Breakpoint(fl) => {
                     Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))
                 }
@@ -120,10 +130,10 @@ impl Process {
                     Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
                 },
                 Message::StepIn => Bytes::from("si\n"),
-                Message::StepOver => Bytes::from("step\n"),
+                Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),
                 Message::PrintVariable(v) => Bytes::from(format!("print {}\n", v.name())),
-                Message::Custom(s) => Bytes::from(format!("{}\n", s)),
+                Message::Custom(s) => s.clone(),
             };
 
             analyser.lock().unwrap().analyse_message(message);
@@ -145,12 +155,24 @@ impl Process {
     fn setup_stdin(&mut self, mut child_stdin: ChildStdin) {
         let (stdin_tx, mut stdin_rx) = mpsc::channel(1);
         self.stdin_tx = Some(stdin_tx.clone());
+        let analyser = self.analyser.clone();
 
         tokio::spawn(async move {
             let tokio_stdin = stdin();
             let mut reader = FramedRead::new(tokio_stdin, BytesCodec::new());
+            let analyser = analyser.clone();
             while let Some(line) = reader.next().await {
                 let buf = line.unwrap().freeze();
+                {
+                    let mut analyser_lock = analyser.lock().unwrap();
+                    let status = analyser_lock.status.clone();
+                    match status {
+                        DelveStatus::Listening => {
+                            analyser_lock.status = DelveStatus::Processing(Message::Custom(buf.clone()));
+                        },
+                        _ => {}
+                    }
+                }
                 stdin_tx.clone().send(buf).await.unwrap();
             }
         });
@@ -185,6 +207,7 @@ impl Process {
 pub struct Analyser {
     status: DelveStatus,
     awakener: Option<oneshot::Sender<bool>>,
+    print_variable: String,
 }
 
 impl Analyser {
@@ -192,6 +215,7 @@ impl Analyser {
         Analyser {
             status: DelveStatus::None,
             awakener: None,
+            print_variable: "".to_string(),
         }
     }
 
@@ -203,7 +227,27 @@ impl Analyser {
     pub fn analyse_output(&mut self, s: &str) {
         for line in s.split("\r\n") {
             if line == "(dlv) " {
+                match &self.status {
+                    DelveStatus::Processing(msg) => {
+                        match msg {
+                            Message::PrintVariable(var) => {
+                                let to = if self.print_variable.len() < 1 {
+                                    0
+                                } else {
+                                    self.print_variable.len() - 1
+                                };
+
+                                log_msg(LogLevel::INFO, &format!("{}={}", var.name(), &self.print_variable[0..to]));
+                                self.print_variable = "".to_string();
+                            },
+                            _ => {},
+                        };
+                    },
+                    _ => {}
+                };
+
                 self.status = DelveStatus::Listening;
+
                 match self.awakener.take() {
                     Some(awakener) => {
                         tokio::spawn(async move {
@@ -214,9 +258,44 @@ impl Analyser {
                 }
             }
 
-            self.check_breakpoint(line);
-            self.check_position(line);
+            match &self.status {
+                DelveStatus::Processing(msg) => {
+                    match msg {
+                        Message::LaunchProcess => {
+                            self.check_process_launched(line);
+                        },
+                        Message::Breakpoint(_) => {
+                            self.check_breakpoint(line);
+                        },
+                        Message::StepIn | Message::StepOver | Message::Continue | Message::Custom(_) => {
+                            self.check_position(line);
+                            self.check_exited(line);
+                        },
+                        Message::PrintVariable(var) => {
+                            if line != &format!("print {}", var.name()) && line != "" {
+                                self.print_variable += &format!("{}\n", line);
+                            }
+                        },
+                        _ => {},
+                    };
+                },
+                _ => {}
+            };
         }
+
+        match &self.status {
+            DelveStatus::Processing(msg) => {
+                match msg {
+                    Message::PrintVariable(var) => {
+                        if s != &format!("print {}\r\n", var.name()) {
+                            log_msg(LogLevel::INFO, s);
+                        }
+                    },
+                    _ => {},
+                };
+            },
+            _ => {}
+        };
     }
 
     fn check_breakpoint(&self, line: &str) {
@@ -245,6 +324,34 @@ impl Analyser {
             let file = cap[1].to_string();
             let line = cap[2].parse::<u64>().unwrap();
             jump_to_position(&file, line);
+        }
+    }
+
+    fn check_process_launched(&self, line: &str) {
+        lazy_static! {
+            static ref RE_LAUNCHED: Regex =
+                Regex::new("^.*Process restarted with PID (\\d*)$").unwrap();
+        }
+
+        for cap in RE_LAUNCHED.captures_iter(line) {
+            let pid = cap[1].parse::<u64>().unwrap();
+            log_msg(
+                LogLevel::INFO,
+                &format!("Process launched with pid: {}", pid),
+            );
+        }
+    }
+
+    fn check_exited(&self, line: &str) {
+        lazy_static! {
+            static ref RE_EXITED: Regex =
+                Regex::new("^.*Process (\\d*) has exited with status (-*\\d*)$").unwrap();
+        }
+
+        for cap in RE_EXITED.captures_iter(line) {
+            let pid = cap[1].parse::<u64>().unwrap();
+            let exit_code = cap[2].parse::<i64>().unwrap();
+            signal_exited(pid, exit_code);
         }
     }
 

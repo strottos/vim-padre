@@ -56,8 +56,29 @@ function! padre#layout#SetupPadre(padre_number)
   let s:PadreData['SourceWin'] = winnr()
   vnew
   wincmd l
+  let s:PadreData['DataWin'] = winnr()
+
+  let s:PadreData['DataBufnrs'] = []
+
+  " Setup Threads buffer
+  call padre#buffer#CreateForCurrentBuffer('PADRE_Threads_' . a:padre_number, 'PADRE_Threads', 0)
+  let s:PadreData['ThreadsBufnr'] = bufnr()
+  call add(s:PadreData['DataBufnrs'], bufnr())
+  call padre#buffer#SetThreadsPadreKeyBindingsForCurrentBuffer()
+  call padre#buffer#SetTogglePadreKeyBindingsForCurrentBuffer()
+  call padre#buffer#AppendBuffer("TODO: Populate With Threads", 0)
+  augroup vimPadreThreadBuffer
+    autocmd!
+    autocmd BufEnter <buffer> call padre#debugger#ThreadsBufferEnter()
+  augroup END
+
+  " Setup Logs buffer
   call padre#buffer#CreateForCurrentBuffer('PADRE_Logs_' . a:padre_number, 'PADRE_Logs', 0)
-  let s:PadreData['LogsWin'] = winnr()
+  let s:PadreData['LogsBufnr'] = bufnr()
+  call add(s:PadreData['DataBufnrs'], bufnr())
+  let s:PadreData['CurrentDataBufnrIndex'] = len(s:PadreData['DataBufnrs']) - 1
+  call padre#buffer#SetTogglePadreKeyBindingsForCurrentBuffer()
+
   wincmd h
   wincmd j
 endfunction
@@ -66,6 +87,23 @@ function! padre#layout#GetSourceWindow()
   return s:PadreData['SourceWin']
 endfunction
 
-function! padre#layout#GetLogsWindow()
-  return s:PadreData['LogsWin']
+function! padre#layout#GetDataWindow()
+  return s:PadreData['DataWin']
+endfunction
+
+function! padre#layout#GetDataBufnr(buf_type)
+  return s:PadreData[a:buf_type . 'Bufnr']
+endfunction
+
+function! padre#layout#Toggle()
+  " TODO: Check we're in the right window, assume for now
+
+  if s:PadreData['CurrentDataBufnrIndex'] == len(s:PadreData['DataBufnrs']) - 1
+    let s:PadreData['CurrentDataBufnrIndex'] = 0
+  else
+    let s:PadreData['CurrentDataBufnrIndex'] += 1
+  endif
+
+  let l:index = s:PadreData['CurrentDataBufnrIndex']
+  execute 'buffer ' . s:PadreData['DataBufnrs'][l:index]
 endfunction
