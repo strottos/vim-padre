@@ -8,7 +8,7 @@ use std::io::{self, Write};
 use std::process::{exit, Stdio};
 use std::sync::{Arc, Mutex};
 
-use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
+use padre_core::notifier::{jump_to_position, log_msg, list_threads, signal_exited, LogLevel};
 use padre_core::server::{FileLocation, Variable};
 use padre_core::util::read_output;
 
@@ -29,10 +29,13 @@ pub enum Message {
     MainBreakpoint,
     Breakpoint(FileLocation),
     Unbreakpoint(FileLocation),
+    Status,
     StepIn,
     StepOver,
     Continue,
     PrintVariable(Variable),
+    Threads,
+    ActivateThread(i64),
     Custom(Bytes),
 }
 
@@ -129,10 +132,13 @@ impl Process {
                 Message::Unbreakpoint(fl) => {
                     Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
                 }
+                Message::Status => Bytes::from("list\n"),
                 Message::StepIn => Bytes::from("si\n"),
                 Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),
                 Message::PrintVariable(v) => Bytes::from(format!("print {}\n", v.name())),
+                Message::Threads => Bytes::from("goroutines\n"),
+                Message::ActivateThread(t) => Bytes::from(format!("goroutine {}\n", t)),
                 Message::Custom(s) => s.clone(),
             };
 
@@ -208,7 +214,8 @@ impl Process {
 pub struct Analyser {
     status: DelveStatus,
     awakener: Option<oneshot::Sender<bool>>,
-    print_variable: String,
+    string_store: String,
+    json_store: Option<serde_json::Value>,
 }
 
 impl Analyser {
@@ -216,7 +223,8 @@ impl Analyser {
         Analyser {
             status: DelveStatus::None,
             awakener: None,
-            print_variable: "".to_string(),
+            string_store: "".to_string(),
+            json_store: None,
         }
     }
 
@@ -232,17 +240,23 @@ impl Analyser {
                     DelveStatus::Processing(msg) => {
                         match msg {
                             Message::PrintVariable(var) => {
-                                let to = if self.print_variable.len() < 1 {
+                                let to = if self.string_store.len() < 1 {
                                     0
                                 } else {
-                                    self.print_variable.len() - 1
+                                    self.string_store.len() - 1
                                 };
 
                                 log_msg(
                                     LogLevel::INFO,
-                                    &format!("{}={}", var.name(), &self.print_variable[0..to]),
+                                    &format!("{}={}", var.name(), &self.string_store[0..to]),
                                 );
-                                self.print_variable = "".to_string();
+                                self.string_store = "".to_string();
+                            }
+                            Message::Threads => {
+                                let json_store = self.json_store.take().unwrap();
+                                list_threads(
+                                    json_store,
+                                );
                             }
                             _ => {}
                         };
@@ -271,6 +285,9 @@ impl Analyser {
                         Message::Breakpoint(_) => {
                             self.check_breakpoint(line);
                         }
+                        Message::Status => {
+                            self.check_position(line);
+                        }
                         Message::StepIn
                         | Message::StepOver
                         | Message::Continue
@@ -280,7 +297,14 @@ impl Analyser {
                         }
                         Message::PrintVariable(var) => {
                             if line != &format!("print {}", var.name()) && line != "" {
-                                self.print_variable += &format!("{}\n", line);
+                                self.string_store += &format!("{}\n", line);
+                            }
+                        }
+                        Message::Threads => {
+                            if line == "goroutines" {
+                                self.json_store = Some(serde_json::json!([]));
+                            } else if line != "" {
+                                self.check_goroutine(line);
                             }
                         }
                         _ => {}
@@ -289,20 +313,6 @@ impl Analyser {
                 _ => {}
             };
         }
-
-        match &self.status {
-            DelveStatus::Processing(msg) => {
-                match msg {
-                    Message::PrintVariable(var) => {
-                        if s != &format!("print {}\r\n", var.name()) {
-                            log_msg(LogLevel::INFO, s);
-                        }
-                    }
-                    _ => {}
-                };
-            }
-            _ => {}
-        };
     }
 
     fn check_breakpoint(&self, line: &str) {
@@ -331,6 +341,35 @@ impl Analyser {
             let file = cap[1].to_string();
             let line = cap[2].parse::<u64>().unwrap();
             jump_to_position(&file, line);
+        }
+    }
+
+    fn check_goroutine(&mut self, line: &str) {
+        lazy_static! {
+            static ref RE_GOROUTINE: Regex =
+                Regex::new(r#"^(\**) *Goroutine (\d*) - User: ([^ ]*) ([^ ]*) .*$"#).unwrap();
+        }
+
+        for cap in RE_GOROUTINE.captures_iter(line) {
+            let is_active = match &cap[1] {
+                "*" => true,
+                _ => false,
+            };
+            let number = cap[2].parse::<u64>().unwrap();
+            let location = cap[3].to_string();
+            let function = cap[4].to_string();
+
+            let thread = serde_json::json!({
+                "is_active": is_active,
+                "number": number,
+                "location": location,
+                "function": function,
+            });
+            if let Some(json) = self.json_store.as_mut() {
+                if let Some(arr) = json.as_array_mut() {
+                    arr.push(thread);
+                };
+            };
         }
     }
 

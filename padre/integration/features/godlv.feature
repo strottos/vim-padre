@@ -61,6 +61,14 @@ Feature: Go Delve
             | padre#debugger#JumpToPosition | [".*test_prog.go$",26]                |
             | padre#debugger#Log            | [4,"Process launched with pid: \\d+"] |
             | padre#debugger#Log            | [4,"Launching process"]               |
+        When I send a request to PADRE '{"cmd":"threads"}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                   | args |
+            | padre#debugger#ListThreads | [{"number":1},{"number":2},{"number":3},{"number":4}] |
+        When I send a request to PADRE '{"cmd":"activate_thread","number":2}'
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args               |
+            | padre#debugger#JumpToPosition | [".*proc.go$",305] |
         When I terminate padre
         Then padre is not running
 

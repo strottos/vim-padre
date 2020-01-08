@@ -381,7 +381,7 @@ def padre_debugger(context):
 
 
 @when("I sleep for a moment")
-def sleep_at_startup(context):
+def sleep_moment(context):
     """
     Just sleep for a very short period of time
     """
@@ -569,7 +569,7 @@ def check_calls_in(results, function, args):
 
     ["call","<<function>>",<<args>>]
 
-    e.g. ["call","padre#debugger#SignalPADREStarted",[]]
+    e.g. ["call","padre#debugger#Log",[4,"TESTING"]]
     """
     results_json = [json.loads(x) for x in results]
 
@@ -588,6 +588,10 @@ def check_calls_in(results, function, args):
     for result_json in results_json:
         found = True
         for (i, expected_arg) in enumerate(result_json[2]):
+            # TODO: Check dictionaries are in, assume they match roughly for now
+            if isinstance(args[i], dict):
+                continue
+
             if not re.compile(str(args[i])).match(str(expected_arg)):
                 found = False
                 break

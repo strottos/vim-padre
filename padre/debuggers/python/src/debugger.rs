@@ -223,4 +223,12 @@ impl DebuggerV1 for ImplDebugger {
             .unwrap()
             .send_msg(Message::PrintVariable(variable.clone()));
     }
+
+    fn threads(&mut self, _timeout: Instant) {
+        unimplemented!();
+    }
+
+    fn activate_thread(&mut self, number: i64, _timeout: Instant) {
+        unimplemented!();
+    }
 }

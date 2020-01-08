@@ -429,6 +429,42 @@ impl<'a> Decoder for VimCodec<'a> {
                     None => return Ok(None),
                 }
             }
+            "threads" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::DebuggerCmd(
+                    DebuggerCmd::Threads,
+                    Instant::now()
+                        + Duration::new(
+                            self.config
+                                .lock()
+                                .unwrap()
+                                .get_config("StepTimeout")
+                                .unwrap() as u64,
+                            0,
+                        ),
+                ),
+            ))),
+            "activate_thread" => {
+                let thread_num = self.get_i64("number", &mut args);
+                match thread_num {
+                    Some(t) => Ok(Some(PadreRequest::new(
+                        id,
+                        RequestCmd::DebuggerCmd(
+                            DebuggerCmd::ActivateThread(t),
+                            Instant::now()
+                                + Duration::new(
+                                    self.config
+                                        .lock()
+                                        .unwrap()
+                                        .get_config("StepTimeout")
+                                        .unwrap() as u64,
+                                    0,
+                                ),
+                        ),
+                    ))),
+                    None => return Ok(None),
+                }
+            }
             "getConfig" => {
                 let key = self.get_string("key", &mut args);
                 match key {

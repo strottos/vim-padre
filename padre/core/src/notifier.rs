@@ -124,6 +124,14 @@ pub fn jump_to_position(file: &str, line: u64) {
     NOTIFIER.lock().unwrap().send_msg(msg);
 }
 
+pub fn list_threads(threads: serde_json::Value) {
+    let msg = Notification::new(
+        "padre#debugger#ListThreads".to_string(),
+        vec![threads],
+    );
+    NOTIFIER.lock().unwrap().send_msg(msg);
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};

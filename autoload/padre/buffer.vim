@@ -12,6 +12,8 @@ function! padre#buffer#CreateForCurrentBuffer(name, filetype, writeable)
   setlocal buftype=nofile
   execute "setlocal filetype=" . a:filetype
   setlocal nobuflisted
+  setlocal nonumber
+  setlocal nolist
   if a:writeable == 0
     setlocal nomodifiable
   endif

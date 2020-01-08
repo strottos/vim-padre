@@ -33,6 +33,8 @@ pub enum DebuggerCmd {
     StepOver,
     Continue,
     Print(Variable),
+    Threads,
+    ActivateThread(i64),
 }
 
 /// File location
@@ -219,7 +221,9 @@ pub trait DebuggerV1: Debug {
     fn step_in(&mut self, timeout: Instant);
     fn step_over(&mut self, timeout: Instant);
     fn continue_(&mut self, timeout: Instant);
-    fn print(&mut self, variable: &Variable, _timeout: Instant);
+    fn print(&mut self, variable: &Variable, timeout: Instant);
+    fn threads(&mut self, timeout: Instant);
+    fn activate_thread(&mut self, number: i64, timeout: Instant);
 }
 
 /// Process a TCP socket connection.

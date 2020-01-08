@@ -62,6 +62,8 @@ impl Debugger {
                     DebuggerCmd::StepOver => debugger.step_over(cmd.1),
                     DebuggerCmd::Continue => debugger.continue_(cmd.1),
                     DebuggerCmd::Print(v) => debugger.print(&v, cmd.1),
+                    DebuggerCmd::Threads => debugger.threads(cmd.1),
+                    DebuggerCmd::ActivateThread(t) => debugger.activate_thread(t, cmd.1),
                 };
             }
         });

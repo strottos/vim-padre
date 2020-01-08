@@ -66,10 +66,16 @@ function! padre#layout#SetupPadre(padre_number)
   call add(s:PadreData['DataBufnrs'], bufnr())
   call padre#buffer#SetThreadsPadreKeyBindingsForCurrentBuffer()
   call padre#buffer#SetTogglePadreKeyBindingsForCurrentBuffer()
-  call padre#buffer#AppendBuffer("TODO: Populate With Threads", 0)
-  augroup vimPadreThreadBuffer
+  set nonumber
+  set nolist
+  augroup vimPadreThreadEnterBuffer
     autocmd!
     autocmd BufEnter <buffer> call padre#debugger#ThreadsBufferEnter()
+  augroup END
+" When exiting the threads buffer we should go back to the logs window
+  augroup vimPadreThreadLeaveBuffer
+    autocmd!
+    autocmd BufLeave <buffer> call padre#layout#ResetToLogs()
   augroup END
 
   " Setup Logs buffer
@@ -93,6 +99,42 @@ endfunction
 
 function! padre#layout#GetDataBufnr(buf_type)
   return s:PadreData[a:buf_type . 'Bufnr']
+endfunction
+
+function! padre#layout#ResetToLogs()
+  try
+    let l:logs_bufnr = padre#layout#GetDataBufnr("Logs")
+  catch /.*/
+    return
+  endtry
+
+  let l:current_tabpagenr = tabpagenr()
+
+  call padre#layout#OpenTabWithBuffer('PADRE_Threads_' . padre#debugger#GetCurrentPadreNumber())
+
+  let l:current_window = winnr()
+  let l:logs_window = padre#layout#GetDataWindow()
+
+  if l:current_window != l:logs_window
+    execute l:logs_window . ' wincmd w'
+  endif
+
+  let l:current_bufnr = bufnr()
+
+  if l:current_bufnr != l:logs_bufnr
+    execute 'buffer ' . l:logs_bufnr
+    let s:PadreData['CurrentDataBufnrIndex'] = len(s:PadreData['DataBufnrs']) - 1
+  endif
+
+  if l:current_window != l:logs_window
+    execute l:current_window . ' wincmd w'
+  endif
+
+  if l:current_tabpagenr != tabpagenr()
+    execute l:current_tabpagenr . 'tabnext'
+  endif
+
+  redraw
 endfunction
 
 function! padre#layout#Toggle()

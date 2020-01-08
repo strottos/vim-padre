@@ -132,4 +132,25 @@ impl DebuggerV1 for ImplDebugger {
             .unwrap()
             .send_msg(Message::PrintVariable(variable.clone()));
     }
+
+    fn threads(&mut self, _timeout: Instant) {
+        self.process.lock().unwrap().send_msg(Message::Threads);
+    }
+
+    fn activate_thread(&mut self, number: i64, _timeout: Instant) {
+        // Awakener
+        let (tx, rx) = oneshot::channel();
+
+        self.process.lock().unwrap().add_awakener(tx);
+
+        let process = self.process.clone();
+
+        tokio::spawn(async move {
+            rx.await.unwrap();
+
+            process.lock().unwrap().send_msg(Message::Status);
+        });
+
+        self.process.lock().unwrap().send_msg(Message::ActivateThread(number));
+    }
 }
