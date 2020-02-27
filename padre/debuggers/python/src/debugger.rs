@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::process::{Message, PDBStatus, Process};
-use padre_core::debugger::{Debugger, DebuggerCmd, FileLocation, Variable};
+use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdV1, FileLocation, Variable};
 use padre_core::notifier::{log_msg, LogLevel};
 
 use futures::StreamExt;
@@ -17,28 +17,63 @@ use tokio::sync::mpsc::{self, Receiver};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
-    process: Arc<Mutex<Process>>,
-    pending_breakpoints: Option<Vec<FileLocation>>,
+    debugger_cmd: String,
+    run_cmd: Vec<String>,
 }
 
 impl ImplDebugger {
     pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> ImplDebugger {
         ImplDebugger {
-            process: Arc::new(Mutex::new(Process::new(debugger_cmd, run_cmd))),
-            pending_breakpoints: Some(vec![]),
+            debugger_cmd,
+            run_cmd,
         }
     }
 }
 
 impl Debugger for ImplDebugger {
-    fn setup_handler(&self, queue_rx: Receiver<(DebuggerCmd, Instant)>) {}
+    #[allow(unreachable_patterns)]
+    fn setup_handler(&self, mut queue_rx: Receiver<(DebuggerCmd, Instant)>) {
+        let debugger_cmd = self.debugger_cmd.clone();
+        let run_cmd = self.run_cmd.clone();
+
+        tokio::spawn(async move {
+            let mut debugger = PythonDebugger::new(debugger_cmd, run_cmd);
+
+            while let Some(cmd) = queue_rx.next().await {
+                match cmd.0 {
+                    DebuggerCmd::V1(v1cmd) => match v1cmd {
+                        DebuggerCmdV1::Run => debugger.run(cmd.1),
+                        DebuggerCmdV1::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
+                        DebuggerCmdV1::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
+                        DebuggerCmdV1::StepIn => debugger.step_in(cmd.1),
+                        DebuggerCmdV1::StepOver => debugger.step_over(cmd.1),
+                        DebuggerCmdV1::Continue => debugger.continue_(cmd.1),
+                        DebuggerCmdV1::Print(v) => debugger.print(&v, cmd.1),
+                    },
+                    _ => unimplemented!(),
+                };
+            }
+        });
+    }
 
     fn teardown(&mut self) {
         exit(0);
     }
 }
 
-impl ImplDebugger {
+struct PythonDebugger {
+    process: Arc<Mutex<Process>>,
+    pending_breakpoints: Option<Vec<FileLocation>>,
+}
+
+impl PythonDebugger {
+    pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> PythonDebugger {
+        PythonDebugger {
+            process: Arc::new(Mutex::new(Process::new(debugger_cmd, run_cmd))),
+            pending_breakpoints: Some(vec![]),
+        }
+    }
+
     /// Run python and perform any setup necessary
     fn run(&mut self, _timeout: Instant) {
         match self.process.lock().unwrap().get_status() {
