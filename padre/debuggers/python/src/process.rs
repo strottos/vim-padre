@@ -181,13 +181,13 @@ impl Process {
 
         self.setup_stdout(
             process
-                .stdout()
+                .stdout
                 .take()
                 .expect("Python process did not have a handle to stdout"),
         );
         let stdin_tx = setup_stdin(
             process
-                .stdin()
+                .stdin
                 .take()
                 .expect("Python process did not have a handle to stdin"),
             false,
