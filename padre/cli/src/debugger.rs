@@ -223,21 +223,15 @@ fn get_file_type(cmd: &str) -> String {
 #[cfg(test)]
 mod tests {
     fn is_file_executable() {
-        assert_eq!(
-            true,
-            super::file_is_binary_executable("../test_files/node").await
-        );
+        assert_eq!(true, super::file_is_binary_executable("../test_files/node"));
         assert_eq!(
             false,
-            super::file_is_binary_executable("../test_files/test_node.js").await
+            super::file_is_binary_executable("../test_files/test_node.js")
         );
     }
 
     fn is_file_text() {
-        assert_eq!(false, super::file_is_text("../test_files/node").await);
-        assert_eq!(
-            true,
-            super::file_is_text("../test_files/test_node.js").await
-        );
+        assert_eq!(false, super::file_is_text("../test_files/node"));
+        assert_eq!(true, super::file_is_text("../test_files/test_node.js"));
     }
 }

@@ -512,9 +512,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::config::Config;
-    use crate::server::{
-        DebuggerCmd, Notification, PadreCmd, PadreResponse, PadreSend, RequestCmd,
-    };
+    use crate::debugger::{DebuggerCmd, DebuggerCmdV1};
+    use crate::server::{Notification, PadreCmd, PadreResponse, PadreSend, RequestCmd};
 
     use bytes::{BufMut, BytesMut};
     use tokio_util::codec::{Decoder, Encoder};
@@ -535,7 +534,7 @@ mod tests {
 
         match padre_request.cmd() {
             RequestCmd::DebuggerCmd(cmd, _) => {
-                assert_eq!(DebuggerCmd::Run, *cmd);
+                assert_eq!(DebuggerCmd::V1(DebuggerCmdV1::Run), *cmd);
             }
             _ => panic!("Wrong command type"),
         }
@@ -557,7 +556,7 @@ mod tests {
 
         match padre_request.cmd() {
             RequestCmd::DebuggerCmd(cmd, _) => {
-                assert_eq!(DebuggerCmd::Run, *cmd);
+                assert_eq!(DebuggerCmd::V1(DebuggerCmdV1::Run), *cmd);
             }
             _ => panic!("Wrong command type"),
         }
@@ -603,7 +602,7 @@ mod tests {
 
         match padre_request.cmd() {
             RequestCmd::DebuggerCmd(cmd, _) => {
-                assert_eq!(DebuggerCmd::Run, *cmd);
+                assert_eq!(DebuggerCmd::V1(DebuggerCmdV1::Run), *cmd);
             }
             _ => panic!("Wrong command type"),
         }

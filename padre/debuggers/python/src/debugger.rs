@@ -50,7 +50,9 @@ impl Debugger for ImplDebugger {
                         DebuggerCmdV1::Continue => debugger.continue_(cmd.1),
                         DebuggerCmdV1::Print(v) => debugger.print(&v, cmd.1),
                     },
-                    _ => unimplemented!(),
+                    _ => {
+                        log_msg(LogLevel::WARN, "Got a command that wasn't understood");
+                    }
                 };
             }
         });
