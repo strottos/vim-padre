@@ -22,7 +22,9 @@ serde_json = "1.0"
 tokio = { version = "0.2.11", features = [
   "io-util",
   "io-std",
+  "macros",
   "net",
+  "rt-core",
   "process",
   "stream",
   "sync",

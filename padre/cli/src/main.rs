@@ -36,6 +36,7 @@ use padre_core::server;
 use padre_core::util;
 
 mod debugger;
+use debugger::create_debugger;
 
 fn get_app_args<'a>() -> ArgMatches<'a> {
     App::new("VIM Padre")
@@ -88,19 +89,19 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn exit_padre(debugger: Arc<Mutex<debugger::Debugger>>) {
-    let when = Duration::new(5, 0);
+// fn exit_padre(debugger: Arc<Mutex<debugger::Debugger>>) {
+//     let when = Duration::new(5, 0);
+//
+//     tokio::spawn(async move {
+//         delay_for(when).await;
+//         println!("Timed out exiting!");
+//         exit(-1);
+//     });
+//
+//     debugger.lock().unwrap().stop();
+// }
 
-    tokio::spawn(async move {
-        delay_for(when).await;
-        println!("Timed out exiting!");
-        exit(-1);
-    });
-
-    debugger.lock().unwrap().stop();
-}
-
-async fn run_padre() -> () {
+async fn run_padre() -> io::Result<()> {
     let args = get_app_args();
 
     let debug_cmd: Vec<String> = args
@@ -113,15 +114,12 @@ async fn run_padre() -> () {
 
     // TODO: Do we need to wrap in Arc/Mutex any more now/when we're on new tokio 0.2? Probably in
     // the case of multiple connections but is there a way around it?
-    let debugger = Arc::new(Mutex::new(
-        debugger::create_debugger(
-            args.value_of("debugger"),
-            args.value_of("type"),
-            debug_cmd,
-            debugger_queue_rx,
-        )
-        .await,
-    ));
+    let debugger = Arc::new(Mutex::new(create_debugger(
+        args.value_of("debugger"),
+        args.value_of("type"),
+        debug_cmd,
+        debugger_queue_rx,
+    )));
 
     let connection_addr = get_connection(&args);
     let mut socket = TcpListener::bind(&connection_addr)
@@ -136,32 +134,32 @@ async fn run_padre() -> () {
 
     // TODO: Merge the following into one lot of signals when we know how to
 
-    let debugger_signals = debugger.clone();
-    tokio::spawn(async move {
-        let mut signals = signal(SignalKind::interrupt()).unwrap();
+    // let debugger_signals = debugger.clone();
+    // tokio::spawn(async move {
+    //     let mut signals = signal(SignalKind::interrupt()).unwrap();
 
-        while let Some(_) = signals.recv().await {
-            exit_padre(debugger_signals.clone());
-        }
-    });
+    //     while let Some(_) = signals.recv().await {
+    //         exit_padre(debugger_signals.clone());
+    //     }
+    // });
 
-    let debugger_signals = debugger.clone();
-    tokio::spawn(async move {
-        let mut signals = signal(SignalKind::quit()).unwrap();
+    // let debugger_signals = debugger.clone();
+    // tokio::spawn(async move {
+    //     let mut signals = signal(SignalKind::quit()).unwrap();
 
-        while let Some(_) = signals.recv().await {
-            exit_padre(debugger_signals.clone());
-        }
-    });
+    //     while let Some(_) = signals.recv().await {
+    //         exit_padre(debugger_signals.clone());
+    //     }
+    // });
 
-    let debugger_signals = debugger.clone();
-    tokio::spawn(async move {
-        let mut signals = signal(SignalKind::terminate()).unwrap();
+    // let debugger_signals = debugger.clone();
+    // tokio::spawn(async move {
+    //     let mut signals = signal(SignalKind::terminate()).unwrap();
 
-        while let Some(_) = signals.recv().await {
-            exit_padre(debugger_signals.clone());
-        }
-    });
+    //     while let Some(_) = signals.recv().await {
+    //         exit_padre(debugger_signals.clone());
+    //     }
+    // });
 
     while let Some(Ok(stream)) = incoming.next().await {
         let debugger_queue_tx = debugger_queue_tx.clone();
@@ -169,12 +167,12 @@ async fn run_padre() -> () {
             server::process_connection(stream, debugger_queue_tx.clone());
         });
     }
-}
-
-fn main() -> io::Result<()> {
-    let mut runtime = Runtime::new().unwrap();
-
-    runtime.block_on(run_padre());
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let padre = tokio::spawn(run_padre());
+    padre.await.unwrap()
 }

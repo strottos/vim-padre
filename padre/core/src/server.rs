@@ -13,72 +13,16 @@ use std::time::Instant;
 
 use crate::config::Config;
 // TODO: Add in remove_listener
+use crate::debugger::DebuggerCmd;
 use crate::notifier::{add_listener, log_msg, LogLevel};
 use crate::vimcodec::VimCodec;
 
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio_util::codec::Decoder;
 
 // TODO: Get some of this out of pub use and just in this module?
-
-/// All debugger commands
-#[derive(Clone, Debug, PartialEq)]
-pub enum DebuggerCmd {
-    Run,
-    Breakpoint(FileLocation),
-    Unbreakpoint(FileLocation),
-    StepIn,
-    StepOver,
-    Continue,
-    Print(Variable),
-}
-
-/// File location
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FileLocation {
-    name: String,
-    line_num: u64,
-}
-
-impl FileLocation {
-    pub fn new(name: String, line_num: u64) -> Self {
-        FileLocation { name, line_num }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn line_num(&self) -> u64 {
-        self.line_num
-    }
-}
-
-/// Variable name
-#[derive(Clone, Debug)]
-pub struct Variable {
-    name: String,
-}
-
-impl Variable {
-    pub fn new(name: String) -> Self {
-        Variable { name }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl PartialEq for Variable {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl Eq for Variable {}
 
 /// All padre commands
 #[derive(Clone, Debug, PartialEq)]
@@ -147,15 +91,15 @@ impl PadreRequest {
 ///
 /// Normally kept simple with important information relegated to an event based notification.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct Response {
+pub struct PadreResponse {
     id: u64,
     resp: serde_json::Value,
 }
 
-impl Response {
+impl PadreResponse {
     /// Create a response
     pub fn new(id: u64, resp: serde_json::Value) -> Self {
-        Response { id, resp }
+        PadreResponse { id, resp }
     }
 
     /// Return the response id
@@ -196,30 +140,18 @@ impl Notification {
     }
 }
 
-/// Data to be sent back to connection in the form of either a `Notification` or a `Response`
+/// Data to be sent back to connection in the form of either a `Notification` or a
+/// `PadreResponse`
 ///
-/// A `Response` takes a u64 as the first argument to represent the id and a JSON object as
-/// the second argument to represent the response. For example a response with an id of `1`
+/// A `PadreResponse` takes a u64 as the first argument to represent the id and a JSON object
+/// as the second argument to represent the response. For example a response with an id of `1`
 /// and a JSON object of `{"status":"OK"}` will be decoded by the `VIMCodec` as
 /// `[1,{"status":"OK"}]` and sent as a response to the requesting socket.
 ///
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum PadreSend {
-    Response(Response),
+    Response(PadreResponse),
     Notification(Notification),
-}
-
-/// Debugger trait that implements the basics
-pub trait DebuggerV1: Debug {
-    fn setup(&mut self);
-    fn teardown(&mut self);
-    fn run(&mut self, timeout: Instant);
-    fn breakpoint(&mut self, file_location: &FileLocation, timeout: Instant);
-    fn unbreakpoint(&mut self, file_location: &FileLocation, timeout: Instant);
-    fn step_in(&mut self, timeout: Instant);
-    fn step_over(&mut self, timeout: Instant);
-    fn continue_(&mut self, timeout: Instant);
-    fn print(&mut self, variable: &Variable, _timeout: Instant);
 }
 
 /// Process a TCP socket connection.
@@ -230,42 +162,41 @@ pub fn process_connection(stream: TcpStream, debugger_queue_tx: Sender<(Debugger
 
     let config = Arc::new(Mutex::new(Config::new()));
 
-    let (mut request_tx, mut request_rx) = VimCodec::new(config.clone()).framed(stream).split();
+    let (mut connection_tx, mut connection_rx) =
+        VimCodec::new(config.clone()).framed(stream).split();
 
-    let (connection_tx, mut connection_rx) = mpsc::channel(1);
+    // Just here as an abstraction around the connection so that we can send both responses
+    // to requests and to notify of an event (debugger paused for example).
+    let (tx, mut rx) = mpsc::channel(1);
 
-    add_listener(connection_tx.clone(), addr.clone());
+    add_listener(tx.clone(), addr.clone());
 
     tokio::spawn(async move {
-        while let Some(msg) = connection_rx.next().await {
-            request_tx.send(msg).await.unwrap();
+        while let Some(msg) = rx.next().await {
+            connection_tx.send(msg).await.unwrap();
         }
     });
 
     tokio::spawn(async move {
-        while let Some(req) = request_rx.next().await {
+        while let Some(req) = connection_rx.next().await {
             let resp = respond(req.unwrap(), debugger_queue_tx.clone(), config.clone())
                 .await
                 .unwrap();
-            connection_tx
-                .clone()
-                .send(PadreSend::Response(resp))
-                .await
-                .unwrap();
+            tx.clone().send(PadreSend::Response(resp)).await.unwrap();
         }
     });
 
     tokio::spawn(check_for_and_report_padre_updates());
 }
 
-/// Process a PadreRequest.
+/// Process a PadreRequest and figure out the response.
 ///
 /// Forwards the request to the appropriate place to handle it and responds appropriately.
 async fn respond<'a>(
     request: PadreRequest,
     mut debugger_queue_tx: Sender<(DebuggerCmd, Instant)>,
     config: Arc<Mutex<Config<'a>>>,
-) -> Result<Response, io::Error> {
+) -> Result<PadreResponse, io::Error> {
     match request.cmd() {
         RequestCmd::PadreCmd(cmd) => {
             let json_response = match cmd {
@@ -276,11 +207,11 @@ async fn respond<'a>(
             };
 
             match json_response {
-                Ok(args) => Ok(Response::new(request.id(), args)),
+                Ok(args) => Ok(PadreResponse::new(request.id(), args)),
                 Err(e) => {
                     log_msg(LogLevel::ERROR, &format!("{}", e));
                     let resp = serde_json::json!({"status":"ERROR"});
-                    Ok(Response::new(request.id(), resp))
+                    Ok(PadreResponse::new(request.id(), resp))
                 }
             }
         }
@@ -289,7 +220,7 @@ async fn respond<'a>(
                 .send((cmd.clone(), *timeout))
                 .await
                 .unwrap();
-            Ok(Response::new(
+            Ok(PadreResponse::new(
                 request.id(),
                 serde_json::json!({"status":"OK"}),
             ))

@@ -9,11 +9,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::process::{Message, PDBStatus, Process};
+use padre_core::debugger::{Debugger, DebuggerCmd, FileLocation, Variable};
 use padre_core::notifier::{log_msg, LogLevel};
-use padre_core::server::{DebuggerV1, FileLocation, Variable};
 
 use futures::StreamExt;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Receiver};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
@@ -30,13 +30,15 @@ impl ImplDebugger {
     }
 }
 
-impl DebuggerV1 for ImplDebugger {
-    fn setup(&mut self) {}
+impl Debugger for ImplDebugger {
+    fn setup_handler(&self, queue_rx: Receiver<(DebuggerCmd, Instant)>) {}
 
     fn teardown(&mut self) {
         exit(0);
     }
+}
 
+impl ImplDebugger {
     /// Run python and perform any setup necessary
     fn run(&mut self, _timeout: Instant) {
         match self.process.lock().unwrap().get_status() {
@@ -158,10 +160,10 @@ impl DebuggerV1 for ImplDebugger {
                         match index {
                             Some(i) => {
                                 x.remove(i);
-                            },
+                            }
                             None => {}
                         };
-                    },
+                    }
                     None => {}
                 };
 

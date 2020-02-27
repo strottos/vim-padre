@@ -8,9 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
-use crate::server::{
-    DebuggerCmd, FileLocation, PadreCmd, PadreRequest, PadreSend, RequestCmd, Variable,
-};
+use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation, Variable};
+use crate::server::{PadreCmd, PadreRequest, PadreSend, RequestCmd};
 use crate::util;
 
 use bytes::{Buf, BufMut, BytesMut};
@@ -309,7 +308,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "run" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::Run,
+                    DebuggerCmd::V1(DebuggerCmdV1::Run),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -324,7 +323,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "stepOver" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::StepOver,
+                    DebuggerCmd::V1(DebuggerCmdV1::StepOver),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -339,7 +338,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "stepIn" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::StepIn,
+                    DebuggerCmd::V1(DebuggerCmdV1::StepIn),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -354,7 +353,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "continue" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::Continue,
+                    DebuggerCmd::V1(DebuggerCmdV1::Continue),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -372,7 +371,7 @@ impl<'a> Decoder for VimCodec<'a> {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
                         RequestCmd::DebuggerCmd(
-                            DebuggerCmd::Breakpoint(fl),
+                            DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(fl)),
                             Instant::now()
                                 + Duration::new(
                                     self.config
@@ -393,7 +392,7 @@ impl<'a> Decoder for VimCodec<'a> {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
                         RequestCmd::DebuggerCmd(
-                            DebuggerCmd::Unbreakpoint(fl),
+                            DebuggerCmd::V1(DebuggerCmdV1::Unbreakpoint(fl)),
                             Instant::now()
                                 + Duration::new(
                                     self.config
@@ -414,7 +413,7 @@ impl<'a> Decoder for VimCodec<'a> {
                     Some(v) => Ok(Some(PadreRequest::new(
                         id,
                         RequestCmd::DebuggerCmd(
-                            DebuggerCmd::Print(v),
+                            DebuggerCmd::V1(DebuggerCmdV1::Print(v)),
                             Instant::now()
                                 + Duration::new(
                                     self.config
@@ -513,7 +512,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::config::Config;
-    use crate::server::{DebuggerCmd, Notification, PadreCmd, PadreSend, RequestCmd, Response};
+    use crate::server::{
+        DebuggerCmd, Notification, PadreCmd, PadreResponse, PadreSend, RequestCmd,
+    };
 
     use bytes::{BufMut, BytesMut};
     use tokio_util::codec::{Decoder, Encoder};
@@ -613,7 +614,7 @@ mod tests {
         let config = Arc::new(Mutex::new(Config::new()));
 
         let mut codec = super::VimCodec::new(config);
-        let resp = PadreSend::Response(Response::new(123, serde_json::json!({"ping":"pong"})));
+        let resp = PadreSend::Response(PadreResponse::new(123, serde_json::json!({"ping":"pong"})));
         let mut buf = BytesMut::new();
         codec.encode(resp, &mut buf).unwrap();
 

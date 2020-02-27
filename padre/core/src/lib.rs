@@ -5,6 +5,7 @@ extern crate serde_derive;
 extern crate lazy_static;
 
 pub mod config;
+pub mod debugger;
 pub mod notifier;
 pub mod server;
 pub mod util;

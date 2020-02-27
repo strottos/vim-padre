@@ -12,8 +12,8 @@ use std::process::exit;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
+use padre_core::debugger::{FileLocation, Variable};
 use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
-use padre_core::server::{FileLocation, Variable};
 #[cfg(not(test))]
 use padre_core::util::{file_exists, get_file_full_path};
 use padre_core::util::{read_output, setup_stdin};
@@ -230,7 +230,7 @@ impl Process {
                 }
                 Message::Unbreakpoint(fl) => {
                     Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
-                },
+                }
                 Message::StepIn => Bytes::from("step\n"),
                 Message::StepOver => Bytes::from("next\n"),
                 Message::Continue => Bytes::from("continue\n"),
