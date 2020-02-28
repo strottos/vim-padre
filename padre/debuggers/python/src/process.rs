@@ -318,10 +318,6 @@ impl Analyser {
                             from += print_cmd_size + 2;
                         }
 
-                        println!("s: {}", s);
-                        println!("from: {}", from);
-                        println!("to: {}", to);
-
                         let pdb_length = "(Pdb) ".len();
                         if to >= pdb_length && &s[to - pdb_length..to] == "(Pdb) " {
                             to -= pdb_length;
