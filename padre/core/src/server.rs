@@ -42,16 +42,16 @@ pub enum PadreCmd {
 ///
 /// ```
 /// use std::time::{Duration, Instant};
-/// use padre_core::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation, Variable};
+/// use padre_core::debugger::{DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
 /// use padre_core::server::RequestCmd;
 ///
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Run), Instant::now() + Duration::new(5,0));
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Basic(DebuggerCmdBasic::Run), Instant::now() + Duration::new(5,0));
 ///
 /// let file_location = FileLocation::new("test.c".to_string(), 12);
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(file_location)), Instant::now() + Duration::new(5,0));
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Basic(DebuggerCmdBasic::Breakpoint(file_location)), Instant::now() + Duration::new(5,0));
 ///
 /// let variable = Variable::new("abc".to_string());
-/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::V1(DebuggerCmdV1::Print(variable)), Instant::now() + Duration::new(5,0));
+/// let command = RequestCmd::DebuggerCmd(DebuggerCmd::Basic(DebuggerCmdBasic::Print(variable)), Instant::now() + Duration::new(5,0));
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum RequestCmd {

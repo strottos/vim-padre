@@ -28,45 +28,6 @@ enum DebuggerType {
     Python,
 }
 
-// #[derive(Debug)]
-// pub struct Debugger {
-//     debugger: Arc<Mutex<dyn Debugger + Send>>,
-// }
-//
-// impl Debugger {
-//     pub fn new(
-//         impl_debugger: Arc<Mutex<dyn Debugger + Send>>,
-//         mut queue_rx: Receiver<(DebuggerCmd, Instant)>,
-//     ) -> Debugger {
-//         let debugger = Debugger {
-//             debugger: impl_debugger.clone(),
-//         };
-//
-//         let queue_processing_debugger = impl_debugger.clone();
-//
-//         tokio::spawn(async move {
-//             while let Some(cmd) = queue_rx.next().await {
-//                 let mut debugger = queue_processing_debugger.lock().unwrap();
-//                 match cmd.0 {
-//                     DebuggerCmd::Run => debugger.run(cmd.1),
-//                     DebuggerCmd::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
-//                     DebuggerCmd::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
-//                     DebuggerCmd::StepIn => debugger.step_in(cmd.1),
-//                     DebuggerCmd::StepOver => debugger.step_over(cmd.1),
-//                     DebuggerCmd::Continue => debugger.continue_(cmd.1),
-//                     DebuggerCmd::Print(v) => debugger.print(&v, cmd.1),
-//                 };
-//             }
-//         });
-//
-//         debugger
-//     }
-//
-//     pub fn stop(&mut self) {
-//         self.debugger.lock().unwrap().teardown();
-//     }
-// }
-
 /// Get the debugger implementation
 ///
 /// If the debugger type is not specified it will try it's best to guess what kind of debugger to
@@ -222,6 +183,7 @@ fn get_file_type(cmd: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
     fn is_file_executable() {
         assert_eq!(true, super::file_is_binary_executable("../test_files/node"));
         assert_eq!(
@@ -230,6 +192,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn is_file_text() {
         assert_eq!(false, super::file_is_text("../test_files/node"));
         assert_eq!(true, super::file_is_text("../test_files/test_node.js"));

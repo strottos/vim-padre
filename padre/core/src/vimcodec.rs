@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
-use crate::debugger::{DebuggerCmd, DebuggerCmdV1, FileLocation, Variable};
+use crate::debugger::{DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
 use crate::server::{PadreCmd, PadreRequest, PadreSend, RequestCmd};
 use crate::util;
 
@@ -308,7 +308,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "run" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::V1(DebuggerCmdV1::Run),
+                    DebuggerCmd::Basic(DebuggerCmdBasic::Run),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -323,7 +323,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "stepOver" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::V1(DebuggerCmdV1::StepOver),
+                    DebuggerCmd::Basic(DebuggerCmdBasic::StepOver),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -338,7 +338,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "stepIn" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::V1(DebuggerCmdV1::StepIn),
+                    DebuggerCmd::Basic(DebuggerCmdBasic::StepIn),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -353,7 +353,7 @@ impl<'a> Decoder for VimCodec<'a> {
             "continue" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(
-                    DebuggerCmd::V1(DebuggerCmdV1::Continue),
+                    DebuggerCmd::Basic(DebuggerCmdBasic::Continue),
                     Instant::now()
                         + Duration::new(
                             self.config
@@ -371,7 +371,7 @@ impl<'a> Decoder for VimCodec<'a> {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
                         RequestCmd::DebuggerCmd(
-                            DebuggerCmd::V1(DebuggerCmdV1::Breakpoint(fl)),
+                            DebuggerCmd::Basic(DebuggerCmdBasic::Breakpoint(fl)),
                             Instant::now()
                                 + Duration::new(
                                     self.config
@@ -392,7 +392,7 @@ impl<'a> Decoder for VimCodec<'a> {
                     Some(fl) => Ok(Some(PadreRequest::new(
                         id,
                         RequestCmd::DebuggerCmd(
-                            DebuggerCmd::V1(DebuggerCmdV1::Unbreakpoint(fl)),
+                            DebuggerCmd::Basic(DebuggerCmdBasic::Unbreakpoint(fl)),
                             Instant::now()
                                 + Duration::new(
                                     self.config
@@ -413,7 +413,7 @@ impl<'a> Decoder for VimCodec<'a> {
                     Some(v) => Ok(Some(PadreRequest::new(
                         id,
                         RequestCmd::DebuggerCmd(
-                            DebuggerCmd::V1(DebuggerCmdV1::Print(v)),
+                            DebuggerCmd::Basic(DebuggerCmdBasic::Print(v)),
                             Instant::now()
                                 + Duration::new(
                                     self.config
@@ -512,7 +512,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::config::Config;
-    use crate::debugger::{DebuggerCmd, DebuggerCmdV1};
+    use crate::debugger::{DebuggerCmd, DebuggerCmdBasic};
     use crate::server::{Notification, PadreCmd, PadreResponse, PadreSend, RequestCmd};
 
     use bytes::{BufMut, BytesMut};
@@ -534,7 +534,7 @@ mod tests {
 
         match padre_request.cmd() {
             RequestCmd::DebuggerCmd(cmd, _) => {
-                assert_eq!(DebuggerCmd::V1(DebuggerCmdV1::Run), *cmd);
+                assert_eq!(DebuggerCmd::Basic(DebuggerCmdBasic::Run), *cmd);
             }
             _ => panic!("Wrong command type"),
         }
@@ -556,7 +556,7 @@ mod tests {
 
         match padre_request.cmd() {
             RequestCmd::DebuggerCmd(cmd, _) => {
-                assert_eq!(DebuggerCmd::V1(DebuggerCmdV1::Run), *cmd);
+                assert_eq!(DebuggerCmd::Basic(DebuggerCmdBasic::Run), *cmd);
             }
             _ => panic!("Wrong command type"),
         }
@@ -602,7 +602,7 @@ mod tests {
 
         match padre_request.cmd() {
             RequestCmd::DebuggerCmd(cmd, _) => {
-                assert_eq!(DebuggerCmd::V1(DebuggerCmdV1::Run), *cmd);
+                assert_eq!(DebuggerCmd::Basic(DebuggerCmdBasic::Run), *cmd);
             }
             _ => panic!("Wrong command type"),
         }

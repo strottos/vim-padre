@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::process::{Message, PDBStatus, Process};
-use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdV1, FileLocation, Variable};
+use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
 use padre_core::notifier::{log_msg, LogLevel};
 
 use futures::StreamExt;
@@ -41,25 +41,28 @@ impl Debugger for ImplDebugger {
 
             while let Some(cmd) = queue_rx.next().await {
                 match cmd.0 {
-                    DebuggerCmd::V1(v1cmd) => match v1cmd {
-                        DebuggerCmdV1::Run => debugger.run(cmd.1),
-                        DebuggerCmdV1::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
-                        DebuggerCmdV1::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
-                        DebuggerCmdV1::StepIn => debugger.step_in(cmd.1),
-                        DebuggerCmdV1::StepOver => debugger.step_over(cmd.1),
-                        DebuggerCmdV1::Continue => debugger.continue_(cmd.1),
-                        DebuggerCmdV1::Print(v) => debugger.print(&v, cmd.1),
+                    DebuggerCmd::Basic(v1cmd) => match v1cmd {
+                        DebuggerCmdBasic::Run => debugger.run(cmd.1),
+                        DebuggerCmdBasic::Interrupt => debugger.interrupt(),
+                        DebuggerCmdBasic::Exit => {
+                            debugger.teardown();
+                            break
+                        }
+                        DebuggerCmdBasic::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
+                        DebuggerCmdBasic::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
+                        DebuggerCmdBasic::StepIn => debugger.step_in(cmd.1),
+                        DebuggerCmdBasic::StepOver => debugger.step_over(cmd.1),
+                        DebuggerCmdBasic::Continue => debugger.continue_(cmd.1),
+                        DebuggerCmdBasic::Print(v) => debugger.print(&v, cmd.1),
                     },
                     _ => {
                         log_msg(LogLevel::WARN, "Got a command that wasn't understood");
                     }
                 };
             }
-        });
-    }
 
-    fn teardown(&mut self) {
-        exit(0);
+            exit(0);
+        });
     }
 }
 
@@ -74,6 +77,9 @@ impl PythonDebugger {
             process: Arc::new(Mutex::new(Process::new(debugger_cmd, run_cmd))),
             pending_breakpoints: Some(vec![]),
         }
+    }
+
+    fn teardown(&mut self) {
     }
 
     /// Run python and perform any setup necessary
@@ -117,6 +123,9 @@ impl PythonDebugger {
         tokio::spawn(async move {
             process.lock().unwrap().run();
         });
+    }
+
+    fn interrupt(&mut self) {
     }
 
     fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {

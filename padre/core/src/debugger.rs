@@ -12,19 +12,20 @@ use tokio::sync::mpsc::Receiver;
 /// Debugger trait that implements the basics
 pub trait Debugger: Debug {
     fn setup_handler(&self, queue_rx: Receiver<(DebuggerCmd, Instant)>);
-    fn teardown(&mut self);
 }
 
 /// All debugger commands
 #[derive(Clone, Debug, PartialEq)]
 pub enum DebuggerCmd {
-    V1(DebuggerCmdV1),
+    Basic(DebuggerCmdBasic),
 }
 
 /// All debugger commands
 #[derive(Clone, Debug, PartialEq)]
-pub enum DebuggerCmdV1 {
+pub enum DebuggerCmdBasic {
     Run,
+    Exit,
+    Interrupt,
     Breakpoint(FileLocation),
     Unbreakpoint(FileLocation),
     StepIn,
