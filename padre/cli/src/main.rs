@@ -90,7 +90,7 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
 
 fn exit_padre(mut debugger_queue_tx: Sender<(DebuggerCmd, Instant)>) {
     tokio::spawn(async move {
-        let instant = Instant::now() + Duration::new(5,0);
+        let instant = Instant::now() + Duration::new(5, 0);
         let command = (DebuggerCmd::Basic(DebuggerCmdBasic::Exit), instant);
         debugger_queue_tx.send(command).await.unwrap();
         delay_until(tokio::time::Instant::from_std(instant)).await;

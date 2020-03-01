@@ -23,7 +23,7 @@ use futures::prelude::*;
 use regex::Regex;
 use tokio::io::BufReader;
 use tokio::process::{Child, ChildStdout, Command};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc, oneshot};
 
 /// Messages that can be sent to PDB for processing
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -130,7 +130,7 @@ pub struct Process {
     debugger_cmd: Option<String>,
     run_cmd: Option<Vec<String>>,
     process: Option<Child>,
-    stdin_tx: Option<Sender<Bytes>>,
+    stdin_tx: Option<mpsc::Sender<Bytes>>,
     analyser: Arc<Mutex<Analyser>>,
 }
 
@@ -153,7 +153,9 @@ impl Process {
     /// - Sets up a `ReadOutput` from `util.rs` in order to read stdout and stderr;
     /// - Sets up a thread to read stdin and forward it onto Python interpreter;
     /// - Checks that Python and the program to be ran both exist, otherwise panics.
-    pub fn run(&mut self) {
+    pub fn run(&mut self, tx_done: Option<oneshot::Sender<bool>>) {
+        self.analyser.lock().unwrap().analyse_message(Message::Launching, tx_done);
+
         let debugger_cmd = self.debugger_cmd.take().unwrap();
         let run_cmd = self.run_cmd.take().unwrap();
 
@@ -199,17 +201,8 @@ impl Process {
         self.process = Some(process);
     }
 
-    /// Adds a Sender object that gets awoken when we are listening.
-    ///
-    /// Should only add a sender when we're about to go into or currently in the
-    /// processing status otherwise this will never wake up.
-    pub fn add_awakener(&self, sender: Sender<bool>) {
-        self.analyser.lock().unwrap().add_awakener(sender);
-    }
-
-    /// Drop the awakener
-    pub fn drop_awakener(&mut self) {
-        self.analyser.lock().unwrap().drop_awakener();
+    pub fn stop(&mut self) {
+        self.process = None;
     }
 
     /// Check the current status, either not running (None), running something
@@ -219,27 +212,29 @@ impl Process {
     }
 
     /// Send a message to write to stdin
-    pub fn send_msg(&mut self, message: Message) {
+    pub fn send_msg(&mut self, message: Message, tx_done: Option<oneshot::Sender<bool>>) {
         let tx = self.stdin_tx.clone();
         let analyser = self.analyser.clone();
 
-        tokio::spawn(async move {
-            let msg = match &message {
-                Message::Breakpoint(fl) => {
-                    Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))
-                }
-                Message::Unbreakpoint(fl) => {
-                    Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
-                }
-                Message::StepIn => Bytes::from("step\n"),
-                Message::StepOver => Bytes::from("next\n"),
-                Message::Continue => Bytes::from("continue\n"),
-                Message::Launching => unreachable!(),
-                Message::PrintVariable(v) => Bytes::from(format!("print({})\n", v.name())),
-                Message::Custom => todo!(),
-            };
+        let msg = match &message {
+            Message::Breakpoint(fl) => {
+                Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))
+            }
+            Message::Unbreakpoint(fl) => {
+                Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))
+            }
+            Message::StepIn => Bytes::from("step\n"),
+            Message::StepOver => Bytes::from("next\n"),
+            Message::Continue => Bytes::from("continue\n"),
+            Message::Launching => unreachable!(),
+            Message::PrintVariable(v) => Bytes::from(format!("print({})\n", v.name())),
+            Message::Custom => todo!(),
+        };
 
-            analyser.lock().unwrap().analyse_message(message);
+        tokio::spawn(async move {
+            // TODO: Interrupt and set and carry on
+
+            analyser.lock().unwrap().analyse_message(message, tx_done);
 
             tx.clone().unwrap().send(msg).map(move |_| {}).await
         });
@@ -263,7 +258,7 @@ impl Process {
 pub struct Analyser {
     status: PDBStatus,
     pid: Option<u64>,
-    awakener: Option<Sender<bool>>,
+    awakener: Option<oneshot::Sender<bool>>,
     // For keeping track of the variable that we were told to print
     variable_value: String,
 }
@@ -280,16 +275,6 @@ impl Analyser {
 
     pub fn get_status(&mut self) -> PDBStatus {
         self.status.clone()
-    }
-
-    /// Add the awakener to send a message to when we awaken
-    pub fn add_awakener(&mut self, sender: Sender<bool>) {
-        self.awakener = Some(sender);
-    }
-
-    /// Drop the awakener
-    pub fn drop_awakener(&mut self) {
-        self.awakener = None;
     }
 
     pub fn analyse_stdout(&mut self, s: &str) {
@@ -363,7 +348,7 @@ impl Analyser {
                     Message::Breakpoint(_) => {
                         self.check_breakpoint(line);
                     }
-                    Message::StepIn | Message::StepOver | Message::Continue => {
+                    Message::Launching | Message::StepIn | Message::StepOver | Message::Continue => {
                         self.check_location(line);
                     }
                     Message::Custom => {
@@ -394,25 +379,28 @@ impl Analyser {
         }
     }
 
-    pub fn analyse_message(&mut self, msg: Message) {
+    fn set_listening(&mut self) {
+        self.status = PDBStatus::Listening;
+        match self.awakener.take() {
+            Some(tx) => {
+                tx.send(true).unwrap();
+            }
+            None => {}
+        }
+    }
+
+    /// Sets up the analyser ready for analysing the message.
+    ///
+    /// It sets the status of the analyser to Processing for that message and if given
+    /// it marks the analyser to send a message to `tx_done` to indicate when the
+    /// message is processed.
+    pub fn analyse_message(&mut self, msg: Message, tx_done: Option<oneshot::Sender<bool>>) {
         self.status = PDBStatus::Processing(msg);
+        self.awakener = tx_done;
     }
 
     pub fn set_pid(&mut self, pid: u64) {
         self.pid = Some(pid);
-    }
-
-    fn set_listening(&mut self) {
-        self.status = PDBStatus::Listening;
-        let awakener = self.awakener.take();
-        match awakener {
-            Some(mut x) => {
-                tokio::spawn(async move {
-                    x.send(true).await.unwrap();
-                });
-            }
-            None => {}
-        };
     }
 
     fn check_breakpoint(&self, line: &str) {

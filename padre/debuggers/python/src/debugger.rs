@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 use std::process::exit;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::process::{Message, PDBStatus, Process};
@@ -12,7 +13,7 @@ use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdBasic, FileLocation
 use padre_core::notifier::{log_msg, LogLevel};
 
 use futures::StreamExt;
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
@@ -31,7 +32,7 @@ impl ImplDebugger {
 
 impl Debugger for ImplDebugger {
     #[allow(unreachable_patterns)]
-    fn setup_handler(&self, mut queue_rx: Receiver<(DebuggerCmd, Instant)>) {
+    fn setup_handler(&self, mut queue_rx: mpsc::Receiver<(DebuggerCmd, Instant)>) {
         let debugger_cmd = self.debugger_cmd.clone();
         let run_cmd = self.run_cmd.clone();
 
@@ -45,7 +46,7 @@ impl Debugger for ImplDebugger {
                         DebuggerCmdBasic::Interrupt => debugger.interrupt(),
                         DebuggerCmdBasic::Exit => {
                             debugger.teardown();
-                            break
+                            break;
                         }
                         DebuggerCmdBasic::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
                         DebuggerCmdBasic::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
@@ -66,28 +67,24 @@ impl Debugger for ImplDebugger {
 }
 
 struct PythonDebugger {
-    process: Process,
+    process: Arc<Mutex<Process>>,
     pending_breakpoints: Option<Vec<FileLocation>>,
 }
 
 impl PythonDebugger {
     pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> PythonDebugger {
         PythonDebugger {
-            process: Process::new(debugger_cmd, run_cmd),
+            process: Arc::new(Mutex::new(Process::new(debugger_cmd, run_cmd))),
             pending_breakpoints: Some(vec![]),
         }
     }
 
-    fn teardown(&mut self) {
-    }
-
     /// Run python and perform any setup necessary
     fn run(&mut self, _timeout: Instant) {
-        match self.process.get_status() {
+        match self.process.lock().unwrap().get_status() {
             PDBStatus::None => {}
             _ => {
                 let msg = "Process already running, not launching";
-                eprintln!("{}", msg);
                 log_msg(LogLevel::WARN, msg);
                 return;
             }
@@ -97,26 +94,30 @@ impl PythonDebugger {
 
         let pending_breakpoints = self.pending_breakpoints.take();
 
+        let (tx, rx) = oneshot::channel();
+
         match pending_breakpoints {
             Some(pbs) => {
-                for pb in pbs {
-                    // TODO: Check we're actually listening
-                    // let (tx, mut rx) = mpsc::channel(1);
-                    // process.lock().unwrap().add_awakener(tx);
-                    // rx.next().await.unwrap();
-                    // process.lock().unwrap().drop_awakener();
-
-                    // And send the breakpoint info
-                    self.process.send_msg(Message::Breakpoint(pb));
-                }
+                let process = self.process.clone();
+                tokio::spawn(async move {
+                    rx.await.unwrap();
+                    for pb in pbs {
+                        let (tx, rx) = oneshot::channel();
+                        process.lock().unwrap().send_msg(Message::Breakpoint(pb), Some(tx));
+                        rx.await.unwrap();
+                    }
+                });
             }
             None => {}
         };
 
-        self.process.run();
+        self.process.lock().unwrap().run(Some(tx));
     }
 
-    fn interrupt(&mut self) {
+    fn interrupt(&mut self) {}
+
+    fn teardown(&mut self) {
+        self.process.lock().unwrap().stop();
     }
 
     fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
@@ -139,7 +140,7 @@ impl PythonDebugger {
         );
 
         // If not started yet add as a pending breakpoint that will get set during run period.
-        match self.process.get_status() {
+        match self.process.lock().unwrap().get_status() {
             PDBStatus::None => {
                 match self.pending_breakpoints {
                     Some(ref mut x) => x.push(file_location.clone()),
@@ -160,7 +161,10 @@ impl PythonDebugger {
             _ => {}
         }
 
-        self.process.send_msg(Message::Breakpoint(file_location));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Breakpoint(file_location), None);
     }
 
     fn unbreakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
@@ -181,7 +185,7 @@ impl PythonDebugger {
         );
 
         // If not started yet remove any pending breakpoint that will get set during run period.
-        match self.process.get_status() {
+        match self.process.lock().unwrap().get_status() {
             PDBStatus::None => {
                 match self.pending_breakpoints {
                     Some(ref mut x) => {
@@ -215,7 +219,10 @@ impl PythonDebugger {
             _ => {}
         }
 
-        self.process.send_msg(Message::Unbreakpoint(file_location));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Unbreakpoint(file_location), None);
     }
 
     fn step_in(&mut self, _timeout: Instant) {
@@ -224,7 +231,7 @@ impl PythonDebugger {
         //    None => {}
         //};
 
-        self.process.send_msg(Message::StepIn);
+        self.process.lock().unwrap().send_msg(Message::StepIn, None);
     }
 
     fn step_over(&mut self, _timeout: Instant) {
@@ -233,7 +240,10 @@ impl PythonDebugger {
         //    None => {}
         //};
 
-        self.process.send_msg(Message::StepOver);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::StepOver, None);
     }
 
     fn continue_(&mut self, _timeout: Instant) {
@@ -242,7 +252,10 @@ impl PythonDebugger {
         //    None => {}
         //};
 
-        self.process.send_msg(Message::Continue);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Continue, None);
     }
 
     fn print(&mut self, variable: &Variable, _timeout: Instant) {
@@ -251,6 +264,9 @@ impl PythonDebugger {
         //    None => {}
         //};
 
-        self.process.send_msg(Message::PrintVariable(variable.clone()));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::PrintVariable(variable.clone()), None);
     }
 }
