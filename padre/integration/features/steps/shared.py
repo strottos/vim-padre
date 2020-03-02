@@ -388,7 +388,7 @@ def sleep_at_startup(context):
     stdin. This gives PADRE a chance to fully startup before we start confusing
     it.
     """
-    time.sleep(1)
+    time.sleep(2)
 
 
 @when("I open another connection to PADRE")

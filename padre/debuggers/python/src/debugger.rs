@@ -103,7 +103,10 @@ impl PythonDebugger {
                     rx.await.unwrap();
                     for pb in pbs {
                         let (tx, rx) = oneshot::channel();
-                        process.lock().unwrap().send_msg(Message::Breakpoint(pb), Some(tx));
+                        process
+                            .lock()
+                            .unwrap()
+                            .send_msg(Message::Breakpoint(pb), Some(tx));
                         rx.await.unwrap();
                     }
                 });

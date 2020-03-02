@@ -6,23 +6,26 @@ Feature: LLDB
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
-        And I give PADRE chance to start
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
+        When I give PADRE chance to start
         And I send a command 'b main' using the terminal
         Then I expect to be called with
-            | function           | args                                   |
-            | padre#debugger#Log | [4, "Breakpoint set.*test_prog.c.*22"] |
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
         When I send a command 'run' using the terminal
         Then I expect to be called with
-            | function                      | args                   |
-            | padre#debugger#JumpToPosition | [".*test_prog.c$", 22] |
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",22] |
         When I send a command 's' using the terminal
         Then I expect to be called with
-            | function                      | args                  |
-            | padre#debugger#JumpToPosition | [".*test_prog.c$", 8] |
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",8] |
         When I send a command 'n' using the terminal
         Then I expect to be called with
-            | function                      | args                  |
-            | padre#debugger#JumpToPosition | [".*test_prog.c$", 9] |
+            | function                      | args                 |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",9] |
         When I send a command 'c' using the terminal
         Then I expect to be called with
             | function                     | args       |
@@ -36,20 +39,24 @@ Feature: LLDB
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
         And I give PADRE chance to start
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"test_prog.c","line":17}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function           | args                                   |
-            | padre#debugger#Log | [4, ".*test_prog.c.*17"]               |
+            | function           | args                                      |
+            | padre#debugger#Log | [4,".*test_prog.c.*17"]                   |
+            | padre#debugger#Log | [4,"Setting breakpoint.*test_prog.c.*17"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"not_exists.c","line":17}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function           | args                     |
-            | padre#debugger#Log | [4,".*not_exists.c.*17"] |
+            | function           | args                                       |
+            | padre#debugger#Log | [4,"Setting breakpoint.*not_exists.c.*17"] |
+            | padre#debugger#Log | [4,"Breakpoint pending"]                   |
         When I send a request to PADRE '{"cmd":"run"}'
-        Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
-            | function                      | args                    |
-            | padre#debugger#BreakpointSet  | [".*test_prog.c$",22]   |
-            | padre#debugger#JumpToPosition | [".*test_prog.c$",22]   |
-            | padre#debugger#Log            | [4,"Launching process"] |
+        Then I receive both a response '{"status":"OK"}' and I expect to be called with
+            | function                      | args                                  |
+            | padre#debugger#Log            | [4,"Launching process"]               |
+            | padre#debugger#JumpToPosition | [".*test_prog.c$",22]                 |
         When I send a request to PADRE '{"cmd":"stepIn"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                 |
@@ -91,36 +98,36 @@ Feature: LLDB
         #    When I debug the program with PADRE
         #    When I send a command 'b func3' using the terminal
         #    Then I expect to be called with
-        #        | function                     | args                   |
-        #        | padre#debugger#BreakpointSet | [".*test_prog.c$", 17] |
+        #        | function                     | args                                  |
+        #        | padre#debugger#Log           | [4,"Breakpoint set.*test_prog.c.*17"] |
         #    When I send a request to PADRE '{"cmd":"run"}'
         #    Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
-        #        | function                      | args                    |
-        #        | padre#debugger#BreakpointSet  | [".*test_prog.c$",22]   |
-        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",22]   |
-        #        | padre#debugger#Log            | [4,"Launching process"] |
+        #        | function                      | args                                  |
+        #        | padre#debugger#Log            | [4,"Breakpoint set.*test_prog.c.*22"] |
+        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",22]                 |
+        #        | padre#debugger#Log            | [4,"Launching process"]               |
         #    When I send a command 's' using the terminal
         #    Then I expect to be called with
-        #        | function                      | args                  |
-        #        | padre#debugger#JumpToPosition | [".*test_prog.c$", 8] |
+        #        | function                      | args                 |
+        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",8] |
         #    When I send a request to PADRE '{"cmd":"stepOver"}'
         #    Then I receive both a response '{"status":"OK"}' and I expect to be called with
         #        | function                      | args                 |
         #        | padre#debugger#JumpToPosition | [".*test_prog.c$",9] |
         #    When I send a command 'n' using the terminal
         #    Then I expect to be called with
-        #        | function                      | args                   |
-        #        | padre#debugger#JumpToPosition | [".*test_prog.c$", 17] |
+        #        | function                      | args                  |
+        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",17] |
         #    When I send a command 'n' using the terminal
         #    Then I expect to be called with
-        #        | function                      | args                   |
-        #        | padre#debugger#JumpToPosition | [".*test_prog.c$", 18] |
+        #        | function                      | args                  |
+        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",18] |
         #    When I send a request to PADRE '{"cmd":"print","variable":"a"}'
         #    Then I receive a response '{"status":"OK","variable":"a","value":"1","type":"int"}'
         #    When I send a command 'c' using the terminal
         #    Then I expect to be called with
-        #        | function                      | args                   |
-        #        | padre#debugger#JumpToPosition | [".*test_prog.c$", 10] |
+        #        | function                      | args                  |
+        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",10] |
         #    When I send a request to PADRE '{"cmd":"continue"}'
         #    Then I receive both a response '{"status":"OK"}' and I expect to be called with
         #        | function                     | args       |
@@ -159,10 +166,10 @@ Feature: LLDB
         #    When I debug the program with PADRE
         #    When I send a request to PADRE '{"cmd":"run"}'
         #    Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
-        #        | function                      | args                    |
-        #        | padre#debugger#BreakpointSet  | [".*test_prog.c$",22]   |
-        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",22]   |
-        #        | padre#debugger#Log            | [4,"Launching process"] |
+        #        | function                      | args                                  |
+        #        | padre#debugger#Log            | [4,"Breakpoint set.*test_prog.c.*22"] |
+        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",22]                 |
+        #        | padre#debugger#Log            | [4,"Launching process"]               |
         #    When I send a request to PADRE '{"cmd":"print","variable":"a"}'
         #    Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
         #        | function           | args                                  |
@@ -232,10 +239,10 @@ Feature: LLDB
         #    Then I receive a response '{"status":"OK"}'
         #    When I send a request to PADRE '{"cmd":"run"}'
         #    Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
-        #        | function                     | args                             |
-        #        | padre#debugger#Log           | [4,"Launching process"]          |
-        #        | padre#debugger#BreakpointSet | ["test.c",25]                    |
-        #        | padre#debugger#Log           | [2,"Timed out spawning process"] |
+        #        | function           | args                             |
+        #        | padre#debugger#Log | [4,"Launching process"]          |
+        #        | padre#debugger#Log | [4,"Breakpoint set.*test.c.*25"] |
+        #        | padre#debugger#Log | [2,"Timed out spawning process"] |
 
         #Scenario: Test breakpoint timeout
         #    Given that we have a file 'test_prog.c'
@@ -259,10 +266,10 @@ Feature: LLDB
         #    Then I receive a response '{"status":"OK"}'
         #    When I send a request to PADRE '{"cmd":"run"}'
         #    Then I receive both a response '{"status":"OK","pid":"\\d+"}' and I expect to be called with
-        #        | function                      | args                    |
-        #        | padre#debugger#BreakpointSet  | [".*test_prog.c$",22]   |
-        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",22]   |
-        #        | padre#debugger#Log            | [4,"Launching process"] |
+        #        | function                      | args                                  |
+        #        | padre#debugger#Log            | [4,"Breakpoint set.*test_prog.c.*22"] |
+        #        | padre#debugger#JumpToPosition | [".*test_prog.c$",22]                 |
+        #        | padre#debugger#Log            | [4,"Launching process"]               |
         #    When I send a request to PADRE '{"cmd":"print","variable":"a"}'
         #    Then I receive both a response '{"status":"ERROR"}' and I expect to be called with
         #        | function           | args                              |

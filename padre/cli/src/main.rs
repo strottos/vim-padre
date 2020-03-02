@@ -110,14 +110,9 @@ async fn run_padre() -> io::Result<()> {
 
     let (debugger_queue_tx, debugger_queue_rx) = mpsc::channel(128);
 
-    // TODO: Do we need to wrap in Arc/Mutex any more now/when we're on new tokio 0.2? Probably in
-    // the case of multiple connections but is there a way around it?
-    let _debugger = create_debugger(
-        args.value_of("debugger"),
-        args.value_of("type"),
-        debug_cmd,
-        debugger_queue_rx,
-    );
+    let debugger = create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd);
+
+    debugger.setup_handler(debugger_queue_rx);
 
     let connection_addr = get_connection(&args);
     let mut socket = TcpListener::bind(&connection_addr)

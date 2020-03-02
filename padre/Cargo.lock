@@ -324,6 +324,7 @@ dependencies = [
  "clap",
  "futures",
  "padre_core",
+ "padre_lldb",
  "padre_python",
  "serde",
  "serde_derive",
@@ -343,6 +344,19 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "padre_lldb"
+version = "0.2.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "lazy_static",
+ "padre_core",
+ "regex",
  "tokio",
  "tokio-util",
 ]

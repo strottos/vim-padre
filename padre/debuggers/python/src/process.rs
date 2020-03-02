@@ -154,7 +154,10 @@ impl Process {
     /// - Sets up a thread to read stdin and forward it onto Python interpreter;
     /// - Checks that Python and the program to be ran both exist, otherwise panics.
     pub fn run(&mut self, tx_done: Option<oneshot::Sender<bool>>) {
-        self.analyser.lock().unwrap().analyse_message(Message::Launching, tx_done);
+        self.analyser
+            .lock()
+            .unwrap()
+            .analyse_message(Message::Launching, tx_done);
 
         let debugger_cmd = self.debugger_cmd.take().unwrap();
         let run_cmd = self.run_cmd.take().unwrap();
@@ -278,16 +281,6 @@ impl Analyser {
     }
 
     pub fn analyse_stdout(&mut self, s: &str) {
-        lazy_static! {
-            static ref RE_RETURNING: Regex =
-                Regex::new("^> (.*)\\((\\d*)\\)[<>\\w]*\\(\\)->(.*)$").unwrap();
-            static ref RE_PROCESS_EXITED: Regex =
-                Regex::new("^The program finished and will be restarted$").unwrap();
-            static ref RE_PROCESS_EXITED_WITH_CODE: Regex =
-                Regex::new("^The program exited via sys.exit\\(\\)\\. Exit status: (-?\\d*)$")
-                    .unwrap();
-        }
-
         match self.get_status() {
             PDBStatus::Processing(msg) => {
                 match msg {
@@ -348,34 +341,23 @@ impl Analyser {
                     Message::Breakpoint(_) => {
                         self.check_breakpoint(line);
                     }
-                    Message::Launching | Message::StepIn | Message::StepOver | Message::Continue => {
+                    Message::Launching
+                    | Message::StepIn
+                    | Message::StepOver
+                    | Message::Continue => {
                         self.check_location(line);
+                        self.check_returning(line);
+                        self.check_exited(line);
                     }
                     Message::Custom => {
                         self.check_breakpoint(line);
                         self.check_location(line);
+                        self.check_returning(line);
+                        self.check_exited(line);
                     }
                     _ => {}
                 },
             };
-
-            for cap in RE_RETURNING.captures_iter(line) {
-                let file = cap[1].to_string();
-                let line = cap[2].parse::<u64>().unwrap();
-                let return_value = cap[3].to_string();
-                jump_to_position(&file, line);
-                self.set_listening();
-                log_msg(LogLevel::INFO, &format!("Returning value {}", return_value));
-            }
-
-            for _ in RE_PROCESS_EXITED.captures_iter(line) {
-                signal_exited(self.pid.unwrap(), 0);
-            }
-
-            for cap in RE_PROCESS_EXITED_WITH_CODE.captures_iter(line) {
-                let exit_code = cap[1].parse::<i64>().unwrap();
-                signal_exited(self.pid.unwrap(), exit_code);
-            }
         }
     }
 
@@ -429,6 +411,40 @@ impl Analyser {
             let file = cap[1].to_string();
             let line = cap[2].parse::<u64>().unwrap();
             jump_to_position(&file, line);
+        }
+    }
+
+    fn check_returning(&self, line: &str) {
+        lazy_static! {
+            static ref RE_RETURNING: Regex =
+                Regex::new("^> (.*)\\((\\d*)\\)[<>\\w]*\\(\\)->(.*)$").unwrap();
+        }
+
+        for cap in RE_RETURNING.captures_iter(line) {
+            let file = cap[1].to_string();
+            let line = cap[2].parse::<u64>().unwrap();
+            let return_value = cap[3].to_string();
+            jump_to_position(&file, line);
+            log_msg(LogLevel::INFO, &format!("Returning value {}", return_value));
+        }
+    }
+
+    fn check_exited(&self, line: &str) {
+        lazy_static! {
+            static ref RE_PROCESS_EXITED: Regex =
+                Regex::new("^The program finished and will be restarted$").unwrap();
+            static ref RE_PROCESS_EXITED_WITH_CODE: Regex =
+                Regex::new("^The program exited via sys.exit\\(\\)\\. Exit status: (-?\\d*)$")
+                    .unwrap();
+        }
+
+        for _ in RE_PROCESS_EXITED.captures_iter(line) {
+            signal_exited(self.pid.unwrap(), 0);
+        }
+
+        for cap in RE_PROCESS_EXITED_WITH_CODE.captures_iter(line) {
+            let exit_code = cap[1].parse::<i64>().unwrap();
+            signal_exited(self.pid.unwrap(), exit_code);
         }
     }
 }
@@ -504,7 +520,7 @@ mod tests {
         let mut analyser = Analyser::new();
         analyser.analyse_stdout("> /Users/me/test.py(1)<module>()\r\n-> abc = 123\r\n(Pdb) ");
         let msg = Message::Breakpoint(FileLocation::new("test.py".to_string(), 2));
-        analyser.analyse_message(msg.clone());
+        analyser.analyse_message(msg.clone(), None);
         assert_eq!(analyser.get_status(), PDBStatus::Processing(msg));
         analyser.analyse_stdout("Breakpoint 1 at test.py:2\r\n(Pdb) ");
         assert_eq!(analyser.get_status(), PDBStatus::Listening);
@@ -515,12 +531,12 @@ mod tests {
         let mut analyser = Analyser::new();
         analyser.analyse_stdout("> /Users/me/test.py(1)<module>()\r\n-> abc = 123\r\n(Pdb) ");
         let msg = Message::PrintVariable(Variable::new("abc".to_string()));
-        analyser.analyse_message(msg.clone());
+        analyser.analyse_message(msg.clone(), None);
         analyser.analyse_stdout("print(abc)\r\n");
         analyser.analyse_stdout("123\r\n");
         assert_eq!(analyser.variable_value, "123\r\n");
         analyser.analyse_stdout("(Pdb) ");
-        analyser.analyse_message(msg.clone());
+        analyser.analyse_message(msg.clone(), None);
         analyser.analyse_stdout("print(abc)\r\n\"abcd1234\"\r\n");
         assert_eq!(analyser.variable_value, "\"abcd1234\"\r\n");
         analyser.analyse_stdout("(Pdb) ");

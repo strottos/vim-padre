@@ -10,40 +10,129 @@ use std::time::{Duration, Instant};
 
 use super::process::{LLDBProcess, Message};
 use padre_core::config::Config;
+use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
 use padre_core::notifier::{log_msg, LogLevel};
-use padre_core::server::{DebuggerV1, FileLocation, Variable};
 
 use bytes::Bytes;
 use futures::prelude::*;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub struct ImplDebugger {
-    process: Arc<Mutex<LLDBProcess>>,
+    debugger_cmd: String,
+    run_cmd: Vec<String>,
 }
 
 impl ImplDebugger {
     pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> ImplDebugger {
         ImplDebugger {
-            process: Arc::new(Mutex::new(LLDBProcess::new(debugger_cmd, run_cmd))),
+            debugger_cmd,
+            run_cmd,
         }
     }
+}
 
-    fn step(&mut self, kind: &str) {
-        //match self.check_process() {
-        //    Some(f) => return f,
-        //    _ => {}
-        //}
+impl Debugger for ImplDebugger {
+    /// Perform any initial setup including starting LLDB and setting up the stdio analyser stuff
+    /// - startup lldb and setup the stdio analyser
+    /// - perform initial setup so we can analyse LLDB properly
+    #[allow(unreachable_patterns)]
+    fn setup_handler(&self, mut queue_rx: mpsc::Receiver<(DebuggerCmd, Instant)>) {
+        let debugger_cmd = self.debugger_cmd.clone();
+        let run_cmd = self.run_cmd.clone();
 
-        //let stmt = format!("thread {}\n", kind);
+        tokio::spawn(async move {
+            let mut debugger = LLDBDebugger::new(debugger_cmd, run_cmd);
 
-        //self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
+            while let Some(cmd) = queue_rx.next().await {
+                match cmd.0 {
+                    DebuggerCmd::Basic(basic_cmd) => match basic_cmd {
+                        DebuggerCmdBasic::Run => debugger.run(cmd.1),
+                        DebuggerCmdBasic::Interrupt => debugger.interrupt(),
+                        DebuggerCmdBasic::Exit => {
+                            debugger.teardown();
+                            break;
+                        }
+                        DebuggerCmdBasic::Breakpoint(fl) => debugger.breakpoint(&fl, cmd.1),
+                        DebuggerCmdBasic::Unbreakpoint(fl) => debugger.unbreakpoint(&fl, cmd.1),
+                        DebuggerCmdBasic::StepIn => debugger.step_in(cmd.1),
+                        DebuggerCmdBasic::StepOver => debugger.step_over(cmd.1),
+                        DebuggerCmdBasic::Continue => debugger.continue_(cmd.1),
+                        DebuggerCmdBasic::Print(v) => debugger.print(&v, cmd.1),
+                    },
+                    _ => {
+                        log_msg(LogLevel::WARN, "Got a command that wasn't understood");
+                    }
+                };
+            }
 
-        //let f = future::lazy(move || {
-        //    let resp = serde_json::json!({"status":"OK"});
-        //    Ok(resp)
-        //});
+            exit(0);
+        });
     }
+}
+
+#[derive(Debug)]
+pub struct LLDBDebugger {
+    process: Arc<Mutex<LLDBProcess>>,
+}
+
+impl LLDBDebugger {
+    pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
+        let (tx, rx) = oneshot::channel();
+
+        let process = Arc::new(Mutex::new(LLDBProcess::new(
+            debugger_cmd,
+            run_cmd,
+            Some(tx),
+        )));
+
+        let debugger = LLDBDebugger {
+            process: process.clone(),
+        };
+
+        // Send a lot of startup messages to LLDB when ready
+        tokio::spawn(async move {
+            rx.await.unwrap();
+            process
+                .clone()
+                .lock()
+                .unwrap()
+                .send_msg(Message::LLDBSetup, None);
+        });
+
+        debugger
+    }
+
+    fn interrupt(&mut self) {}
+
+    fn teardown(&mut self) {
+        self.process.lock().unwrap().stop();
+        exit(0);
+    }
+
+    fn run(&mut self, _timeout: Instant) {
+        log_msg(LogLevel::INFO, "Launching process");
+
+        self.process.lock().unwrap().send_msg(Message::ProcessLaunching, None);
+    }
+
+    fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
+        log_msg(
+            LogLevel::INFO,
+            &format!(
+                "Setting breakpoint in file {} at line number {}",
+                file_location.name(),
+                file_location.line_num()
+            ),
+        );
+
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Breakpoint(file_location.clone()), None);
+    }
+
+    fn unbreakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {}
 
     //fn check_process(
     //    &mut self,
@@ -61,139 +150,26 @@ impl ImplDebugger {
     //        true => None,
     //    }
     //}
-}
-
-impl DebuggerV1 for ImplDebugger {
-    /// Perform any initial setup including starting LLDB and setting up the stdio analyser stuff
-    /// - startup lldb and setup the stdio analyser
-    /// - perform initial setup so we can analyse LLDB properly
-    fn setup(&mut self) {
-        //let process = self.process.clone();
-
-        //tokio::spawn(async move {
-        //    let msgs = [
-        //        "settings set stop-line-count-after 0\n",
-        //        "settings set stop-line-count-before 0\n",
-        //        "settings set frame-format frame #${frame.index}{ at ${line.file.fullpath}:${line.number}}\\n\n",
-        //        "breakpoint set --name main\n",
-        //    ];
-
-        //    for msg in msgs.iter() {
-        //        // Check we're actually listening
-        //        let (tx, mut rx) = mpsc::channel(1);
-        //        process.lock().unwrap().add_awakener(tx);
-        //        rx.next().await.unwrap();
-        //        process.lock().unwrap().drop_awakener();
-
-        //        process
-        //            .lock()
-        //            .unwrap()
-        //            .write_stdin(Bytes::from(msg.as_bytes()));
-        //    }
-        //});
-
-        //self.process.lock().unwrap().setup();
-    }
-
-    fn teardown(&mut self) {
-        self.process.lock().unwrap().teardown();
-        exit(0);
-    }
-
-    fn run(&mut self, _timeout: Instant) {
-        log_msg(LogLevel::INFO, "Launching process");
-
-        //let (tx, rx) = mpsc::channel(1);
-
-        //self.process
-        //    .lock()
-        //    .unwrap()
-        //    .add_listener(Listener::Breakpoint, tx);
-
-        //let process = self.process.clone();
-
-        //let f = rx
-        //    .take(1)
-        //    .into_future()
-        //    .and_then(move |lldb_output| {
-        //        let lldb_output = lldb_output.0.unwrap();
-
-        //        match lldb_output {
-        //            Event::BreakpointSet(_) | Event::BreakpointMultiple => {}
-        //            _ => {
-        //                panic!("Don't understand output {:?}", lldb_output);
-        //            }
-        //        };
-
-        //        Ok(())
-        //    })
-        //    .and_then(move |_| {
-        //        let (tx, rx) = mpsc::channel(1);
-
-        //        process
-        //            .lock()
-        //            .unwrap()
-        //            .add_listener(Listener::ProcessLaunched, tx);
-
-        //        process
-        //            .lock()
-        //            .unwrap()
-        //            .write_stdin(Bytes::from("process launch\n"));
-
-        //        rx.take(1).into_future()
-        //    })
-        //    .timeout(Duration::new(
-        //        config
-        //            .lock()
-        //            .unwrap()
-        //            .get_config("ProcessSpawnTimeout")
-        //            .unwrap() as u64,
-        //        0,
-        //    ))
-        //    .map(move |event| match event.0.unwrap() {
-        //        Event::ProcessLaunched(pid) => {
-        //            serde_json::json!({"status":"OK","pid":pid.to_string()})
-        //        }
-        //        _ => unreachable!(),
-        //    })
-        //    .map_err(|e| {
-        //        eprintln!("Reading stdin error {:?}", e);
-        //        io::Error::new(io::ErrorKind::Other, "Timed out spawning process")
-        //    });
-
-        //let stmt = "breakpoint set --name main\n";
-
-        //self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
-    }
-
-    fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
-        log_msg(
-            LogLevel::INFO,
-            &format!(
-                "Setting breakpoint in file {} at line number {}",
-                file_location.name(),
-                file_location.line_num()
-            ),
-        );
-
-        //self.process
-        //    .lock()
-        //    .unwrap()
-        //    .send_msg(Message::Breakpoint(file_location.clone()));
-    }
-
-    fn unbreakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {}
 
     fn step_in(&mut self, _timeout: Instant) {
-        self.step("step-in");
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::StepIn, None);
     }
 
     fn step_over(&mut self, _timeout: Instant) {
-        self.step("step-over");
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::StepOver, None);
     }
 
     fn continue_(&mut self, _timeout: Instant) {
-        self.step("continue");
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Continue, None);
     }
 
     fn print(&mut self, variable: &Variable, _timeout: Instant) {

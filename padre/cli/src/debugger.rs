@@ -4,11 +4,8 @@
 
 use std::fmt::Debug;
 use std::process::Command;
-use std::time::Instant;
 
-use padre_core::debugger::{Debugger, DebuggerCmd};
-
-use tokio::sync::mpsc::Receiver;
+use padre_core::debugger::Debugger;
 
 #[cfg(feature = "lldb")]
 use padre_lldb;
@@ -36,7 +33,6 @@ pub fn create_debugger(
     debugger_cmd: Option<&str>,
     debugger_type: Option<&str>,
     run_cmd: Vec<String>,
-    queue_rx: Receiver<(DebuggerCmd, Instant)>,
 ) -> Box<dyn Debugger + Send> {
     let debugger_type = match debugger_type {
         Some(s) => match s.to_ascii_lowercase().as_str() {
@@ -80,18 +76,14 @@ pub fn create_debugger(
         },
     };
 
-    let debugger = match debugger_type {
+    match debugger_type {
         #[cfg(feature = "lldb")]
-        DebuggerType::LLDB => padre_lldb::ImplDebugger::new(debugger_cmd, run_cmd),
+        DebuggerType::LLDB => Box::new(padre_lldb::ImplDebugger::new(debugger_cmd, run_cmd)),
         #[cfg(feature = "node")]
-        DebuggerType::Node => padre_node::ImplDebugger::new(debugger_cmd, run_cmd),
+        DebuggerType::Node => Box::new(padre_node::ImplDebugger::new(debugger_cmd, run_cmd)),
         #[cfg(feature = "python")]
-        DebuggerType::Python => padre_python::ImplDebugger::new(debugger_cmd, run_cmd),
-    };
-
-    debugger.setup_handler(queue_rx);
-
-    Box::new(debugger)
+        DebuggerType::Python => Box::new(padre_python::ImplDebugger::new(debugger_cmd, run_cmd)),
+    }
 }
 
 /// Guesses the debugger type
