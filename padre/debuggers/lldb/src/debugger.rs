@@ -113,7 +113,10 @@ impl LLDBDebugger {
     fn run(&mut self, _timeout: Instant) {
         log_msg(LogLevel::INFO, "Launching process");
 
-        self.process.lock().unwrap().send_msg(Message::ProcessLaunching, None);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::ProcessLaunching, None);
     }
 
     fn breakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {
@@ -152,10 +155,7 @@ impl LLDBDebugger {
     //}
 
     fn step_in(&mut self, _timeout: Instant) {
-        self.process
-            .lock()
-            .unwrap()
-            .send_msg(Message::StepIn, None);
+        self.process.lock().unwrap().send_msg(Message::StepIn, None);
     }
 
     fn step_over(&mut self, _timeout: Instant) {
@@ -219,6 +219,9 @@ impl LLDBDebugger {
 
         //let stmt = format!("frame variable {}\n", variable.name);
 
-        //self.process.lock().unwrap().write_stdin(Bytes::from(stmt));
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::PrintVariable(variable.clone()), None);
     }
 }

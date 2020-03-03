@@ -236,15 +236,15 @@ pub struct LLDBAnalyser {
     status: LLDBStatus,
     process_pid: Option<u64>,
     awakener: Option<oneshot::Sender<bool>>,
-    // For keeping track of output over mulitple reads
-    stdout: String,
+    // For keeping track of the variable that we were told to print
+    variable_output: String,
 }
 
 impl LLDBAnalyser {
     pub fn new() -> Self {
         LLDBAnalyser {
             status: LLDBStatus::NotRunning,
-            stdout: "".to_string(),
+            variable_output: "".to_string(),
             awakener: None,
             process_pid: None,
         }
@@ -255,22 +255,76 @@ impl LLDBAnalyser {
     }
 
     pub fn analyse_stdout(&mut self, s: &str) {
-        self.stdout.push_str(s);
-
-        lazy_static! {
-            static ref RE_PRINTED_VARIABLE: Regex =
-                Regex::new("^\\((.*)\\) ([\\S+]*) = .*$").unwrap();
-            static ref RE_VARIABLE_NOT_FOUND: Regex =
-                Regex::new("error: no variable named '([^']*)' found in this frame$").unwrap();
-        }
-
-        let s = self.stdout.clone();
+        // Check process running first
+        let mut process_running = true;
 
         for line in s.split("\r\n") {
-            println!("Line: {:?}", line);
-            if line == "(lldb) " {
+            if self.check_process_not_running(line) {
+                process_running = false;
+            }
+
+            if !process_running && line == "(lldb) " {
                 self.set_listening();
-                self.clear_analyser();
+                return;
+            }
+        }
+
+        // Then check if we're printing a variable as we bail if not all output is available
+        // straight away
+        match self.get_status() {
+            LLDBStatus::Processing(msg) => match msg {
+                Message::PrintVariable(var) => {
+                    let mut from = 0;
+                    let mut to = s.len();
+
+                    let print_cmd_size = 15 + var.name().len();
+                    if to >= print_cmd_size + 2
+                        && &s[0..print_cmd_size] == &format!("frame variable {}", var.name())
+                    {
+                        // 2 extra for \r\n
+                        from += print_cmd_size + 2;
+                    }
+
+                    let lldb_prompt_length = "\r\n(lldb) ".len();
+                    if to >= lldb_prompt_length && &s[to - lldb_prompt_length..to] == "\r\n(lldb) "
+                    {
+                        to -= lldb_prompt_length;
+                    }
+
+                    self.variable_output += &s[from..to];
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        // Then check everything else
+        for line in s.split("\r\n") {
+            if line == "(lldb) " {
+                match self.get_status() {
+                    LLDBStatus::Processing(msg) => match msg {
+                        Message::PrintVariable(var) => {
+                            if self.variable_output
+                                == format!(
+                                    "error: no variable named '{}' found in this frame",
+                                    var.name()
+                                )
+                            {
+                                log_msg(
+                                    LogLevel::WARN,
+                                    &format!("variable '{}' doesn't exist here", var.name()),
+                                );
+                            } else {
+                                log_msg(LogLevel::INFO, &self.variable_output);
+                            }
+                            self.variable_output = "".to_string();
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+
+                self.set_listening();
                 return;
             }
 
@@ -279,7 +333,6 @@ impl LLDBAnalyser {
                 _ => {}
             }
 
-            println!("Status: {:?}", self.get_status());
             match self.get_status() {
                 LLDBStatus::Processing(msg) => match msg {
                     Message::LLDBSetup | Message::Breakpoint(_) => {
@@ -292,32 +345,18 @@ impl LLDBAnalyser {
                         self.check_location(line);
                         self.check_process_running(line);
                         self.check_process_exited(line);
-                        self.check_process_not_running(line);
                     }
                     Message::Custom => {
                         self.check_breakpoint(line);
                         self.check_location(line);
                         self.check_process_running(line);
                         self.check_process_exited(line);
-                        self.check_process_not_running(line);
                     }
                     _ => {}
                 },
-                _ => {},
+                _ => {}
             };
-
-            for cap in RE_PRINTED_VARIABLE.captures_iter(line) {
-                let variable_type = cap[1].to_string();
-                let variable = cap[2].to_string();
-                self.printed_variable(variable, variable_type, &s);
-            }
-
-            for cap in RE_VARIABLE_NOT_FOUND.captures_iter(line) {
-                let variable = cap[1].to_string();
-            }
         }
-
-        self.clear_analyser();
     }
 
     fn set_listening(&mut self) {
@@ -338,10 +377,6 @@ impl LLDBAnalyser {
     pub fn analyse_message(&mut self, msg: Message, tx_done: Option<oneshot::Sender<bool>>) {
         self.status = LLDBStatus::Processing(msg);
         self.awakener = tx_done;
-    }
-
-    fn clear_analyser(&mut self) {
-        self.stdout = "".to_string();
     }
 
     pub fn is_process_running(&self) -> bool {
@@ -437,42 +472,17 @@ impl LLDBAnalyser {
         }
     }
 
-    fn check_process_not_running(&mut self, line: &str) {
+    fn check_process_not_running(&mut self, line: &str) -> bool {
         lazy_static! {
             static ref RE_PROCESS_NOT_RUNNING: Regex =
-                Regex::new("error: invalid process$").unwrap();
+                Regex::new("^error: invalid process$").unwrap();
         }
 
         for _ in RE_PROCESS_NOT_RUNNING.captures_iter(line) {
-            log_msg(LogLevel::WARN, "program not running");
+            log_msg(LogLevel::WARN, "No process running");
+            return true;
         }
-    }
 
-    fn printed_variable(&mut self, variable: String, variable_type: String, data: &str) {
-        // let mut start = 1;
-
-        // while &data[start..start + 1] != ")" {
-        //     start += 1;
-        // }
-        // while &data[start..start + 1] != "=" {
-        //     start += 1;
-        // }
-        // start += 2;
-
-        // // TODO: Need a better way of doing this to strip of the last \n,
-        // // it's possible one day we'll screw the UTF-8 pooch here.
-        // let value = data[start..data.len() - 1].to_string();
-
-        // match self.listeners.remove(&Listener::PrintVariable) {
-        //     Some(listener) => {
-        //         let variable = Variable::new(variable);
-        //         let value = VariableValue::new(variable_type, value);
-        //         listener
-        //             .send(Event::PrintVariable(variable, value))
-        //             .wait()
-        //             .unwrap();
-        //     }
-        //     None => {}
-        // }
+        false
     }
 }
