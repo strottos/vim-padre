@@ -3,17 +3,14 @@
 //! The main LLDB Debugger entry point. Handles listening for instructions and
 //! communicating through the `LLDBProcess`.
 
-use std::io;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use super::process::{LLDBProcess, Message};
-use padre_core::config::Config;
 use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
 use padre_core::notifier::{log_msg, LogLevel};
 
-use bytes::Bytes;
 use futures::prelude::*;
 use tokio::sync::{mpsc, oneshot};
 
@@ -135,24 +132,7 @@ impl LLDBDebugger {
             .send_msg(Message::Breakpoint(file_location.clone()), None);
     }
 
-    fn unbreakpoint(&mut self, file_location: &FileLocation, _timeout: Instant) {}
-
-    //fn check_process(
-    //    &mut self,
-    //) -> Option<Result<serde_json::Value, io::Error>> {
-    //    match self.process.lock().unwrap().is_process_running() {
-    //        false => {
-    //            log_msg(LogLevel::WARN, "No process running");
-    //            let f = future::lazy(move || {
-    //                let resp = serde_json::json!({"status":"ERROR"});
-    //                Ok(resp)
-    //            });
-
-    //            Some(Box::new(f))
-    //        }
-    //        true => None,
-    //    }
-    //}
+    fn unbreakpoint(&mut self, _file_location: &FileLocation, _timeout: Instant) {}
 
     fn step_in(&mut self, _timeout: Instant) {
         self.process.lock().unwrap().send_msg(Message::StepIn, None);
@@ -173,52 +153,6 @@ impl LLDBDebugger {
     }
 
     fn print(&mut self, variable: &Variable, _timeout: Instant) {
-        //match self.check_process() {
-        //    Some(f) => return f,
-        //    _ => {}
-        //}
-
-        //let (tx, rx) = mpsc::channel(1);
-
-        //self.process
-        //    .lock()
-        //    .unwrap()
-        //    .add_listener(Listener::PrintVariable, tx);
-
-        //let f = rx
-        //    .take(1)
-        //    .into_future()
-        //    .timeout(Duration::new(
-        //        config
-        //            .lock()
-        //            .unwrap()
-        //            .get_config("PrintVariableTimeout")
-        //            .unwrap() as u64,
-        //        0,
-        //    ))
-        //    .map(move |event| match event.0.unwrap() {
-        //        Event::PrintVariable(variable, value) => serde_json::json!({
-        //            "status": "OK",
-        //            "variable": variable.name,
-        //            "value": value.value(),
-        //            "type": value.type_()
-        //        }),
-        //        Event::VariableNotFound(variable) => {
-        //            log_msg(
-        //                LogLevel::WARN,
-        //                &format!("variable '{}' doesn't exist here", variable.name),
-        //            );
-        //            serde_json::json!({"status":"ERROR"})
-        //        }
-        //        _ => unreachable!(),
-        //    })
-        //    .map_err(|e| {
-        //        eprintln!("Reading stdin error {:?}", e);
-        //        io::Error::new(io::ErrorKind::Other, "Timed out printing variable")
-        //    });
-
-        //let stmt = format!("frame variable {}\n", variable.name);
-
         self.process
             .lock()
             .unwrap()

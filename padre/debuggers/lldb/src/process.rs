@@ -26,7 +26,7 @@ pub enum Message {
     LLDBSetup,
     ProcessLaunching,
     Breakpoint(FileLocation),
-    Unbreakpoint(FileLocation),
+    // Unbreakpoint(FileLocation),
     StepIn,
     StepOver,
     Continue,
@@ -40,27 +40,6 @@ pub enum LLDBStatus {
     NotRunning,
     Listening,
     Processing(Message),
-}
-
-/// The value of a variable
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct VariableValue {
-    type_: String,
-    value: String,
-}
-
-impl VariableValue {
-    pub fn new(type_: String, value: String) -> Self {
-        VariableValue { type_, value }
-    }
-
-    pub fn type_(&self) -> &str {
-        &self.type_
-    }
-
-    pub fn value(&self) -> &str {
-        &self.value
-    }
 }
 
 /// Main handler for spawning the LLDB process
@@ -115,12 +94,6 @@ impl LLDBProcess {
 
     pub fn stop(&mut self) {
         self.lldb_process = None;
-    }
-
-    /// Check the current status, either not running (None), running something
-    /// (Processing) or listening for a message on LLDB (Listening).
-    pub fn get_status(&self) -> LLDBStatus {
-        self.analyser.lock().unwrap().get_status()
     }
 
     /// Send a message to write to stdin
@@ -185,10 +158,6 @@ impl LLDBProcess {
         });
     }
 
-    // pub fn is_process_running(&self) -> bool {
-    //     self.analyser.lock().unwrap().is_process_running()
-    // }
-
     /// Perform setup of listening and forwarding of stdin and return a sender that will forward to the
     /// stdin of a process.
     fn setup_stdin(mut child_stdin: ChildStdin) -> mpsc::Sender<Bytes> {
@@ -250,6 +219,8 @@ impl LLDBAnalyser {
         }
     }
 
+    /// Check the current status, either not running (None), running something
+    /// (Processing) or listening for a message on LLDB (Listening).
     pub fn get_status(&mut self) -> LLDBStatus {
         self.status.clone()
     }
@@ -343,13 +314,11 @@ impl LLDBAnalyser {
                     | Message::StepOver
                     | Message::Continue => {
                         self.check_location(line);
-                        self.check_process_running(line);
                         self.check_process_exited(line);
                     }
                     Message::Custom => {
                         self.check_breakpoint(line);
                         self.check_location(line);
-                        self.check_process_running(line);
                         self.check_process_exited(line);
                     }
                     _ => {}
@@ -377,13 +346,6 @@ impl LLDBAnalyser {
     pub fn analyse_message(&mut self, msg: Message, tx_done: Option<oneshot::Sender<bool>>) {
         self.status = LLDBStatus::Processing(msg);
         self.awakener = tx_done;
-    }
-
-    pub fn is_process_running(&self) -> bool {
-        match self.process_pid {
-            Some(_) => true,
-            None => false,
-        }
     }
 
     fn check_breakpoint(&mut self, line: &str) {
@@ -443,17 +405,6 @@ impl LLDBAnalyser {
             if !found {
                 log_msg(LogLevel::WARN, "Stopped at unknown position");
             }
-        }
-    }
-
-    fn check_process_running(&mut self, line: &str) {
-        lazy_static! {
-            static ref RE_PROCESS_STARTED: Regex =
-                Regex::new("^Process (\\d+) launched: '.*' \\((.*)\\)$").unwrap();
-        }
-
-        for cap in RE_PROCESS_STARTED.captures_iter(line) {
-            let pid = cap[1].parse::<u64>().unwrap();
         }
     }
 
