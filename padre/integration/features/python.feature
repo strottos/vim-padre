@@ -10,27 +10,28 @@ Feature: Python
             | padre#debugger#Log            | [4,"Launching process"]               |
             | padre#debugger#Log            | [4,"Process launched with pid: \\d+"] |
             | padre#debugger#JumpToPosition | [".*test_prog.py",3]                  |
-        When I send a command 'b a' using the terminal
+        When I give PADRE chance to start
+        And I send a command 'b a' using the terminal
         Then I expect to be called with
-            | function           | args                                    |
-            | padre#debugger#Log | [4, "Breakpoint set.*test_prog.py.*20"] |
+            | function           | args                                   |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.py.*20"] |
         When I send a command 's' using the terminal
         Then I expect to be called with
-            | function                      | args                   |
-            | padre#debugger#JumpToPosition | [".*test_prog.py$", 6] |
+            | function                      | args                  |
+            | padre#debugger#JumpToPosition | [".*test_prog.py$",6] |
         When I send a command 'n' using the terminal
         Then I expect to be called with
-            | function                      | args                    |
-            | padre#debugger#JumpToPosition | [".*test_prog.py$", 10] |
-        When I send a command 'c' using the terminal
-        Then I expect to be called with
-            | function                      | args                    |
-            | padre#debugger#JumpToPosition | [".*test_prog.py$", 21] |
+            | function                      | args                   |
+            | padre#debugger#JumpToPosition | [".*test_prog.py$",10] |
         When I send a command 'c' using the terminal
         Then I expect to be called with
             | function                      | args                   |
-            | padre#debugger#ProcessExited  | [0,"\\d+"]             |
-            | padre#debugger#JumpToPosition | [".*test_prog.py$", 3] |
+            | padre#debugger#JumpToPosition | [".*test_prog.py$",21] |
+        When I send a command 'c' using the terminal
+        Then I expect to be called with
+            | function                      | args                  |
+            | padre#debugger#ProcessExited  | [0,"\\d+"]            |
+            | padre#debugger#JumpToPosition | [".*test_prog.py$",3] |
         When I terminate padre
         Then padre is not running
 
@@ -39,24 +40,24 @@ Feature: Python
         When I debug the program with PADRE
         When I send a request to PADRE '{"cmd":"breakpoint","file":"`pwd`/test_files/test_prog.py","line":21}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function           | args                      |
-            | padre#debugger#Log | [4, "Setting breakpoint.*test_prog.py.*21"] |
-            | padre#debugger#Log | [4, "Breakpoint pending.*test_prog.py.*21"] |
+            | function           | args                                       |
+            | padre#debugger#Log | [4,"Setting breakpoint.*test_prog.py.*21"] |
+            | padre#debugger#Log | [4,"Breakpoint pending.*test_prog.py.*21"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"`pwd`/test_files/test_prog.py","line":22}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function           | args                      |
-            | padre#debugger#Log | [4, "Setting breakpoint.*test_prog.py.*22"] |
-            | padre#debugger#Log | [4, "Breakpoint pending.*test_prog.py.*22"] |
+            | function           | args                                       |
+            | padre#debugger#Log | [4,"Setting breakpoint.*test_prog.py.*22"] |
+            | padre#debugger#Log | [4,"Breakpoint pending.*test_prog.py.*22"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"`pwd`/test_files/test_prog.py","line":23}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function           | args                      |
-            | padre#debugger#Log | [4, "Setting breakpoint.*test_prog.py.*23"] |
-            | padre#debugger#Log | [4, "Breakpoint pending.*test_prog.py.*23"] |
+            | function           | args                                       |
+            | padre#debugger#Log | [4,"Setting breakpoint.*test_prog.py.*23"] |
+            | padre#debugger#Log | [4,"Breakpoint pending.*test_prog.py.*23"] |
         When I send a request to PADRE '{"cmd":"breakpoint","file":"`pwd`/test_files/test_prog.py","line":24}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function           | args                      |
-            | padre#debugger#Log | [4, "Setting breakpoint.*test_prog.py.*24"] |
-            | padre#debugger#Log | [4, "Breakpoint pending.*test_prog.py.*24"] |
+            | function           | args                                       |
+            | padre#debugger#Log | [4,"Setting breakpoint.*test_prog.py.*24"] |
+            | padre#debugger#Log | [4,"Breakpoint pending.*test_prog.py.*24"] |
         When I send a request to PADRE '{"cmd":"unbreakpoint","file":"`pwd`/test_files/test_prog.py","line":24}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
             | function                      | args                                                |
@@ -115,8 +116,8 @@ Feature: Python
             | padre#debugger#JumpToPosition | [".*test_prog.py",23] |
         When I send a request to PADRE '{"cmd":"continue"}'
         Then I receive both a response '{"status":"OK"}' and I expect to be called with
-            | function                      | args                   |
-            | padre#debugger#ProcessExited  | [0,"\\d+"]             |
-            | padre#debugger#JumpToPosition | [".*test_prog.py$", 3] |
+            | function                      | args                  |
+            | padre#debugger#ProcessExited  | [0,"\\d+"]            |
+            | padre#debugger#JumpToPosition | [".*test_prog.py$",3] |
         When I terminate padre
         Then padre is not running

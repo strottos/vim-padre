@@ -109,7 +109,7 @@ Then:
 Execute (Check when we log errors and they log at the correct levels):
   tabnew
   PadreDebug test/progs/test_prog
-  sleep 500ms
+  sleep 2
   let g:PadreLogLevel = 5
 
   wincmd l
@@ -132,22 +132,22 @@ Then:
   call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (DEBUG): Test Debug Log$', t:lastLogLine, '$')
   let t:lastLogLine += 1
 
-  AssertEqual line('$'), 7
+  AssertEqual line('$'), 8
   let g:PadreLogLevel = 1
   call padre#debugger#Log(2, 'Test Error Log')
-  AssertEqual line('$'), 7
+  AssertEqual line('$'), 8
 
   let g:PadreLogLevel = 2
   call padre#debugger#Log(3, 'Test Warn Log')
-  AssertEqual line('$'), 7
+  AssertEqual line('$'), 8
 
   let g:PadreLogLevel = 3
   call padre#debugger#Log(4, 'Test Info Log')
-  AssertEqual line('$'), 7
+  AssertEqual line('$'), 8
 
   let g:PadreLogLevel = 4
   call padre#debugger#Log(5, 'Test Debug Log')
-  AssertEqual line('$'), 7
+  AssertEqual line('$'), 8
 
   quit!
   quit!

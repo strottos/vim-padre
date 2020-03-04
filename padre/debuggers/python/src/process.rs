@@ -205,7 +205,12 @@ impl Process {
     }
 
     pub fn stop(&mut self) {
-        self.process = None;
+        match self.process.take() {
+            Some(mut p) => {
+                p.kill().unwrap();
+            }
+            None => {}
+        };
     }
 
     /// Check the current status, either not running (None), running something

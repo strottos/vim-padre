@@ -2,13 +2,12 @@
 //!
 //! Analyses the messages that come from the WebSocket connection to Node Debugger
 
-use std::sync::{Arc, Mutex};
-
-use super::ws::WSHandler;
+use super::utils::get_json;
+use padre_core::debugger::FileLocation;
 use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
-use padre_core::server::FileLocation;
 
-use tokio::prelude::*;
+use tokio::sync::{mpsc, oneshot};
+use tokio_tungstenite::tungstenite::protocol::Message;
 
 /// Node script, indicated by receiving a 'Debugger.scriptParsed' message from Node
 #[derive(Debug, Eq, PartialEq)]
@@ -36,22 +35,24 @@ impl Script {
 pub struct Analyser {
     scripts: Vec<Script>,
     pending_breakpoints: Vec<FileLocation>,
-    ws_handler: Arc<Mutex<WSHandler>>,
     pid: Option<u64>,
 }
 
 impl Analyser {
-    pub fn new(ws_handler: Arc<Mutex<WSHandler>>) -> Self {
+    pub fn new() -> Self {
         Analyser {
             scripts: vec![],
             pending_breakpoints: vec![],
-            ws_handler,
             pid: None,
         }
     }
 
-    pub fn analyse_message(&mut self, mut msg: serde_json::Value) {
-        let method: String = match serde_json::from_value(msg["method"].take()) {
+    pub fn analyse_message(
+        &mut self,
+        mut message: serde_json::Value,
+        node_tx: mpsc::Sender<(Message, Option<oneshot::Sender<Message>>)>,
+    ) {
+        let method: String = match serde_json::from_value(message["method"].take()) {
             Ok(s) => s,
             Err(e) => {
                 panic!("Can't understand method: {:?}", e);
@@ -66,15 +67,19 @@ impl Analyser {
                     Some(pid) => signal_exited(pid, 0),
                     None => {}
                 };
-                self.ws_handler.lock().unwrap().close()
+                let mut node_tx = node_tx.clone();
+                tokio::spawn(async move {
+                    node_tx.send((Message::Close(None), None)).await.unwrap();
+                });
             }
-            "Runtime.exceptionThrown" => println!("TODO: Code {:?}", msg),
-            "Debugger.paused" => self.analyse_debugger_paused(msg),
+            "Runtime.exceptionThrown" => println!("TODO: Code {:?}", message),
+            "Debugger.paused" => self.analyse_debugger_paused(message),
             "Debugger.resumed" => {}
-            "Debugger.scriptFailedToParse" => {
-                log_msg(LogLevel::WARN, &format!("Can't parse script: {:?}", msg))
-            }
-            "Debugger.scriptParsed" => self.analyse_script_parsed(msg),
+            "Debugger.scriptFailedToParse" => log_msg(
+                LogLevel::WARN,
+                &format!("Can't parse script: {:?}", message),
+            ),
+            "Debugger.scriptParsed" => self.analyse_script_parsed(message, node_tx),
             _ => panic!("Can't understand message type: {:?}", method),
         }
     }
@@ -96,10 +101,14 @@ impl Analyser {
         self.pid = Some(pid);
     }
 
-    fn analyse_script_parsed(&mut self, mut msg: serde_json::Value) {
+    fn analyse_script_parsed(
+        &mut self,
+        mut message: serde_json::Value,
+        mut node_tx: mpsc::Sender<(Message, Option<oneshot::Sender<Message>>)>,
+    ) {
         let mut is_internal = true;
 
-        let file: String = match serde_json::from_value(msg["params"]["url"].take()) {
+        let file: String = match serde_json::from_value(message["params"]["url"].take()) {
             Ok(s) => {
                 let mut s: String = s;
                 if s.len() > 7 && &s[0..7] == "file://" {
@@ -113,7 +122,7 @@ impl Analyser {
             }
         };
 
-        let script_id: String = match serde_json::from_value(msg["params"]["scriptId"].take()) {
+        let script_id: String = match serde_json::from_value(message["params"]["scriptId"].take()) {
             Ok(s) => s,
             Err(e) => {
                 panic!("Can't understand script_id: {:?}", e);
@@ -124,62 +133,55 @@ impl Analyser {
         let mut i = 0;
 
         while i != self.pending_breakpoints.len() {
-            //if self.pending_breakpoints[i].name() == file {
-            //    let bkpt = self.pending_breakpoints.remove(i);
+            if self.pending_breakpoints[i].name() == file {
+                let bkpt = self.pending_breakpoints.remove(i);
 
-            //    let msg = OwnedMessage::Text(format!(
-            //        "{{\
-            //         \"method\":\"Debugger.setBreakpoint\",\
-            //         \"params\":{{\
-            //         \"location\":{{\
-            //         \"scriptId\":\"{}\",\
-            //         \"lineNumber\":{}\
-            //         }}\
-            //         }}\
-            //         }}",
-            //        script_id,
-            //        bkpt.line_num() - 1
-            //    ));
+                let message = Message::Text(format!(
+                    "{{\
+                     \"method\":\"Debugger.setBreakpoint\",\
+                     \"params\":{{\
+                     \"location\":{{\
+                     \"scriptId\":\"{}\",\
+                     \"lineNumber\":{}\
+                     }}\
+                     }}\
+                     }}",
+                    script_id,
+                    bkpt.line_num() - 1
+                ));
 
-            //    let file = file.clone();
+                let file = file.clone();
 
-            //    let ws_handler = self.ws_handler.clone();
+                tokio::spawn(async move {
+                    let (tx, rx) = oneshot::channel();
+                    node_tx.send((message, Some(tx))).await.unwrap();
+                    let response = rx.await.unwrap();
+                    let response = get_json(&response);
+                    log_msg(
+                        LogLevel::INFO,
+                        &format!(
+                            "Breakpoint set at file {} and line number {}",
+                            file,
+                            response["result"]["actualLocation"]["lineNumber"]
+                                .as_u64()
+                                .unwrap()
+                                + 1
+                        ),
+                    )
+                });
 
-            //    tokio::spawn(
-            //        ws_handler
-            //            .lock()
-            //            .unwrap()
-            //            .send_and_receive_message(msg)
-            //            .map(move |response| {
-            //                if response["error"].is_null() {
-            //                    //breakpoint_set(&file, bkpt.line_num);
-            //                } else {
-            //                    log_msg(
-            //                        LogLevel::CRITICAL,
-            //                        &format!("Can't set breakpoint {:?}", bkpt),
-            //                    );
-            //                    panic!("Can't set breakpoint, panicking");
-            //                }
-            //            })
-            //            .map_err(|e| {
-            //                log_msg(
-            //                    LogLevel::CRITICAL,
-            //                    &format!("Can't set breakpoint, error: {}", e),
-            //                );
-            //                panic!("Can't set breakpoint, panicking");
-            //            }),
-            //    );
-            //} else {
-            //    i += 1;
-            //}
+                break;
+            }
+
+            i += 1;
         }
 
         self.scripts.push(Script::new(file, script_id, is_internal));
     }
 
-    fn analyse_debugger_paused(&self, mut msg: serde_json::Value) {
+    fn analyse_debugger_paused(&self, mut message: serde_json::Value) {
         let file: String =
-            match serde_json::from_value(msg["params"]["callFrames"][0]["url"].take()) {
+            match serde_json::from_value(message["params"]["callFrames"][0]["url"].take()) {
                 Ok(s) => {
                     let mut s: String = s;
                     if s.len() > 7 && &s[0..7] == "file://" {
@@ -188,13 +190,13 @@ impl Analyser {
                     s
                 }
                 Err(e) => {
-                    // TODO: How do we get here? Handle when we see it.
-                    panic!("JSON: {}, err: {}", msg, e);
+                    // TODO: How do we get here? Handle when we see it?
+                    panic!("JSON: {}, err: {}", message, e);
                 }
             };
 
         let line_num: u64 = match serde_json::from_value(
-            msg["params"]["callFrames"][0]["location"]["lineNumber"].take(),
+            message["params"]["callFrames"][0]["location"]["lineNumber"].take(),
         ) {
             Ok(s) => {
                 let s: u64 = s;
@@ -211,14 +213,12 @@ impl Analyser {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-
-    use super::super::ws::WSHandler;
     use super::Analyser;
+    use tokio::sync::mpsc;
 
     #[test]
     fn check_internal_script_parsed() {
-        let msg = serde_json::json!(
+        let message = serde_json::json!(
             {
               "method":"Debugger.scriptParsed",
               "params": {
@@ -241,10 +241,10 @@ mod tests {
               }
             }
         );
-        let ws = Arc::new(Mutex::new(WSHandler::new()));
-        let mut analyser = Analyser::new(ws);
+        let mut analyser = Analyser::new();
 
-        analyser.analyse_message(msg);
+        let (tx, _) = mpsc::channel(1);
+        analyser.analyse_message(message, tx);
 
         assert_eq!(analyser.scripts.len(), 1);
         assert_eq!(
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(analyser.scripts[0].script_id, "7".to_string());
         assert_eq!(analyser.scripts[0].is_internal, true);
 
-        let msg = serde_json::json!(
+        let message = serde_json::json!(
             {
               "method":"Debugger.scriptParsed",
               "params":{
@@ -278,7 +278,8 @@ mod tests {
             }
         );
 
-        analyser.analyse_message(msg);
+        let (tx, _) = mpsc::channel(1);
+        analyser.analyse_message(message, tx);
 
         assert_eq!(analyser.scripts.len(), 2);
         assert_eq!(
@@ -291,7 +292,7 @@ mod tests {
 
     #[test]
     fn check_file_script_parsed() {
-        let msg = serde_json::json!(
+        let message = serde_json::json!(
             {
               "method":"Debugger.scriptParsed",
               "params":{
@@ -301,10 +302,10 @@ mod tests {
             }
         );
 
-        let ws = Arc::new(Mutex::new(WSHandler::new()));
-        let mut analyser = Analyser::new(ws);
+        let mut analyser = Analyser::new();
 
-        analyser.analyse_message(msg);
+        let (tx, _) = mpsc::channel(1);
+        analyser.analyse_message(message, tx);
 
         assert_eq!(analyser.scripts.len(), 1);
         assert_eq!(analyser.scripts[0].file, "/home/me/test.js".to_string());
@@ -314,8 +315,7 @@ mod tests {
 
     #[test]
     fn test_get_existing_script_from_filename() {
-        let ws = Arc::new(Mutex::new(WSHandler::new()));
-        let mut analyser = Analyser::new(ws);
+        let mut analyser = Analyser::new();
         let script = super::Script::new("exists.js".to_string(), "52".to_string(), false);
         let expected_script = super::Script::new("exists.js".to_string(), "52".to_string(), false);
         analyser.scripts.push(script);
@@ -327,8 +327,7 @@ mod tests {
 
     #[test]
     fn test_get_no_script_from_filename() {
-        let ws = Arc::new(Mutex::new(WSHandler::new()));
-        let analyser = Analyser::new(ws);
+        let analyser = Analyser::new();
         assert_eq!(analyser.get_script_from_filename("not_exists.js"), None);
     }
 }

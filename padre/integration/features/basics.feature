@@ -6,6 +6,10 @@ Feature: Basics
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
+        When I give PADRE chance to start
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
         When I open another connection to PADRE
         When I open another connection to PADRE
         When I send a request to PADRE '{"cmd":"ping"}' on connection 0
@@ -52,6 +56,10 @@ Feature: Basics
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
+        When I give PADRE chance to start
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
         When I send a raw request to PADRE 'nonsense'
         Then I expect to be called with
             | function           | args                                |
@@ -132,6 +140,10 @@ Feature: Basics
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
+        When I give PADRE chance to start
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
         When I send a request to PADRE '{"cmd":"breakpoint"}'
         Then I expect to be called with
             | function           | args                              |
@@ -170,6 +182,10 @@ Feature: Basics
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
+        When I give PADRE chance to start
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
         When I send a request to PADRE '{"cmd":"print"}'
         Then I expect to be called with
             | function           | args                                  |
@@ -193,6 +209,10 @@ Feature: Basics
         And I have compiled the test program 'test_prog.c' with compiler 'gcc -g -O0' to program 'test_prog'
         And that we have a test program 'test_prog' that runs with 'lldb' debugger
         When I debug the program with PADRE
+        When I give PADRE chance to start
+        Then I expect to be called with
+            | function           | args                                  |
+            | padre#debugger#Log | [4,"Breakpoint set.*test_prog.c.*22"] |
         When I send a request to PADRE '{"cmd":"getConfig"}'
         Then I expect to be called with
             | function           | args                           |

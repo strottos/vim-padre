@@ -7,84 +7,42 @@ use padre_core::util::{check_and_spawn_process, read_output, setup_stdin};
 use futures::prelude::*;
 use regex::Regex;
 use tokio::io::BufReader;
-use tokio::prelude::*;
-use tokio::process::{Child, ChildStderr, ChildStdout};
+use tokio::process::Child;
 use tokio::sync::mpsc::Sender;
 
 /// Main handler for spawning the Node process
 #[derive(Debug)]
 pub struct Process {
-    debugger_cmd: Option<String>,
-    run_cmd: Option<Vec<String>>,
-    process: Option<Child>,
+    process: Child,
 }
 
 impl Process {
     /// Create a new Process
-    pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
-        Process {
-            debugger_cmd: Some(debugger_cmd),
-            run_cmd: Some(run_cmd),
-            process: None,
-        }
-    }
-
+    ///
     /// Run Node program, including handling forwarding stdin onto the Node interpreter but
     /// not used to analyse the program as some of the other debuggers are.
-    pub fn run(&mut self, tx: Sender<String>) {
-        let mut process = check_and_spawn_process(
-            vec![
-                self.debugger_cmd.take().unwrap(),
-                "--inspect-brk=0".to_string(),
-            ],
-            self.run_cmd.take().unwrap(),
-        );
+    pub fn new(debugger_cmd: String, run_cmd: Vec<String>, tx: Sender<String>) -> Self {
+        let mut process =
+            check_and_spawn_process(vec![debugger_cmd, "--inspect-brk=0".to_string()], run_cmd);
 
         setup_stdin(
             process
-                .stdin()
+                .stdin
                 .take()
                 .expect("Python process did not have a handle to stdin"),
             false,
         );
 
-        self.setup_stdout(
-            process
-                .stdout()
-                .take()
-                .expect("Python process did not have a handle to stdout"),
-        );
+        let stdout = process
+            .stdout
+            .take()
+            .expect("Python process did not have a handle to stdout");
 
-        self.setup_stderr(
-            process
-                .stderr()
-                .take()
-                .expect("Python process did not have a handle to stderr"),
-            tx,
-        );
-
-        self.process = Some(process);
-    }
-
-    pub fn get_pid(&self) -> u64 {
-        self.process.as_ref().unwrap().id() as u64
-    }
-
-    /// Perform setup of reading Node stdout and writing it back to PADRE stdout.
-    fn setup_stdout(&mut self, stdout: ChildStdout) {
-        tokio::spawn(async move {
-            let mut reader = read_output(BufReader::new(stdout));
-            while let Some(Ok(text)) = reader.next().await {
-                print!("{}", text);
-            }
-        });
-    }
-
-    /// Perform setup of reading Node stderr and writing it back to PADRE stderr.
-    ///
-    /// Also checks for the line about where the Debugger is listening as this is
-    /// required for the websocket setup.
-    fn setup_stderr(&mut self, stderr: ChildStderr, tx: Sender<String>) {
+        // Perform setup of reading Node stdout and writing it back to PADRE stdout.
+        //
+        // Also checks for the line about where the Debugger is listening as this is
+        // required for the websocket setup. This comes through stdout as it all routes
+        // through stdout due to the pty wrapper.
         tokio::spawn(async move {
             lazy_static! {
                 static ref RE_NODE_STARTED: Regex =
@@ -93,7 +51,7 @@ impl Process {
 
             let mut node_setup = false;
 
-            let mut reader = read_output(BufReader::new(stderr));
+            let mut reader = read_output(BufReader::new(stdout));
 
             while let Some(Ok(text)) = reader.next().await {
                 if !node_setup {
@@ -112,9 +70,19 @@ impl Process {
                         };
                     }
                 } else {
-                    eprint!("{}", text);
+                    print!("{}", text);
                 }
             }
         });
+
+        Process { process }
+    }
+
+    pub fn stop(&mut self) {
+        self.process.kill().unwrap();
+    }
+
+    pub fn get_pid(&self) -> u64 {
+        self.process.id() as u64
     }
 }

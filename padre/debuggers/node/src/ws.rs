@@ -1,176 +1,134 @@
 //! Websocket connection
 
 use std::collections::HashMap;
-use std::io;
-use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 
-use padre_core::notifier::{log_msg, LogLevel};
+use super::analyser::Analyser;
+use super::utils::{get_json, get_message_id};
 
-use tokio::prelude::*;
-use tokio::sync::mpsc::{self, Sender};
-use tungstenite::{connect, Message};
+use futures::{SinkExt, StreamExt};
+use tokio::sync::{mpsc, oneshot};
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::protocol::Message;
 use url::Url;
-//use websocket::result::WebSocketError;
-//use websocket::{ClientBuilder, OwnedMessage};
 
 #[derive(Debug)]
 pub struct WSHandler {
-    response_listeners: Arc<Mutex<HashMap<u64, Sender<serde_json::Value>>>>,
-    ws_tx: Option<Sender<String>>,
+    response_listeners: Arc<Mutex<HashMap<u64, oneshot::Sender<Message>>>>,
+    tx: mpsc::Sender<Message>,
     ws_id: u64,
 }
 
 impl WSHandler {
-    pub fn new() -> WSHandler {
+    pub fn new(
+        uri: &str,
+        analyser: Arc<Mutex<Analyser>>,
+        node_tx: mpsc::Sender<(Message, Option<oneshot::Sender<Message>>)>,
+    ) -> Self {
+        let (tx, mut rx) = mpsc::channel(1);
+
+        let response_listeners: Arc<Mutex<HashMap<u64, oneshot::Sender<Message>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        let url = Url::parse(uri).unwrap();
+
+        let response_listeners_moved = response_listeners.clone();
+
+        tokio::spawn(async move {
+            let (ws_stream, _) = connect_async(url)
+                .await
+                .expect("Can't connect to Websocket");
+
+            let (mut ws_write, mut ws_read) = ws_stream.split();
+
+            let analyser = analyser.clone();
+
+            tokio::spawn(async move {
+                let analyser = analyser.clone();
+                while let Some(Ok(message)) = ws_read.next().await {
+                    match message {
+                        Message::Text(_) => {
+                            let json = get_json(&message);
+                            let id = get_message_id(&json);
+
+                            match id {
+                                Some(id) => {
+                                    match response_listeners_moved.lock().unwrap().remove(&id) {
+                                        Some(listener_tx) => {
+                                            listener_tx.send(message).unwrap();
+                                        }
+                                        None => {}
+                                    }
+                                }
+                                None => {
+                                    analyser
+                                        .lock()
+                                        .unwrap()
+                                        .analyse_message(json, node_tx.clone());
+                                }
+                            };
+                        }
+                        _ => {}
+                    };
+                }
+            });
+
+            while let Some(message) = rx.next().await {
+                ws_write.send(message).await.unwrap();
+            }
+        });
+
         WSHandler {
-            response_listeners: Arc::new(Mutex::new(HashMap::new())),
-            ws_tx: None,
+            response_listeners,
+            tx: tx,
             ws_id: 1,
         }
     }
 
-    pub fn connect<F>(&mut self, uri: &str, f: F)
-    where
-        F: Fn(serde_json::Value) -> Option<String> + Sync + Send + 'static,
-    {
-        let (tx, rx) = mpsc::channel(1);
+    pub async fn send_and_receive_message(&mut self, mut message: Message) -> Message {
+        let (listener_tx, listener_rx) = oneshot::channel();
 
-        self.ws_tx = Some(tx.clone());
-        let response_listeners = self.response_listeners.clone();
+        match message {
+            Message::Text(_) => {
+                let json = get_json(&message);
+                let id = get_message_id(&json);
 
-        let (mut socket, response) =
-            connect(Url::parse(uri).unwrap()).expect("Can't connect to Websocket");
+                let id = match id {
+                    Some(x) => x,
+                    None => {
+                        let next_id = self.get_next_ws_id();
+                        message = self.add_id_to_message(message, next_id);
+                        let json = get_json(&message);
+                        get_message_id(&json).unwrap()
+                    }
+                };
 
-        tokio::spawn(async move {
-            loop {
-                let msg = socket.read_message().expect("Error reading message");
-                println!("Received: {}", msg);
+                self.response_listeners
+                    .lock()
+                    .unwrap()
+                    .insert(id, listener_tx);
             }
-        });
+            _ => {}
+        };
 
-        //let fut = ClientBuilder::new(uri)
-        //    .unwrap()
-        //    .async_connect_insecure()
-        //    .and_then(move |(duplex, _)| {
-        //        let (sink, stream) = duplex.split();
+        self.tx.send(message).await.unwrap();
 
-        //        stream
-        //            .filter_map(move |message| {
-        //                let json: serde_json::Value;
-        //                if let OwnedMessage::Text(s) = &message {
-        //                    json = serde_json::from_str(s).unwrap();
-        //                } else if message.is_close() {
-        //                    return Some(OwnedMessage::Close(None));
-        //                } else {
-        //                    panic!("Can't understand message: {:?}", message)
-        //                }
-
-        //                if json["method"].is_string() {
-        //                    f(json);
-        //                } else if json["id"].is_number() {
-        //                    let id = json["id"].clone();
-        //                    let id: u64 = match serde_json::from_value(id) {
-        //                        Ok(s) => s,
-        //                        Err(e) => {
-        //                            panic!("Can't understand id: {:?}", e);
-        //                        }
-        //                    };
-
-        //                    match response_listeners.lock().unwrap().remove(&id) {
-        //                        Some(listener_tx) => {
-        //                            tokio::spawn(listener_tx.send(json).map(|_| {}).map_err(|e| {
-        //                                eprintln!("Error spawning node: {:?}", e);
-        //                            }));
-        //                        }
-        //                        None => {}
-        //                    };
-        //                } else {
-        //                    log_msg(LogLevel::ERROR, &format!("Response error: {}", json));
-        //                };
-        //                None
-        //            })
-        //            .select(rx.map_err(|_| WebSocketError::NoDataAvailable))
-        //            .forward(sink)
-        //    })
-        //    .map(|_| ())
-        //    .map_err(|e| eprintln!("WebSocket err: {:?}", e));
-
-        //tokio::spawn(fut);
+        listener_rx.await.unwrap()
     }
 
-    pub fn close(&self) {
-        let tx = self.ws_tx.clone();
-
-        //tokio::spawn(
-        //    tx.unwrap()
-        //        .send(OwnedMessage::Close(None))
-        //        .map(|_| {})
-        //        .map_err(|e| {
-        //            eprintln!("Error sending message: {:?}", e);
-        //        }),
-        //);
-    }
-
-    pub async fn send_and_receive_message(&mut self, msg: String) {
-        let id = self.get_next_ws_id();
-        //let msg = self.add_id_to_message(msg, id);
-
-        let (listener_tx, listener_rx) = mpsc::channel(1);
-
-        self.response_listeners
-            .lock()
-            .unwrap()
-            .insert(id, listener_tx);
-
-        let tx = self.ws_tx.clone();
-
-        //tokio::spawn(tx.unwrap().send(msg).map(|_| {}).map_err(|e| {
-        //    eprintln!("Error sending message: {:?}", e);
-        //}));
-
-        //let resp = listener_rx.next().await.unwrap();
+    pub fn add_id_to_message(&self, message: Message, id: u64) -> Message {
+        if let Message::Text(s) = message {
+            let mut json: serde_json::Value = serde_json::from_str(&s).unwrap();
+            json["id"] = serde_json::json!(id);
+            Message::Text(json.to_string())
+        } else {
+            unreachable!();
+        }
     }
 
     fn get_next_ws_id(&mut self) -> u64 {
         let id = self.ws_id;
         self.ws_id += 1;
         id
-    }
-
-    //fn add_id_to_message(&self, msg: OwnedMessage, id: u64) -> OwnedMessage {
-    //    if let OwnedMessage::Text(s) = &msg {
-    //        let mut json: serde_json::Value = serde_json::from_str(s).unwrap();
-    //        json["id"] = serde_json::json!(id);
-    //        OwnedMessage::Text(json.to_string())
-    //    } else {
-    //        unreachable!();
-    //    }
-    //}
-}
-
-#[cfg(test)]
-mod tests {
-    use websocket::OwnedMessage;
-
-    #[test]
-    fn check_add_message_id() {
-        let mut ws_handler = super::WSHandler::new();
-
-        let msg = OwnedMessage::Text("{\"TEST\":1}".to_string());
-        let id = ws_handler.get_next_ws_id();
-        let msg = ws_handler.add_id_to_message(msg, id);
-        let json: serde_json::Value;
-        if let OwnedMessage::Text(s) = msg {
-            json = serde_json::from_str(&s).unwrap();
-        } else {
-            unreachable!();
-        }
-
-        let expected = "{\"id\":1,\"TEST\":1}";
-        let expected: serde_json::Value = serde_json::from_str(expected).unwrap();
-
-        assert_eq!(expected, json);
-        assert_eq!(2, ws_handler.ws_id);
     }
 }

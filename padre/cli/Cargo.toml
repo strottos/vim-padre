@@ -7,9 +7,9 @@ license = "APACHE"
 repository = "https://github.com/strottos/vim-padre"
 
 [features]
-default = ["lldb", "python"] # ["node"]
+default = ["lldb", "node", "python"]
 lldb = ["padre_lldb"]
-# node = ["padre_node"]
+node = ["padre_node"]
 python = ["padre_python"]
 
 [dependencies]
@@ -33,5 +33,5 @@ tokio = { version = "0.2.12", features = [
 
 # The debuggers, all optional
 padre_lldb = { path = "../debuggers/lldb", optional = true, version = "0.2.0" }
-# padre_node = { path = "../debuggers/node", optional = true, version = "0.2.0" }
+padre_node = { path = "../debuggers/node", optional = true, version = "0.2.0" }
 padre_python = { path = "../debuggers/python", optional = true, version = "0.2.0" }

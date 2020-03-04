@@ -93,7 +93,12 @@ impl LLDBProcess {
     }
 
     pub fn stop(&mut self) {
-        self.lldb_process = None;
+        match self.lldb_process.take() {
+            Some(mut p) => {
+                p.kill().unwrap();
+            }
+            None => {}
+        };
     }
 
     /// Send a message to write to stdin
@@ -225,6 +230,8 @@ impl LLDBAnalyser {
         self.status.clone()
     }
 
+    // TODO: Find out why I need this?
+    #[allow(unused_mut)]
     pub fn analyse_stdout(&mut self, s: &str) {
         // Check process running first
         let mut process_running = true;
@@ -256,13 +263,19 @@ impl LLDBAnalyser {
                         from += print_cmd_size + 2;
                     }
 
+                    self.variable_output += &s[from..to];
+
+                    let output = &self.variable_output[..];
+                    let mut to = output.len();
+
                     let lldb_prompt_length = "\r\n(lldb) ".len();
-                    if to >= lldb_prompt_length && &s[to - lldb_prompt_length..to] == "\r\n(lldb) "
+                    if to >= lldb_prompt_length
+                        && &self.variable_output[to - lldb_prompt_length..to] == "\r\n(lldb) "
                     {
                         to -= lldb_prompt_length;
                     }
 
-                    self.variable_output += &s[from..to];
+                    self.variable_output = output[0..to].to_string();
                 }
                 _ => {}
             },
@@ -411,7 +424,7 @@ impl LLDBAnalyser {
     fn check_process_exited(&mut self, line: &str) {
         lazy_static! {
             static ref RE_PROCESS_EXITED: Regex =
-                Regex::new("^Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$")
+                Regex::new("Process (\\d+) exited with status = (\\d+) \\(0x[0-9a-f]*\\) *$")
                     .unwrap();
         }
 

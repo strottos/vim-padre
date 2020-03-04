@@ -5,7 +5,8 @@
 
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use super::process::{LLDBProcess, Message};
 use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
@@ -58,7 +59,7 @@ impl Debugger for ImplDebugger {
                         DebuggerCmdBasic::Print(v) => debugger.print(&v, cmd.1),
                     },
                     _ => {
-                        log_msg(LogLevel::WARN, "Got a command that wasn't understood");
+                        log_msg(LogLevel::WARN, &format!("Got a command that wasn't understood {:?}", cmd));
                     }
                 };
             }
@@ -90,6 +91,8 @@ impl LLDBDebugger {
         // Send a lot of startup messages to LLDB when ready
         tokio::spawn(async move {
             rx.await.unwrap();
+            // Mini sleep to make sure VIM has connected
+            thread::sleep(Duration::from_millis(500));
             process
                 .clone()
                 .lock()

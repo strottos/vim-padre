@@ -17,11 +17,6 @@ TTY_MODE = None
 
 
 def receiveSignal(signalNumber, frame):
-    fid = open("/tmp/ptyout_killing", "w")
-    fid.write("Signal {}".format(signalNumber))
-    fid.write("PID {}".format(PID))
-    fid.close()
-
     if PID != -1:
         os.kill(PID, signalNumber)
 
@@ -69,18 +64,15 @@ def spawn(argv, master_read=_read, stdin_read=_read):
     """Create a spawned process."""
     global PID, TTY_MODE
 
+    signal.signal(signal.SIGINT, receiveSignal)
+    signal.signal(signal.SIGQUIT, receiveSignal)
+    signal.signal(signal.SIGTERM, receiveSignal)
+
     PID, master_fd = pty.fork()
 
     if PID == CHILD:
         os.execlp(argv[0], *argv)
 
-    fid = open("/tmp/ptyout", "w")
-    fid.write("PID {}".format(PID))
-    fid.close()
-
-    signal.signal(signal.SIGINT, receiveSignal)
-    signal.signal(signal.SIGQUIT, receiveSignal)
-    signal.signal(signal.SIGTERM, receiveSignal)
     try:
         mode = tty.tcgetattr(STDIN_FILENO)
         tty.setraw(STDIN_FILENO)
