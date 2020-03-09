@@ -10,6 +10,7 @@
 //!            - lldb
 //!            - node
 //!            - python
+//!            - godlv (Go Delve Debugger)
 //!   -d/--debugger
 //!
 //! The debug command should be specified as an addendum when running the command, e.g.
@@ -62,7 +63,7 @@ fn get_app_args<'a>() -> ArgMatches<'a> {
                  .short("t")
                  .long("type")
                  .takes_value(true)
-                 .help("specify debugger type from [lldb, node, java, python]"))
+                 .help("specify debugger type from [lldb, node, python, godlv]"))
         .arg(Arg::with_name("debug_cmd")
                  .multiple(true)
                  .takes_value(true))

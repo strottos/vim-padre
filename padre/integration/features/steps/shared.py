@@ -182,8 +182,6 @@ async def do_send_to_padre(future, writer, message, loop):
 
     loop.call_at(loop.time() + TIMEOUT, cancel)
 
-    message = message.replace("`pwd`", os.getcwd())
-
     async def do_write(writer, message):
         writer.write(message.encode())
 
@@ -226,6 +224,7 @@ def run_padre(context, timeout=20):
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             loop=loop,
+            cwd=os.path.realpath(context.tmpdir.name)
         )
 
         line = await context.padre.process.stdout.readline()
@@ -381,6 +380,14 @@ def padre_debugger(context):
     context.padre.get_children()
 
 
+@when("I sleep for a moment")
+def sleep_at_startup(context):
+    """
+    Just sleep for a very short period of time
+    """
+    time.sleep(0.1)
+
+
 @when("I give PADRE chance to start")
 def sleep_at_startup(context):
     """
@@ -433,6 +440,9 @@ def padre_request_raw(context, request, connection):
     future = loop.create_future()
 
     print("Request: {}".format(request))
+
+    request = request.replace("`pwd`", os.getcwd())
+    request = request.replace("`test_dir`", os.path.realpath(context.tmpdir.name))
 
     loop.run_until_complete(
         do_send_to_padre(future, context.connections[int(connection)][1], request, loop)

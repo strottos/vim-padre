@@ -13,6 +13,8 @@ use padre_lldb;
 use padre_node;
 #[cfg(feature = "python")]
 use padre_python;
+#[cfg(feature = "godlv")]
+use padre_godlv;
 
 /// Debuggers
 #[derive(Debug)]
@@ -23,6 +25,8 @@ enum DebuggerType {
     Node,
     #[cfg(feature = "python")]
     Python,
+    #[cfg(feature = "godlv")]
+    GoDlv,
 }
 
 /// Get the debugger implementation
@@ -42,6 +46,8 @@ pub fn create_debugger(
             "python" => DebuggerType::Python,
             #[cfg(feature = "node")]
             "node" => DebuggerType::Node,
+            #[cfg(feature = "godlv")]
+            "godlv" => DebuggerType::GoDlv,
             _ => panic!("Couldn't understand debugger type {}", s),
         },
         None => match get_debugger_type(&run_cmd[0]) {
@@ -54,6 +60,8 @@ pub fn create_debugger(
                     "python" | "python3" => DebuggerType::Python,
                     #[cfg(feature = "node")]
                     "node" => DebuggerType::Node,
+                    #[cfg(feature = "godlv")]
+                    "godlv" => DebuggerType::GoDlv,
                     _ => panic!(
                         "Can't find debugger type for {}, try specifying with -d or -t",
                         s
@@ -73,6 +81,8 @@ pub fn create_debugger(
             DebuggerType::Node => "node".to_string(),
             #[cfg(feature = "python")]
             DebuggerType::Python => "python3".to_string(),
+            #[cfg(feature = "godlv")]
+            DebuggerType::GoDlv => "godlv".to_string(),
         },
     };
 
@@ -83,6 +93,8 @@ pub fn create_debugger(
         DebuggerType::Node => Box::new(padre_node::ImplDebugger::new(debugger_cmd, run_cmd)),
         #[cfg(feature = "python")]
         DebuggerType::Python => Box::new(padre_python::ImplDebugger::new(debugger_cmd, run_cmd)),
+        #[cfg(feature = "godlv")]
+        DebuggerType::GoDlv => Box::new(padre_godlv::ImplDebugger::new(debugger_cmd, run_cmd)),
     }
 }
 
