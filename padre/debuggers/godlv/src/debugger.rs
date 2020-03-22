@@ -101,39 +101,6 @@ impl DlvDebugger {
         debugger
     }
 
-    fn setup(&mut self) {
-        // Awakener
-//        let (tx, rx) = oneshot::channel();
-//
-//        self.process.lock().unwrap().add_awakener(tx);
-//
-//        let process = self.process.clone();
-//
-//        tokio::spawn(async move {
-//            rx.await.unwrap();
-//            let (tx, rx) = oneshot::channel();
-//            process.lock().unwrap().add_awakener(tx);
-//
-//            let process2 = process.clone();
-//
-//            tokio::spawn(async move {
-//                rx.await.unwrap();
-//                process2.lock().unwrap().send_msg(Message::Continue);
-//            });
-//
-//            process.lock().unwrap().send_msg(Message::MainBreakpoint);
-//        });
-//
-//        let process = self.process.clone();
-//
-//        tokio::spawn(async move {
-//            // Sleep just to make sure vim has had time to connect
-//            delay_for(Duration::new(1, 0)).await;
-//
-//            process.lock().unwrap().run();
-//        });
-    }
-
     /// Run Delve and perform any setup necessary
     fn run(&mut self, _timeout: Instant) {
         log_msg(LogLevel::INFO, "Launching process");
