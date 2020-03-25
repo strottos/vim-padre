@@ -112,9 +112,7 @@ async fn run_padre() -> io::Result<()> {
 
     let (debugger_queue_tx, debugger_queue_rx) = mpsc::channel(128);
 
-    println!("HERE1");
     let debugger = create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd);
-    println!("HERE2");
 
     debugger.setup_handler(debugger_queue_rx);
 

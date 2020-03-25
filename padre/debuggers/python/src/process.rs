@@ -170,14 +170,28 @@ impl Process {
         pty_wrapper.pop();
         pty_wrapper.push("ptywrapper.py");
 
-        let mut process = Command::new(pty_wrapper)
-            .arg(&debugger_cmd)
-            .args(&args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn debugger");
+        let mut process;
+
+        cfg_if::cfg_if! {
+            if #[cfg(unix)] {
+                process = Command::new(pty_wrapper)
+                    .arg(&debugger_cmd)
+                    .args(&args)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .expect("Failed to spawn debugger");
+            } else {
+                process = Command::new(debugger_cmd)
+                    .args(&args)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .expect("Failed to spawn debugger");
+            }
+        }
 
         log_msg(
             LogLevel::INFO,

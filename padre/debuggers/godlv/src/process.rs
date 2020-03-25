@@ -72,14 +72,14 @@ impl DlvProcess {
             dlv_process
                 .stdout
                 .take()
-                .expect("Python process did not have a handle to stdout"),
+                .expect("Delve process did not have a handle to stdout"),
             analyser.clone(),
         );
         let dlv_stdin_tx = DlvProcess::setup_stdin(
             dlv_process
                 .stdin
                 .take()
-                .expect("Python process did not have a handle to stdin"),
+                .expect("Delve process did not have a handle to stdin"),
             analyser.clone(),
         );
 

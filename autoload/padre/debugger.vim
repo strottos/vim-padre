@@ -115,6 +115,9 @@ function! padre#debugger#Debug(...)
       if !empty(l:match)
         let l:padre_host = l:match[1]
         let l:padre_port = l:match[2]
+        if l:padre_host == "0.0.0.0"
+          let l:padre_host = "127.0.0.1"
+        endif
         break
       endif
     endfor
@@ -205,12 +208,18 @@ function! padre#debugger#GenericCallback(channel_id, data)
 endfunction
 
 function! padre#debugger#JumpToPosition(file, line)
+  echom "file: " . a:file
   let l:msg = 'Stopped file=' . a:file . ' line=' . a:line
   call padre#debugger#Log(4, l:msg)
 
   if a:file[0] == '/'
+    " Unix absolute file
+    let l:fileToLoad = a:file
+  elseif len(a:file) > 1 && a:file[1] == ":"
+    " Windows absolute file
     let l:fileToLoad = a:file
   else
+    " Best look for it in current directory then as a last ditch
     let l:fileToLoad = s:PresentDirectory . '/' . findfile(a:file, s:PresentDirectory . '/**')
   endif
 

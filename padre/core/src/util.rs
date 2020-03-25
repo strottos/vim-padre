@@ -21,6 +21,10 @@ use tokio::prelude::*;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::mpsc::{self, Sender};
 use tokio_util::codec::{BytesCodec, FramedRead};
+use winapi::um::consoleapi::GetConsoleMode;
+use winapi::um::processenv::GetStdHandle;
+use winapi::um::winbase::STD_OUTPUT_HANDLE;
+use winapi::um::winnt::HANDLE;
 
 /// Get an unused port on the local system and return it. This port
 /// can subsequently be used.
@@ -63,15 +67,36 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
         exit(1);
     }
 
+    let prog;
     let mut args = vec![];
 
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
+            let mut pty_wrapper = env::current_exe().unwrap();
+            pty_wrapper.pop();
+            pty_wrapper.pop();
+            pty_wrapper.pop();
+            pty_wrapper.push("ptywrapper.py");
+            prog = pty_wrapper.to_string();
+
             for arg in &debugger_cmd[0..] {
                 args.push(&arg[..]);
             }
         } else {
-            for arg in &debugger_cmd[1..] {
+            let test;
+            unsafe {
+                let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+                println!("Handle: {:?}", handle);
+                let mut out = 0;
+                test = GetConsoleMode(handle, &mut out);
+                println!("Test: {:?}, m: {:?}", test, out);
+            }
+
+            prog = "cmd".to_string();
+
+            args.push("/C");
+
+            for arg in &debugger_cmd[0..] {
                 args.push(&arg[..]);
             }
         }
@@ -82,21 +107,6 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
     for arg in &run_cmd {
         args.push(&arg[..]);
     }
-
-    let prog;
-
-    cfg_if::cfg_if! {
-        if #[cfg(unix)] {
-            let mut pty_wrapper = env::current_exe().unwrap();
-            pty_wrapper.pop();
-            pty_wrapper.pop();
-            pty_wrapper.pop();
-            pty_wrapper.push("ptywrapper.py");
-            prog = pty_wrapper.to_string();
-        } else {
-            prog = args[0];
-        }
-    };
 
     println!("prog {} args {:?}", prog, args);
 

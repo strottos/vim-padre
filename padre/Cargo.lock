@@ -482,6 +482,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "winapi 0.3.8",
 ]
 
 [[package]]
@@ -533,6 +534,7 @@ name = "padre_python"
 version = "0.2.0"
 dependencies = [
  "bytes",
+ "cfg-if",
  "futures",
  "lazy_static",
  "padre_core",
