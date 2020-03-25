@@ -453,6 +453,7 @@ checksum = "2839e79665f131bdb5782e51f2c6c9599c133c6098982a54c794358bf432529c"
 name = "padre"
 version = "0.2.0"
 dependencies = [
+ "cfg-if",
  "clap",
  "futures",
  "padre_core",
@@ -471,6 +472,7 @@ name = "padre_core"
 version = "0.2.0"
 dependencies = [
  "bytes",
+ "cfg-if",
  "futures",
  "lazy_static",
  "pin-project",

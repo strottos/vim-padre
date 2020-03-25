@@ -65,8 +65,16 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
 
     let mut args = vec![];
 
-    for arg in &debugger_cmd[0..] {
-        args.push(&arg[..]);
+    cfg_if::cfg_if! {
+        if #[cfg(unix)] {
+            for arg in &debugger_cmd[0..] {
+                args.push(&arg[..]);
+            }
+        } else {
+            for arg in &debugger_cmd[1..] {
+                args.push(&arg[..]);
+            }
+        }
     }
 
     args.push("--");
@@ -75,13 +83,24 @@ pub fn check_and_spawn_process(mut debugger_cmd: Vec<String>, run_cmd: Vec<Strin
         args.push(&arg[..]);
     }
 
-    let mut pty_wrapper = env::current_exe().unwrap();
-    pty_wrapper.pop();
-    pty_wrapper.pop();
-    pty_wrapper.pop();
-    pty_wrapper.push("ptywrapper.py");
+    let prog;
 
-    Command::new(pty_wrapper)
+    cfg_if::cfg_if! {
+        if #[cfg(unix)] {
+            let mut pty_wrapper = env::current_exe().unwrap();
+            pty_wrapper.pop();
+            pty_wrapper.pop();
+            pty_wrapper.pop();
+            pty_wrapper.push("ptywrapper.py");
+            prog = pty_wrapper.to_string();
+        } else {
+            prog = args[0];
+        }
+    };
+
+    println!("prog {} args {:?}", prog, args);
+
+    Command::new(prog)
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

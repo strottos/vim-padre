@@ -156,6 +156,7 @@ fn file_is_binary_executable(cmd: &str) -> bool {
 
     if output.contains("ELF")
         || (output.contains("Mach-O") && output.to_ascii_lowercase().contains("executable"))
+        || output == "executable"
     {
         true
     } else {
@@ -176,13 +177,27 @@ fn file_is_text(cmd: &str) -> bool {
 
 /// Get the file type as output by the UNIX `file` command.
 fn get_file_type(cmd: &str) -> String {
-    let output = Command::new("file")
-        .arg("-L") // Follow symlinks
-        .arg(cmd)
-        .output();
-    let output = output.expect(&format!("Can't run file on {} to find file type", cmd));
+    println!("cmd: {}", cmd);
 
-    String::from_utf8_lossy(&output.stdout).to_string()
+    cfg_if::cfg_if! {
+        if #[cfg(unix)] {
+            let output = Command::new("file")
+                .arg("-L") // Follow symlinks
+                .arg(cmd)
+                .output();
+            let output = output.expect(&format!("Can't run file on {} to find file type", cmd)).stdout;
+            return String::from_utf8_lossy(&output).to_string();
+        } else {
+            let len = cmd.len();
+            if len > 4 && &cmd[len - 4..] == ".exe" {
+                return "executable".to_string();
+            } else if len > 3 && (&cmd[len - 3..] == ".py" || &cmd[len - 3..] == ".js") {
+                return "ASCII".to_string();
+            }
+        }
+    }
+
+    "unknown".to_string()
 }
 
 #[cfg(test)]

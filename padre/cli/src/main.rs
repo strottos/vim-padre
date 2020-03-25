@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 use clap::{App, Arg, ArgMatches};
 use futures::prelude::*;
 use tokio::net::TcpListener;
+#[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc::{self, Sender};
 use tokio::time::delay_until;
@@ -111,7 +112,9 @@ async fn run_padre() -> io::Result<()> {
 
     let (debugger_queue_tx, debugger_queue_rx) = mpsc::channel(128);
 
+    println!("HERE1");
     let debugger = create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd);
+    println!("HERE2");
 
     debugger.setup_handler(debugger_queue_rx);
 
@@ -126,37 +129,41 @@ async fn run_padre() -> io::Result<()> {
 
     let mut incoming = socket.incoming();
 
-    // TODO: Merge the following into one lot of signals when we know how to
+    cfg_if::cfg_if! {
+        if #[cfg(unix)] {
+            // TODO: Merge the following into one lot of signals when we know how to
 
-    let debugger_signals_queue_tx = debugger_queue_tx.clone();
-    tokio::spawn(async move {
-        let mut signals = signal(SignalKind::interrupt()).unwrap();
-        let debugger_signals_queue_tx = debugger_signals_queue_tx.clone();
+            let debugger_signals_queue_tx = debugger_queue_tx.clone();
+            tokio::spawn(async move {
+                let mut signals = signal(SignalKind::interrupt()).unwrap();
+                let debugger_signals_queue_tx = debugger_signals_queue_tx.clone();
 
-        while let Some(_) = signals.recv().await {
-            exit_padre(debugger_signals_queue_tx.clone());
+                while let Some(_) = signals.recv().await {
+                    exit_padre(debugger_signals_queue_tx.clone());
+                }
+            });
+
+            let debugger_signals_queue_tx = debugger_queue_tx.clone();
+            tokio::spawn(async move {
+                let mut signals = signal(SignalKind::quit()).unwrap();
+                let debugger_signals_queue_tx = debugger_signals_queue_tx.clone();
+
+                while let Some(_) = signals.recv().await {
+                    exit_padre(debugger_signals_queue_tx.clone());
+                }
+            });
+
+            let debugger_signals_queue_tx = debugger_queue_tx.clone();
+            tokio::spawn(async move {
+                let mut signals = signal(SignalKind::terminate()).unwrap();
+                let debugger_signals_queue_tx = debugger_signals_queue_tx.clone();
+
+                while let Some(_) = signals.recv().await {
+                    exit_padre(debugger_signals_queue_tx.clone());
+                }
+            });
         }
-    });
-
-    let debugger_signals_queue_tx = debugger_queue_tx.clone();
-    tokio::spawn(async move {
-        let mut signals = signal(SignalKind::quit()).unwrap();
-        let debugger_signals_queue_tx = debugger_signals_queue_tx.clone();
-
-        while let Some(_) = signals.recv().await {
-            exit_padre(debugger_signals_queue_tx.clone());
-        }
-    });
-
-    let debugger_signals_queue_tx = debugger_queue_tx.clone();
-    tokio::spawn(async move {
-        let mut signals = signal(SignalKind::terminate()).unwrap();
-        let debugger_signals_queue_tx = debugger_signals_queue_tx.clone();
-
-        while let Some(_) = signals.recv().await {
-            exit_padre(debugger_signals_queue_tx.clone());
-        }
-    });
+    }
 
     while let Some(Ok(stream)) = incoming.next().await {
         let debugger_queue_tx = debugger_queue_tx.clone();
