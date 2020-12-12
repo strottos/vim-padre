@@ -59,7 +59,10 @@ impl Debugger for ImplDebugger {
                         DebuggerCmdBasic::Print(v) => debugger.print(&v, cmd.1),
                     },
                     _ => {
-                        log_msg(LogLevel::WARN, &format!("Got a command that wasn't understood {:?}", cmd));
+                        log_msg(
+                            LogLevel::WARN,
+                            &format!("Got a command that wasn't understood {:?}", cmd),
+                        );
                     }
                 };
             }

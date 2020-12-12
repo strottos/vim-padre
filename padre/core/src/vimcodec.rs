@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
-use crate::debugger::{DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
+use crate::debugger::{
+    DebuggerCmd, DebuggerCmdBasic, DebuggerCmdThreading, FileLocation, Thread, Variable,
+};
 use crate::server::{PadreCmd, PadreRequest, PadreSend, RequestCmd};
 use crate::util;
 
@@ -420,6 +422,44 @@ impl<'a> Decoder for VimCodec<'a> {
                                         .lock()
                                         .unwrap()
                                         .get_config("PrintVariableTimeout")
+                                        .unwrap() as u64,
+                                    0,
+                                ),
+                        ),
+                    ))),
+                    None => return Ok(None),
+                }
+            }
+            "threads" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::DebuggerCmd(
+                    DebuggerCmd::Threading(DebuggerCmdThreading::Threads),
+                    Instant::now()
+                        + Duration::new(
+                            self.config
+                                .lock()
+                                .unwrap()
+                                .get_config("StepTimeout")
+                                .unwrap() as u64,
+                            0,
+                        ),
+                ),
+            ))),
+            "activate_thread" => {
+                let thread_num = self.get_string("id", &mut args);
+                match thread_num {
+                    Some(t) => Ok(Some(PadreRequest::new(
+                        id,
+                        RequestCmd::DebuggerCmd(
+                            DebuggerCmd::Threading(DebuggerCmdThreading::ActivateThread(
+                                Thread::new(t),
+                            )),
+                            Instant::now()
+                                + Duration::new(
+                                    self.config
+                                        .lock()
+                                        .unwrap()
+                                        .get_config("StepTimeout")
                                         .unwrap() as u64,
                                     0,
                                 ),

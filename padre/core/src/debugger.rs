@@ -18,9 +18,10 @@ pub trait Debugger: Debug {
 #[derive(Clone, Debug, PartialEq)]
 pub enum DebuggerCmd {
     Basic(DebuggerCmdBasic),
+    Threading(DebuggerCmdThreading),
 }
 
-/// All debugger commands
+/// All basic debugger commands
 #[derive(Clone, Debug, PartialEq)]
 pub enum DebuggerCmdBasic {
     Run,
@@ -32,6 +33,13 @@ pub enum DebuggerCmdBasic {
     StepOver,
     Continue,
     Print(Variable),
+}
+
+/// All basic debugger commands
+#[derive(Clone, Debug, PartialEq)]
+pub enum DebuggerCmdThreading {
+    Threads,
+    ActivateThread(Thread),
 }
 
 /// File location
@@ -78,3 +86,27 @@ impl PartialEq for Variable {
 }
 
 impl Eq for Variable {}
+
+/// Thread
+#[derive(Clone, Debug)]
+pub struct Thread {
+    id: String,
+}
+
+impl Thread {
+    pub fn new(id: String) -> Self {
+        Thread { id }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+impl PartialEq for Thread {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Thread {}

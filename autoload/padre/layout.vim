@@ -56,8 +56,35 @@ function! padre#layout#SetupPadre(padre_number)
   let s:PadreData['SourceWin'] = winnr()
   vnew
   wincmd l
+  let s:PadreData['DataWin'] = winnr()
+
+  let s:PadreData['DataBufnrs'] = []
+
+  " Setup Threads buffer
+  call padre#buffer#CreateForCurrentBuffer('PADRE_Threads_' . a:padre_number, 'PADRE_Threads', 0)
+  let s:PadreData['ThreadsBufnr'] = bufnr()
+  call add(s:PadreData['DataBufnrs'], bufnr())
+  call padre#buffer#SetThreadsPadreKeyBindingsForCurrentBuffer()
+  call padre#buffer#SetTogglePadreKeyBindingsForCurrentBuffer()
+  set nonumber
+  set nolist
+  augroup vimPadreThreadEnterBuffer
+    autocmd!
+    autocmd BufEnter <buffer> call padre#debugger#ThreadsBufferEnter()
+  augroup END
+" When exiting the threads buffer we should go back to the logs window
+  augroup vimPadreThreadLeaveBuffer
+    autocmd!
+    autocmd BufLeave <buffer> call padre#layout#ResetToLogs()
+  augroup END
+
+  " Setup Logs buffer
   call padre#buffer#CreateForCurrentBuffer('PADRE_Logs_' . a:padre_number, 'PADRE_Logs', 0)
-  let s:PadreData['LogsWin'] = winnr()
+  let s:PadreData['LogsBufnr'] = bufnr()
+  call add(s:PadreData['DataBufnrs'], bufnr())
+  let s:PadreData['CurrentDataBufnrIndex'] = len(s:PadreData['DataBufnrs']) - 1
+  call padre#buffer#SetTogglePadreKeyBindingsForCurrentBuffer()
+
   wincmd h
   wincmd j
 endfunction
@@ -66,6 +93,59 @@ function! padre#layout#GetSourceWindow()
   return s:PadreData['SourceWin']
 endfunction
 
-function! padre#layout#GetLogsWindow()
-  return s:PadreData['LogsWin']
+function! padre#layout#GetDataWindow()
+  return s:PadreData['DataWin']
+endfunction
+
+function! padre#layout#GetDataBufnr(buf_type)
+  return s:PadreData[a:buf_type . 'Bufnr']
+endfunction
+
+function! padre#layout#ResetToLogs()
+  try
+    let l:logs_bufnr = padre#layout#GetDataBufnr("Logs")
+  catch /.*/
+    return
+  endtry
+
+  let l:current_tabpagenr = tabpagenr()
+
+  call padre#layout#OpenTabWithBuffer('PADRE_Threads_' . padre#debugger#GetCurrentPadreNumber())
+
+  let l:current_window = winnr()
+  let l:logs_window = padre#layout#GetDataWindow()
+
+  if l:current_window != l:logs_window
+    execute l:logs_window . ' wincmd w'
+  endif
+
+  let l:current_bufnr = bufnr()
+
+  if l:current_bufnr != l:logs_bufnr
+    execute 'buffer ' . l:logs_bufnr
+    let s:PadreData['CurrentDataBufnrIndex'] = len(s:PadreData['DataBufnrs']) - 1
+  endif
+
+  if l:current_window != l:logs_window
+    execute l:current_window . ' wincmd w'
+  endif
+
+  if l:current_tabpagenr != tabpagenr()
+    execute l:current_tabpagenr . 'tabnext'
+  endif
+
+  redraw
+endfunction
+
+function! padre#layout#Toggle()
+  " TODO: Check we're in the right window, assume for now
+
+  if s:PadreData['CurrentDataBufnrIndex'] == len(s:PadreData['DataBufnrs']) - 1
+    let s:PadreData['CurrentDataBufnrIndex'] = 0
+  else
+    let s:PadreData['CurrentDataBufnrIndex'] += 1
+  endif
+
+  let l:index = s:PadreData['CurrentDataBufnrIndex']
+  execute 'buffer ' . s:PadreData['DataBufnrs'][l:index]
 endfunction

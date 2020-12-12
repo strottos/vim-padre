@@ -12,6 +12,8 @@ function! padre#buffer#CreateForCurrentBuffer(name, filetype, writeable)
   setlocal buftype=nofile
   execute "setlocal filetype=" . a:filetype
   setlocal nobuflisted
+  setlocal nonumber
+  setlocal nolist
   if a:writeable == 0
     setlocal nomodifiable
   endif
@@ -26,13 +28,22 @@ function! padre#buffer#SetMainPadreKeyBindingsForCurrentBuffer()
   nnoremap <silent> <buffer> ZZ :PadreStop<cr>
 endfunction
 
-function! padre#buffer#UnsetPadreKeyBindingsForCurrentBuffer()
+function! padre#buffer#UnsetMainPadreKeyBindingsForCurrentBuffer()
   nnoremap <silent> <buffer> r r
   nnoremap <silent> <buffer> S S
   nnoremap <silent> <buffer> s s
   vnoremap <silent> <buffer> p p
   nnoremap <silent> <buffer> C C
   nnoremap <silent> <buffer> ZZ ZZ
+endfunction
+
+function! padre#buffer#SetThreadsPadreKeyBindingsForCurrentBuffer()
+  nnoremap <silent> <buffer> <cr> :call padre#debugger#ThreadActivate()<cr>
+endfunction
+
+function! padre#buffer#SetTogglePadreKeyBindingsForCurrentBuffer()
+  nnoremap <silent> <buffer> > :call padre#layout#Toggle()<cr>
+  nnoremap <silent> <buffer> < :call padre#layout#Toggle()<cr>
 endfunction
 
 function! padre#buffer#AppendBuffer(text, modifiable)

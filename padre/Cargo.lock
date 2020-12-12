@@ -491,6 +491,9 @@ dependencies = [
  "lazy_static",
  "padre_core",
  "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
  "tokio",
  "tokio-util",
 ]

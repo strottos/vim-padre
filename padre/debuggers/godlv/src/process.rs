@@ -5,11 +5,11 @@
 
 use std::env;
 use std::io::{self, Write};
-use std::process::{Stdio, exit};
+use std::process::{exit, Stdio};
 use std::sync::{Arc, Mutex};
 
 use padre_core::debugger::{FileLocation, Variable};
-use padre_core::notifier::{jump_to_position, log_msg, signal_exited, LogLevel};
+use padre_core::notifier::{jump_to_position, list_threads, log_msg, signal_exited, LogLevel};
 use padre_core::util::{check_and_spawn_process, read_output};
 
 use bytes::Bytes;
@@ -33,6 +33,9 @@ pub enum Message {
     StepOver,
     Continue,
     PrintVariable(Variable),
+    Status,
+    Threads,
+    ActivateThread(i64),
     Custom(Bytes),
 }
 
@@ -66,7 +69,8 @@ impl DlvProcess {
             .unwrap()
             .analyse_message(Message::DlvLaunching, tx_done);
 
-        let mut dlv_process = check_and_spawn_process(vec![debugger_cmd, "exec".to_string()], run_cmd);
+        let mut dlv_process =
+            check_and_spawn_process(vec![debugger_cmd, "exec".to_string()], run_cmd);
 
         DlvProcess::setup_stdout(
             dlv_process
@@ -105,18 +109,29 @@ impl DlvProcess {
         let analyser = self.analyser.clone();
 
         let msg = match &message {
-            Message::DlvSetup => vec![Bytes::from("break main.main\n"), Bytes::from("restart\n"), Bytes::from("continue\n")],
+            Message::DlvSetup => vec![
+                Bytes::from("break main.main\n"),
+                Bytes::from("restart\n"),
+                Bytes::from("continue\n"),
+            ],
             Message::ProcessLaunching => vec![Bytes::from("restart\n")],
-            Message::Breakpoint(fl) => {
-                vec![Bytes::from(format!("break {}:{}\n", fl.name(), fl.line_num()))]
-            }
-            Message::Unbreakpoint(fl) => {
-                vec![Bytes::from(format!("clear {}:{}\n", fl.name(), fl.line_num()))]
-            },
+            Message::Breakpoint(fl) => vec![Bytes::from(format!(
+                "break {}:{}\n",
+                fl.name(),
+                fl.line_num()
+            ))],
+            Message::Unbreakpoint(fl) => vec![Bytes::from(format!(
+                "clear {}:{}\n",
+                fl.name(),
+                fl.line_num()
+            ))],
             Message::StepIn => vec![Bytes::from("si\n")],
             Message::StepOver => vec![Bytes::from("next\n")],
             Message::Continue => vec![Bytes::from("continue\n")],
             Message::PrintVariable(v) => vec![Bytes::from(format!("print {}\n", v.name()))],
+            Message::Status => vec![Bytes::from("list\n")],
+            Message::Threads => vec![Bytes::from("goroutines\n")],
+            Message::ActivateThread(t) => vec![Bytes::from(format!("goroutine {}\n", t))],
             Message::Custom(s) => vec![s.clone()],
             _ => unreachable!(),
         };
@@ -132,7 +147,9 @@ impl DlvProcess {
 
                 dlv_stdin_tx.send(b).map(move |_| {}).await;
 
-                rx.await.unwrap();
+                let fut = rx.await;
+                println!("{:?}", fut);
+                fut.unwrap();
             }
 
             match tx_done {
@@ -146,7 +163,10 @@ impl DlvProcess {
 
     /// Perform setup of listening and forwarding of stdin and return a sender that will forward to the
     /// stdin of a process.
-    fn setup_stdin(mut child_stdin: ChildStdin, analyser: Arc<Mutex<DlvAnalyser>>) -> mpsc::Sender<Bytes> {
+    fn setup_stdin(
+        mut child_stdin: ChildStdin,
+        analyser: Arc<Mutex<DlvAnalyser>>,
+    ) -> mpsc::Sender<Bytes> {
         let (stdin_tx, mut stdin_rx) = mpsc::channel(1);
         let mut tx = stdin_tx.clone();
 
@@ -161,8 +181,9 @@ impl DlvProcess {
                     let status = analyser_lock.status.clone();
                     match status {
                         DelveStatus::Listening => {
-                            analyser_lock.status = DelveStatus::Processing(Message::Custom(buf.clone()));
-                        },
+                            analyser_lock.status =
+                                DelveStatus::Processing(Message::Custom(buf.clone()));
+                        }
                         _ => {}
                     }
                 }
@@ -202,7 +223,8 @@ pub struct DlvAnalyser {
     status: DelveStatus,
     awakener: Option<oneshot::Sender<bool>>,
     // For keeping track of the variable that we were told to print
-    variable_output: String,
+    str_store: Option<String>,
+    json_store: Option<serde_json::Value>,
 }
 
 impl DlvAnalyser {
@@ -210,7 +232,8 @@ impl DlvAnalyser {
         DlvAnalyser {
             status: DelveStatus::NotRunning,
             awakener: None,
-            variable_output: "".to_string(),
+            str_store: None,
+            json_store: None,
         }
     }
 
@@ -221,18 +244,20 @@ impl DlvAnalyser {
                     DelveStatus::Processing(msg) => {
                         match msg {
                             Message::PrintVariable(var) => {
-                                let to = if self.variable_output.len() < 1 {
-                                    0
-                                } else {
-                                    self.variable_output.len() - 1
-                                };
+                                let variable_output = self.str_store.take().unwrap();
 
-                                log_msg(LogLevel::INFO, &format!("{}={}", var.name(), &self.variable_output[0..to]));
-                                self.variable_output = "".to_string();
-                            },
-                            _ => {},
+                                log_msg(
+                                    LogLevel::INFO,
+                                    &format!("{}={}", var.name(), &variable_output[..]),
+                                );
+                            }
+                            Message::Threads => {
+                                let threads = self.json_store.take().unwrap();
+                                list_threads(threads);
+                            }
+                            _ => {}
                         };
-                    },
+                    }
                     _ => {}
                 };
 
@@ -243,8 +268,8 @@ impl DlvAnalyser {
                         tokio::spawn(async move {
                             awakener.send(true).unwrap();
                         });
-                    },
-                    None => {},
+                    }
+                    None => {}
                 }
             }
 
@@ -255,22 +280,43 @@ impl DlvAnalyser {
                             self.check_process_launched(line);
                             self.check_position(line);
                             self.check_exited(line);
-                        },
+                        }
+                        Message::Status => {
+                            self.check_position(line);
+                        }
                         Message::Breakpoint(_) => {
                             self.check_breakpoint(line);
-                        },
-                        Message::StepIn | Message::StepOver | Message::Continue | Message::Custom(_) => {
+                        }
+                        Message::StepIn
+                        | Message::StepOver
+                        | Message::Continue
+                        | Message::Custom(_) => {
                             self.check_position(line);
                             self.check_exited(line);
-                        },
+                        }
                         Message::PrintVariable(var) => {
                             if line != &format!("print {}", var.name()) && line != "" {
-                                self.variable_output += &format!("{}\n", line);
+                                match self.str_store.as_ref() {
+                                    Some(store) => {
+                                        let new = format!("{}\n{}", store, line);
+                                        self.str_store = Some(new);
+                                    }
+                                    None => {
+                                        self.str_store = Some(line.to_string());
+                                    }
+                                };
                             }
-                        },
-                        _ => {},
+                        }
+                        Message::Threads => {
+                            if line == "goroutines" {
+                                self.json_store = Some(serde_json::json!([]));
+                            } else if line != "" {
+                                self.check_goroutine(line);
+                            }
+                        }
+                        _ => {}
                     };
-                },
+                }
                 _ => {}
             };
         }
@@ -282,10 +328,10 @@ impl DlvAnalyser {
                         if s != &format!("print {}\r\n", var.name()) {
                             log_msg(LogLevel::INFO, s);
                         }
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 };
-            },
+            }
             _ => {}
         };
     }
@@ -326,6 +372,35 @@ impl DlvAnalyser {
             let file = cap[1].to_string();
             let line = cap[2].parse::<u64>().unwrap();
             jump_to_position(&file, line);
+        }
+    }
+
+    fn check_goroutine(&mut self, line: &str) {
+        lazy_static! {
+            static ref RE_GOROUTINE: Regex =
+                Regex::new(r#"^(\**) *Goroutine (\d*) - User: ([^ ]*) ([^ ]*) .*$"#).unwrap();
+        }
+
+        for cap in RE_GOROUTINE.captures_iter(line) {
+            let is_active = match &cap[1] {
+                "*" => true,
+                _ => false,
+            };
+            let number = cap[2].parse::<u64>().unwrap();
+            let location = cap[3].to_string();
+            let function = cap[4].to_string();
+
+            let thread = serde_json::json!({
+                "is_active": is_active,
+                "number": number,
+                "location": location,
+                "function": function,
+            });
+            if let Some(json) = self.json_store.as_mut() {
+                if let Some(arr) = json.as_array_mut() {
+                    arr.push(thread);
+                };
+            };
         }
     }
 

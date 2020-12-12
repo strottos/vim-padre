@@ -7,14 +7,14 @@ use std::process::Command;
 
 use padre_core::debugger::Debugger;
 
+#[cfg(feature = "godlv")]
+use padre_godlv;
 #[cfg(feature = "lldb")]
 use padre_lldb;
 #[cfg(feature = "node")]
 use padre_node;
 #[cfg(feature = "python")]
 use padre_python;
-#[cfg(feature = "godlv")]
-use padre_godlv;
 
 /// Debuggers
 #[derive(Debug)]

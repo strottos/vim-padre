@@ -9,13 +9,15 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::process::{Message, DlvProcess};
-use padre_core::debugger::{Debugger, DebuggerCmd, DebuggerCmdBasic, FileLocation, Variable};
+use super::process::{DlvProcess, Message};
+use padre_core::debugger::{
+    Debugger, DebuggerCmd, DebuggerCmdBasic, DebuggerCmdThreading, FileLocation, Thread, Variable,
+};
 use padre_core::notifier::{log_msg, LogLevel};
 
 use futures::StreamExt;
-use tokio::time::delay_for;
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::delay_for;
 
 #[derive(Debug)]
 pub struct ImplDebugger {
@@ -57,8 +59,15 @@ impl Debugger for ImplDebugger {
                         DebuggerCmdBasic::Continue => debugger.continue_(cmd.1),
                         DebuggerCmdBasic::Print(v) => debugger.print(&v, cmd.1),
                     },
+                    DebuggerCmd::Threading(threading_cmd) => match threading_cmd {
+                        DebuggerCmdThreading::Threads => debugger.threads(cmd.1),
+                        DebuggerCmdThreading::ActivateThread(t) => debugger.activate_thread(t, cmd.1),
+                    },
                     _ => {
-                        log_msg(LogLevel::WARN, &format!("Got a command that wasn't understood {:?}", cmd));
+                        log_msg(
+                            LogLevel::WARN,
+                            &format!("Got a command that wasn't understood {:?}", cmd),
+                        );
                     }
                 };
             }
@@ -76,11 +85,7 @@ impl DlvDebugger {
     pub fn new(debugger_cmd: String, run_cmd: Vec<String>) -> Self {
         let (tx, rx) = oneshot::channel();
 
-        let process = Arc::new(Mutex::new(DlvProcess::new(
-            debugger_cmd,
-            run_cmd,
-            Some(tx),
-        )));
+        let process = Arc::new(Mutex::new(DlvProcess::new(debugger_cmd, run_cmd, Some(tx))));
 
         let debugger = DlvDebugger {
             process: process.clone(),
@@ -103,42 +108,45 @@ impl DlvDebugger {
 
     fn setup(&mut self) {
         // Awakener
-//        let (tx, rx) = oneshot::channel();
-//
-//        self.process.lock().unwrap().add_awakener(tx);
-//
-//        let process = self.process.clone();
-//
-//        tokio::spawn(async move {
-//            rx.await.unwrap();
-//            let (tx, rx) = oneshot::channel();
-//            process.lock().unwrap().add_awakener(tx);
-//
-//            let process2 = process.clone();
-//
-//            tokio::spawn(async move {
-//                rx.await.unwrap();
-//                process2.lock().unwrap().send_msg(Message::Continue);
-//            });
-//
-//            process.lock().unwrap().send_msg(Message::MainBreakpoint);
-//        });
-//
-//        let process = self.process.clone();
-//
-//        tokio::spawn(async move {
-//            // Sleep just to make sure vim has had time to connect
-//            delay_for(Duration::new(1, 0)).await;
-//
-//            process.lock().unwrap().run();
-//        });
+        //        let (tx, rx) = oneshot::channel();
+        //
+        //        self.process.lock().unwrap().add_awakener(tx);
+        //
+        //        let process = self.process.clone();
+        //
+        //        tokio::spawn(async move {
+        //            rx.await.unwrap();
+        //            let (tx, rx) = oneshot::channel();
+        //            process.lock().unwrap().add_awakener(tx);
+        //
+        //            let process2 = process.clone();
+        //
+        //            tokio::spawn(async move {
+        //                rx.await.unwrap();
+        //                process2.lock().unwrap().send_msg(Message::Continue);
+        //            });
+        //
+        //            process.lock().unwrap().send_msg(Message::MainBreakpoint);
+        //        });
+        //
+        //        let process = self.process.clone();
+        //
+        //        tokio::spawn(async move {
+        //            // Sleep just to make sure vim has had time to connect
+        //            delay_for(Duration::new(1, 0)).await;
+        //
+        //            process.lock().unwrap().run();
+        //        });
     }
 
     /// Run Delve and perform any setup necessary
     fn run(&mut self, _timeout: Instant) {
         log_msg(LogLevel::INFO, "Launching process");
 
-        self.process.lock().unwrap().send_msg(Message::ProcessLaunching, None);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::ProcessLaunching, None);
     }
 
     fn interrupt(&mut self) {}
@@ -165,7 +173,10 @@ impl DlvDebugger {
             ),
         );
 
-        self.process.lock().unwrap().send_msg(Message::Breakpoint(file_location), None);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Breakpoint(file_location), None);
     }
 
     fn unbreakpoint(&mut self, _file_location: &FileLocation, _timeout: Instant) {}
@@ -175,14 +186,50 @@ impl DlvDebugger {
     }
 
     fn step_over(&mut self, _timeout: Instant) {
-        self.process.lock().unwrap().send_msg(Message::StepOver, None);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::StepOver, None);
     }
 
     fn continue_(&mut self, _timeout: Instant) {
-        self.process.lock().unwrap().send_msg(Message::Continue, None);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Continue, None);
     }
 
     fn print(&mut self, variable: &Variable, _timeout: Instant) {
-        self.process.lock().unwrap().send_msg(Message::PrintVariable(variable.clone()), None);
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::PrintVariable(variable.clone()), None);
+    }
+
+    fn threads(&mut self, _timeout: Instant) {
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::Threads, None);
+    }
+
+    fn activate_thread(&mut self, thread: Thread, _timeout: Instant) {
+        let number = thread.id().parse::<i64>().unwrap();
+
+        // Awakener
+        let (tx, rx) = oneshot::channel();
+
+        let process = self.process.clone();
+
+        tokio::spawn(async move {
+            rx.await.unwrap();
+
+            process.lock().unwrap().send_msg(Message::Status, None);
+        });
+
+        self.process
+            .lock()
+            .unwrap()
+            .send_msg(Message::ActivateThread(number), Some(tx));
     }
 }

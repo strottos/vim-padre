@@ -141,17 +141,28 @@ impl LLDBProcess {
             //     },
             // }
 
-            for b in msg {
-                let (tx, rx) = oneshot::channel();
+            if msg.len() > 1 {
+                for b in msg {
+                    let (tx, rx) = oneshot::channel();
+
+                    analyser
+                        .lock()
+                        .unwrap()
+                        .analyse_message(message.clone(), Some(tx));
+
+                    lldb_stdin_tx.send(b).map(move |_| {}).await;
+
+                    rx.await.unwrap();
+                }
+            } else {
+                let mut msg = msg;
 
                 analyser
                     .lock()
                     .unwrap()
-                    .analyse_message(message.clone(), Some(tx));
+                    .analyse_message(message.clone(), None);
 
-                lldb_stdin_tx.send(b).map(move |_| {}).await;
-
-                rx.await.unwrap();
+                lldb_stdin_tx.send(msg.pop().unwrap()).map(move |_| {}).await;
             }
 
             match tx_done {
@@ -357,6 +368,7 @@ impl LLDBAnalyser {
     /// it marks the analyser to send a message to `tx_done` to indicate when the
     /// message is processed.
     pub fn analyse_message(&mut self, msg: Message, tx_done: Option<oneshot::Sender<bool>>) {
+        println!("Analyse message: {:?}", msg);
         self.status = LLDBStatus::Processing(msg);
         self.awakener = tx_done;
     }

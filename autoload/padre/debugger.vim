@@ -188,6 +188,23 @@ function! padre#debugger#Continue()
   call padre#socket#Send({"cmd": "continue"}, function('padre#debugger#GenericCallback'))
 endfunction
 
+" Enter the buffer that displays the threads
+function! padre#debugger#ThreadsBufferEnter()
+  call padre#socket#Send({"cmd": "threads"}, function('padre#debugger#GenericCallback'))
+endfunction
+
+" Activate one of the threads
+function! padre#debugger#ThreadActivate()
+  let l:line = getline('.')
+  let l:match = matchlist(l:line, '^  | \([0-9]*\) * | .* | .*$')
+  let l:thread_id = l:match[1]
+  call padre#socket#Send({"cmd": "activate_thread", "id": l:thread_id}, function('padre#debugger#GenericCallback'))
+endfunction
+
+function! padre#debugger#GetCurrentPadreNumber()
+  return s:PadreNumber
+endfunction
+
 """"""""""""""""
 " API functions
 
@@ -282,13 +299,92 @@ function! padre#debugger#Log(level, text)
   call padre#layout#OpenTabWithBuffer('PADRE_Logs_' . s:PadreNumber)
 
   let l:current_window = winnr()
-  let l:logs_window = padre#layout#GetLogsWindow()
+  let l:logs_window = padre#layout#GetDataWindow()
 
   if l:current_window != l:logs_window
     execute l:logs_window . ' wincmd w'
   endif
 
+  let l:current_bufnr = bufnr()
+  let l:logs_bufnr = padre#layout#GetDataBufnr("Logs")
+
+  if l:current_bufnr != l:logs_bufnr
+    execute 'buffer ' . l:logs_bufnr
+  endif
+
   call padre#buffer#AppendBuffer(strftime('%y/%m/%d %H:%M:%S ') . l:level . a:text, 0)
+
+  if l:current_window != l:logs_window
+    execute l:current_window . ' wincmd w'
+  endif
+
+  if l:current_tabpagenr != tabpagenr()
+    execute l:current_tabpagenr . 'tabnext'
+  endif
+
+  redraw
+endfunction
+
+function! padre#debugger#ListThreads(threads)
+  let l:current_tabpagenr = tabpagenr()
+
+  call padre#layout#OpenTabWithBuffer('PADRE_Threads_' . s:PadreNumber)
+
+  let l:current_window = winnr()
+  let l:logs_window = padre#layout#GetDataWindow()
+
+  if l:current_window != l:logs_window
+    execute l:logs_window . ' wincmd w'
+  endif
+
+  let l:current_bufnr = bufnr()
+  let l:threads_bufnr = padre#layout#GetDataBufnr("Threads")
+
+  if l:current_bufnr != l:threads_bufnr
+    execute 'buffer ' . l:threads_bufnr
+  endif
+
+  let l:width = winwidth(winnr())
+
+  let l:number_width = 3
+  let l:function_width = 10
+  for l:thread in a:threads
+    let l:number_width = max([l:number_width, len(l:thread["number"])])
+    let l:function_width = max([l:function_width, len(l:thread["function"])])
+  endfor
+
+  if l:function_width > float2nr(l:width * 0.3)
+    echom "Resetting function_width"
+    let l:function_width = max([10, min([l:function_width, float2nr(l:width * 0.3)])])
+    echom l:function_width
+  endif
+
+  let l:location_width = max([10, l:width - 10 - l:number_width - l:function_width])
+
+  let l:fmt = printf("%%-s | %%-%ds | %%-%ds | %%-%ds", l:number_width, l:location_width, l:function_width)
+  call padre#buffer#ClearBuffer(0)
+  call padre#buffer#AppendBuffer(printf(l:fmt, " ", "num", "location", "function"), 0)
+  let l:delimiter = "--+-" .  repeat("-", l:number_width) . "-+-" . repeat("-", l:location_width) . "-+-" . repeat("-", l:function_width)
+  call padre#buffer#AppendBuffer(l:delimiter, 0)
+  for l:thread in a:threads
+    if l:thread["is_active"]
+      let l:active = "*"
+    else
+      let l:active = " "
+    endif
+    let l:number = l:thread["number"]
+    let l:location = l:thread["location"]
+    let l:function = l:thread["function"]
+    if len(l:location) > l:location_width
+      let l:location = l:location[0:l:location_width - 1]
+    endif
+    if len(l:function) > l:function_width
+      let l:function = l:function[0:l:function_width - 1]
+    endif
+    call padre#buffer#AppendBuffer(printf(l:fmt, l:active, l:number, l:location, l:function), 0)
+  endfor
+
+  normal 1G
 
   if l:current_window != l:logs_window
     execute l:current_window . ' wincmd w'
