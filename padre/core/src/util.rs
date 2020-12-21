@@ -206,9 +206,8 @@ impl<R: AsyncBufRead> Stream for ReadOutput<R> {
         if buf.len() == 0 {
             return Poll::Pending;
         }
-
         let buf_freeze = mem::replace(buf, Vec::new());
-        Poll::Ready(Some(Ok(String::from_utf8(buf_freeze).unwrap())))
+        Poll::Ready(Some(Ok(String::from_utf8_lossy(&buf_freeze).to_string())))
     }
 }
 
