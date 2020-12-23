@@ -1,0 +1,12 @@
+[package]
+name = "padre_core"
+version = "0.2.0"
+authors = ["Steven Trotter <stevetrot@gmail.com>"]
+edition = "2018"
+license = "APACHE"
+repository = "https://github.com/strottos/vim-padre"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]

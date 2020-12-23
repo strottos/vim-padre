@@ -1,0 +1,10 @@
+[package]
+name = "padre_lldb"
+version = "0.2.0"
+authors = ["Steven Trotter <stevetrot@gmail.com>"]
+edition = "2018"
+license = "MIT"
+repository = "https://github.com/strottos/vim-padre"
+
+[lib]
+path = "src/lib.rs"
