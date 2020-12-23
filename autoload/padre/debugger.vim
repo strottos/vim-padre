@@ -135,7 +135,7 @@ function! padre#debugger#Debug(...)
 endfunction
 
 function! padre#debugger#Run()
-  call padre#socket#Send({"cmd": "run"}, function('padre#debugger#RunCallback'))
+  call padre#socket#Send({"cmd": "run"}, function('padre#debugger#GenericCallback'))
 endfunction
 
 function! padre#debugger#Stop()
@@ -161,7 +161,7 @@ function! padre#debugger#Stop()
 endfunction
 
 function! s:SetBreakpointInDebugger(line, file)
-  call padre#socket#Send({"cmd": "breakpoint", "file": a:file, "line": str2nr(a:line)}, function('padre#debugger#BreakpointCallback'))
+  call padre#socket#Send({"cmd": "breakpoint", "file": a:file, "line": str2nr(a:line)}, function('padre#debugger#GenericCallback'))
 endfunction
 
 function! padre#debugger#Breakpoint()
@@ -173,11 +173,11 @@ function! padre#debugger#Breakpoint()
 endfunction
 
 function! padre#debugger#StepIn()
-  call padre#socket#Send({"cmd": "stepIn"}, function('padre#debugger#StepInCallback'))
+  call padre#socket#Send({"cmd": "stepIn"}, function('padre#debugger#GenericCallback'))
 endfunction
 
 function! padre#debugger#StepOver()
-  call padre#socket#Send({"cmd": "stepOver"}, function('padre#debugger#StepOverCallback'))
+  call padre#socket#Send({"cmd": "stepOver"}, function('padre#debugger#GenericCallback'))
 endfunction
 
 function! padre#debugger#PrintVariable(variable)
@@ -185,7 +185,7 @@ function! padre#debugger#PrintVariable(variable)
 endfunction
 
 function! padre#debugger#Continue()
-  call padre#socket#Send({"cmd": "continue"}, function('padre#debugger#ContinueCallback'))
+  call padre#socket#Send({"cmd": "continue"}, function('padre#debugger#GenericCallback'))
 endfunction
 
 """"""""""""""""
@@ -198,61 +198,10 @@ function! padre#debugger#SignalPADREStarted()
   endfor
 endfunction
 
-function! padre#debugger#RunCallback(channel_id, data)
-  if a:data['status'] != 'OK'
-    call padre#debugger#Log(2, 'Error: ' . string(a:data))
-    return
-  endif
-
-  if has_key(a:data, 'pid')
-    call padre#debugger#Log(4, 'Process ' . a:data['pid'] . ' Running')
-  endif
-endfunction
-
-function! padre#debugger#BreakpointCallback(channel_id, data)
-  if a:data['status'] == 'OK'
-  elseif a:data['status'] == 'PENDING'
-    call padre#debugger#Log(4, 'Breakpoint pending')
-  else
-    call padre#debugger#Log(2, 'Error: ' . string(a:data))
-  endif
-endfunction
-
-function! padre#debugger#BreakpointSet(fileName, lineNum)
-  let l:msg = 'Breakpoint set file=' . a:fileName . ', line=' . a:lineNum
-  call padre#debugger#Log(4, l:msg)
-endfunction
-
-function! padre#debugger#StepInCallback(channel_id, data)
+function! padre#debugger#GenericCallback(channel_id, data)
   if a:data['status'] != 'OK'
     call padre#debugger#Log(2, 'Error: ' . string(a:data))
   endif
-endfunction
-
-function! padre#debugger#StepOverCallback(channel_id, data)
-  if a:data['status'] != 'OK'
-    call padre#debugger#Log(2, 'Error: ' . string(a:data))
-  endif
-endfunction
-
-function! padre#debugger#ContinueCallback(channel_id, data)
-  if a:data['status'] != 'OK'
-    call padre#debugger#Log(2, 'Error: ' . string(a:data))
-  endif
-endfunction
-
-function! padre#debugger#PrintVariableCallback(channel_id, data)
-  let l:status = remove(a:data, 'status')
-  if l:status != 'OK'
-    call padre#debugger#Log(2, 'Error printing variable: ' . string(a:data))
-    return
-  endif
-
-  let l:variable_name = remove(a:data, 'variable')
-
-  execute "let l:json = system('python -m json.tool', '" . substitute(json_encode(a:data), "'", "''", "g") . "')"
-  let l:msg = 'Variable ' . l:variable_name . "=\n" . l:json
-  call padre#debugger#Log(4, l:msg)
 endfunction
 
 function! padre#debugger#JumpToPosition(file, line)
@@ -304,8 +253,35 @@ function! padre#debugger#JumpToPosition(file, line)
   redraw
 endfunction
 
-function! padre#debugger#ProcessExited(exit_code, pid)
-  call padre#debugger#Log(4, 'Process ' . a:pid . ' finished with exit code=' . a:exit_code)
+function! padre#debugger#PrintVariableCallback(channel_id, data)
+  if a:data['status'] != 'OK'
+    call padre#debugger#Log(2, 'Error: ' . string(a:data))
+  endif
+
+  let s:text = 'Variable (' . a:data['type'] . ') ' . a:data['variable'] . '=' . a:data['value']
+
+  let l:current_tabpagenr = tabpagenr()
+
+  call padre#layout#OpenTabWithBuffer('PADRE_Logs_' . s:PadreNumber)
+
+  let l:current_window = winnr()
+  let l:logs_window = padre#layout#GetLogsWindow()
+
+  if l:current_window != l:logs_window
+    execute l:logs_window . ' wincmd w'
+  endif
+
+  call padre#buffer#AppendBuffer(strftime('%y/%m/%d %H:%M:%S ') . s:text, 0)
+
+  if l:current_window != l:logs_window
+    execute l:current_window . ' wincmd w'
+  endif
+
+  if l:current_tabpagenr != tabpagenr()
+    execute l:current_tabpagenr . 'tabnext'
+  endif
+
+  redraw
 endfunction
 
 function! padre#debugger#Log(level, text)

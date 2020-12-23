@@ -191,8 +191,7 @@ Execute (Check we can debug a simple C program):
   sleep 1
 
   call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Launching process$', lastLogLine, '$')
-  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Breakpoint set file=test_prog.c, line=6$', lastLogLine, '$')
-  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Process \d\+ Running$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Process \d\+ launched$', lastLogLine, '$')
   call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Stopped file=' . g:mainFileToDebug . ' line=6$', lastLogLine, '$')
 
   let current_pointer = g:CheckCurrentCodePointerLine()
@@ -231,11 +230,7 @@ Execute (Check we can debug a simple C program):
   normal vp
   sleep 1
 
-  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Variable a=$', lastLogLine, '$')
-  call g:CheckRegexInLogLines('{$', lastLogLine, '$')
-  call g:CheckRegexInLogLines('  "type": "int",$', lastLogLine, '$')
-  call g:CheckRegexInLogLines('  "value": "1"$', lastLogLine, '$')
-  call g:CheckRegexInLogLines('}$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* Variable (int) a=1$', lastLogLine, '$')
 
   let lastLogLine = g:GetLastLogLineNumber()
 
@@ -254,7 +249,7 @@ Execute (Check we can debug a simple C program):
   normal C
   sleep 1
 
-  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Process \d\+ finished with exit code=0$', lastLogLine, '$')
+  call g:CheckRegexInLogLines('^[0-9\/]* [0-9:]* (INFO): Process \d\+ exited with exit code 0$', lastLogLine, '$')
 
   quit!
   quit!

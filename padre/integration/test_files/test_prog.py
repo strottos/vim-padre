@@ -1,8 +1,3 @@
-"""
-Basic Python test program
-"""
-
-
 def c():
     return 'test string'
 

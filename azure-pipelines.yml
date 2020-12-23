@@ -3,13 +3,13 @@ trigger:
 - feature/*
 
 jobs:
-- job: rustfmt
+- job: rust_static
   pool:
     vmImage: 'ubuntu-latest'
   timeoutInMinutes: 5
 
   steps:
-  - template: ci/rustfmt.yml
+  - template: ci/rust-static.yml
 
 - job: padre_tests
   pool:

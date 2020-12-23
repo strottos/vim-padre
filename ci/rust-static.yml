@@ -1,0 +1,27 @@
+steps:
+  - template: install-rust.yml
+
+  - script: |
+      cd padre
+      cargo fmt --all -- --check
+    displayName: Check formatting
+
+  - script: |
+      rustup component add rustfmt
+    displayName: Install rustfmt
+
+  - script: |
+      cargo install cargo-junit
+    displayName: Install test reporters
+
+  - script: |
+      cd padre
+      cargo test -- --nocapture
+    env:
+      RUST_BACKTRACE: 1
+    displayName: Run Padre CLI unit testing
+
+  - script: |
+      cd padre
+      cargo junit --name TESTS-cargo.xml
+    displayName: Run Padre CLI unit testing reporting

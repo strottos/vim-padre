@@ -31,12 +31,9 @@ def main():
             sys.stdout.flush()
             continue
 
-        if re.match('b(reakpoint)* .*main', line):
-            sys.stdout.write("Breakpoint 1: where = a.out`main + 15 at "
-                             + "test.c:25:10, address = 0x0000000100000f2f\n")
-        elif line == "process launch":
+        if line == "process launch":
             time.sleep(TIMEOUT + 1)
-            sys.stdout.write("Process 12345 launched:"
+            sys.stdout.write("Process 12345 launched: "
                              + "'{}' (x86_64)\n".format(prog))
             sys.stdout.write("Process 12345 stopped\n")
         sys.stdout.write("(lldb) ")
