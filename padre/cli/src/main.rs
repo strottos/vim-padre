@@ -23,15 +23,15 @@ use std::io;
 use std::net::SocketAddr;
 
 use clap::{App, Arg, ArgMatches};
-use futures::prelude::*;
-use tokio::net::TcpListener;
 use tokio::runtime;
 
-use padre_core::server;
 use padre_core::util;
 
 mod debugger;
-use debugger::create_debugger;
+mod server;
+
+use debugger::Debugger;
+use server::Server;
 
 fn get_app_args<'a>() -> ArgMatches<'a> {
     App::new("VIM Padre")
@@ -84,32 +84,20 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-fn main() -> io::Result<()> {
-    let rt = runtime::Builder::new_current_thread()
-        .build()?;
+#[tokio::main]
+async fn main() {
+    let args = get_app_args();
 
-    rt.block_on(async {
-        let args = get_app_args();
+    let debug_cmd: Vec<String> = args
+        .values_of("debug_cmd")
+        .expect("Can't find program to debug, please rerun with correct parameters")
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
 
-        let debug_cmd: Vec<String> = args
-            .values_of("debug_cmd")
-            .expect("Can't find program to debug, please rerun with correct parameters")
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>();
+    let debugger = Debugger::new(args.value_of("debugger"), args.value_of("type"), debug_cmd);
 
-        let debugger = create_debugger(args.value_of("debugger"), args.value_of("type"), debug_cmd);
+    let connection_addr = get_connection(&args);
+    let server = Server::new(connection_addr, &debugger);
 
-        let connection_addr = get_connection(&args);
-        let mut listener = TcpListener::bind(&connection_addr)
-            .map(|listener| {
-                println!("Listening on {}", &connection_addr);
-                listener
-            })
-            .await
-            .expect(&format!("Can't open TCP listener on {}", &connection_addr));
-
-        server::process_connection(listener, debugger);
-
-        Ok(())
-    })
+    server.process_connections().await;
 }
