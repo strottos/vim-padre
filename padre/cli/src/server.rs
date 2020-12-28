@@ -1,12 +1,15 @@
 //! Handle a connection to the PADRE server including passing messages to and
 //! from the debugger to the connection.
 
+use std::io;
 use std::net::SocketAddr;
 
 use futures::prelude::*;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::debugger::Debugger;
+use padre_core::vimcodec::VimFrame;
+
 
 pub struct Server<'a> {
     connection_addr: SocketAddr,
@@ -51,11 +54,15 @@ impl<'a> Server<'a> {
 }
 
 struct Connection {
-    socket: TcpStream,
+    stream: TcpStream,
 }
 
 impl Connection {
-    fn new(socket: TcpStream) -> Self {
-        Connection { socket }
+    fn new(stream: TcpStream) -> Self {
+        Connection { stream }
+    }
+
+    async fn read_frame(&mut self) -> Result<Option<VimFrame>, io::Error> {
+        Ok(None)
     }
 }

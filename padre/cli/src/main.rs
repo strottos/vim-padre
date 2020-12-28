@@ -84,20 +84,26 @@ fn get_connection(args: &ArgMatches) -> SocketAddr {
     return format!("{}:{}", host, port).parse::<SocketAddr>().unwrap();
 }
 
-#[tokio::main]
-async fn main() {
-    let args = get_app_args();
+fn main() {
+    let rt = runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
 
-    let debug_cmd: Vec<String> = args
-        .values_of("debug_cmd")
-        .expect("Can't find program to debug, please rerun with correct parameters")
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>();
+    rt.block_on(async {
+        let args = get_app_args();
 
-    let debugger = Debugger::new(args.value_of("debugger"), args.value_of("type"), debug_cmd);
+        let debug_cmd: Vec<String> = args
+            .values_of("debug_cmd")
+            .expect("Can't find program to debug, please rerun with correct parameters")
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
 
-    let connection_addr = get_connection(&args);
-    let server = Server::new(connection_addr, &debugger);
+        let debugger = Debugger::new(args.value_of("debugger"), args.value_of("type"), debug_cmd);
 
-    server.process_connections().await;
+        let connection_addr = get_connection(&args);
+        let server = Server::new(connection_addr, &debugger);
+
+        server.process_connections().await;
+    });
 }
