@@ -429,6 +429,10 @@ impl<'a> Decoder for VimCodec<'a> {
                     RequestCmd::DebuggerCmd(DebuggerCmd::StepIn(count)),
                 )))
             }
+            "stepOut" => Ok(Some(PadreRequest::new(
+                id,
+                RequestCmd::DebuggerCmd(DebuggerCmd::StepOut),
+            ))),
             "continue" => Ok(Some(PadreRequest::new(
                 id,
                 RequestCmd::DebuggerCmd(DebuggerCmd::Continue),

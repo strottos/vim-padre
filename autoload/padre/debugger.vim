@@ -167,17 +167,25 @@ endfunction
 function! padre#debugger#Breakpoint()
   let l:breakpointAdded = padre#signs#ToggleBreakpoint()
 
-  if !empty(l:breakpointAdded) && padre#socket#Status() is# "open"
-    call s:SetBreakpointInDebugger(l:breakpointAdded['line'], l:breakpointAdded['file'])
+  if padre#socket#Status() is# "open"
+    if !empty(l:breakpointAdded)
+      call s:SetBreakpointInDebugger(l:breakpointAdded['line'], l:breakpointAdded['file'])
+    else
+      call padre#socket#Send({"cmd": "unbreakpoint", "file": a:file, "line": str2nr(a:line)}, function('padre#debugger#GenericCallback'))
+    endif
   endif
 endfunction
 
-function! padre#debugger#StepIn()
-  call padre#socket#Send({"cmd": "stepIn"}, function('padre#debugger#GenericCallback'))
+function! padre#debugger#StepIn(count)
+  call padre#socket#Send({"cmd": "stepIn", "count": a:count}, function('padre#debugger#GenericCallback'))
 endfunction
 
-function! padre#debugger#StepOver()
-  call padre#socket#Send({"cmd": "stepOver"}, function('padre#debugger#GenericCallback'))
+function! padre#debugger#StepOver(count)
+  call padre#socket#Send({"cmd": "stepOver", "count": a:count}, function('padre#debugger#GenericCallback'))
+endfunction
+
+function! padre#debugger#StepOut()
+  call padre#socket#Send({"cmd": "stepOut"}, function('padre#debugger#GenericCallback'))
 endfunction
 
 function! padre#debugger#PrintVariable(variable)

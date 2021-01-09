@@ -43,6 +43,7 @@ pub enum DebuggerCmd {
     StepIn(u64),
     // Count
     StepOver(u64),
+    StepOut,
     Continue,
     Print(Variable),
 }

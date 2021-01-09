@@ -21,6 +21,7 @@ function! padre#buffer#SetMainPadreKeyBindingsForCurrentBuffer()
   nnoremap <silent> <buffer> r :PadreRun<cr>
   nnoremap <silent> <buffer> S :PadreStepIn<cr>
   nnoremap <silent> <buffer> s :PadreStepOver<cr>
+  nnoremap <silent> <buffer> C-s :PadreStepOut<cr>
   vnoremap <silent> <buffer> p y:PadrePrintVariable <C-R>"<cr>
   nnoremap <silent> <buffer> C :PadreContinue<cr>
   nnoremap <silent> <buffer> ZZ :PadreStop<cr>
@@ -30,6 +31,7 @@ function! padre#buffer#UnsetPadreKeyBindingsForCurrentBuffer()
   nnoremap <silent> <buffer> r r
   nnoremap <silent> <buffer> S S
   nnoremap <silent> <buffer> s s
+  nnoremap <silent> <buffer> C-s C-s
   vnoremap <silent> <buffer> p p
   nnoremap <silent> <buffer> C C
   nnoremap <silent> <buffer> ZZ ZZ
