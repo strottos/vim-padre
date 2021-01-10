@@ -2,37 +2,16 @@ steps:
   - template: install-rust.yml
 
   - script: |
-      cargo install cargo-junit
-    displayName: Install test reporters
-
-  - script: |
-      sudo apt-get install software-properties-common python3 python3-pip python3-setuptools
-      pip3 install wheel
-      pip3 install behave pyhamcrest psutil
-    displayName: Install python dependencies
-
-  - script: |
-      cd padre
-      cargo test -- --nocapture
-    env:
-      RUST_BACKTRACE: 1
-      RUSTFLAGS: '-D warnings'
-    displayName: Run Padre CLI unit testing
-
-  - script: |
-      cd padre
-      cargo junit --name TESTS-cargo.xml
-    displayName: Run Padre CLI unit testing reporting
-
-  - script: |
-      sudo apt-get install -y lldb-5.0 gcc
+      sudo apt-get install -y software-properties-common python3 python3-pip python3-setuptools lldb-5.0 gcc
       sudo ln -s /usr/bin/lldb-5.0 /usr/bin/lldb
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/bin/lldb-server
       sudo ln -s /usr/bin/lldb-server-5.0 /usr/lib/llvm-5.0/bin/lldb-server-5.0.0
       sudo rm /usr/local/bin/node
       curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
       sudo apt-get install -y nodejs
-    displayName: Install lldb-5, node-12 and build essentials
+      pip3 install wheel
+      pip3 install behave pyhamcrest psutil
+    displayName: Install lldb-5, node-12 and build and test essentials
 
   - script: |
       cd padre

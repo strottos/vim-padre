@@ -1,0 +1,24 @@
+[package]
+name = "padre_core"
+version = "0.2.0"
+authors = ["Steven Trotter <stevetrot@gmail.com>"]
+edition = "2018"
+license = "APACHE"
+repository = "https://github.com/strottos/vim-padre"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bytes = "1.0"
+futures = "0.3.8"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+tokio = { version = "1.0", features = [
+  "io-std",
+  "io-util",
+  "process",
+  "rt"
+] }
+tokio-util = { version = "0.6", features = ["codec"] }

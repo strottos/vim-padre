@@ -2,19 +2,18 @@
 //!
 //! Responsible for reading and setting config items and setting default configs
 //!
-//! The following config items can be set:
+//! The following config items can be set (some are currently not yet supported, and some are
+//! just ignored by debuggers when it makes sense):
 //!  - BackPressure: Set the backpressure of the queue to build up. 0 means it errors on any
 //!    request when one is in progress. Defaults to 20.
 //!  - UnknownPosition: Set to the following:
 //!    0: if we should halt when we reach an unknown position
 //!    1: if we should carry on stepping over until we reach a known position.
 //!    2: if we should carry on stepping in until we reach a known position.
-//!  - ProcessSpawnTimeout: Set the timeout value for spawniong a process. Defaults
-//!    to 10 seconds.
-//!  - BreakpointTimeout: Timeout for setting a breakpoint. Defaults to 2 second.
-//!    Only used in LLDB.
-//!  - PrintVariableTimeout: Timeout for setting a breakpoint. Defaults to 2 second.
-//!    Only used in LLDB.
+//!  - ProcessSpawnTimeout: Set the timeout value for spawniong a process.
+//!  - BreakpointTimeout: Timeout for setting a breakpoint.
+//!  - StepTimeout: Timeout for stepping in code.
+//!  - PrintVariableTimeout: Timeout for printing a variable.
 
 use std::collections::HashMap;
 
@@ -25,6 +24,7 @@ use std::collections::HashMap;
 ///
 /// Only config items that are meaningful and have defaults can be set and
 /// retreived.
+#[derive(Debug)]
 pub struct Config<'a> {
     config: HashMap<&'a str, i64>,
 }
@@ -36,6 +36,7 @@ impl<'a> Config<'a> {
         config.insert("UnknownPosition", 0);
         config.insert("ProcessSpawnTimeout", 10);
         config.insert("BreakpointTimeout", 2);
+        config.insert("StepTimeout", 2);
         config.insert("PrintVariableTimeout", 2);
         Config { config }
     }

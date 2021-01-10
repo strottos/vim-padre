@@ -182,14 +182,22 @@ async def do_send_to_padre(future, writer, message, loop):
 
     loop.call_at(loop.time() + TIMEOUT, cancel)
 
-    message = message.replace("`pwd`", os.getcwd())
-
     async def do_write(writer, message):
         writer.write(message.encode())
 
     await asyncio.wait_for(do_write(writer, message), timeout=TIMEOUT)
 
     future.set_result(True)
+
+
+def replace_pwd_and_test_dir(tmpdir, s):
+    test_dir = os.path.realpath(tmpdir)
+    # Causes problems on a mac for testing
+    if test_dir.startswith("/private"):
+        test_dir = test_dir[8:]
+    s = s.replace("`pwd`", os.getcwd())
+    s = s.replace("`test_dir`", test_dir)
+    return s
 
 
 @fixture
@@ -218,7 +226,8 @@ def run_padre(context, timeout=20):
             args.append("--type={}".format(context.padre.program_type))
 
         if context.padre.debugger is not None:
-            args.append("--debugger={}".format(context.padre.debugger))
+            debugger = replace_pwd_and_test_dir(context.tmpdir.name, context.padre.debugger)
+            args.append("--debugger={}".format(debugger))
 
         context.padre.process = await asyncio.create_subprocess_exec(
             program,
@@ -226,6 +235,7 @@ def run_padre(context, timeout=20):
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             loop=loop,
+            cwd=os.path.realpath(context.tmpdir.name)
         )
 
         line = await context.padre.process.stdout.readline()
@@ -381,6 +391,24 @@ def padre_debugger(context):
     context.padre.get_children()
 
 
+@when("I sleep for a moment")
+def sleep_at_startup(context):
+    """
+    Just sleep for a very short period of time
+    """
+    time.sleep(0.1)
+
+
+@when("I give PADRE chance to start")
+def sleep_at_startup(context):
+    """
+    This is a bit rubbish but it's for tests that interfere with writing to
+    stdin. This gives PADRE a chance to fully startup before we start confusing
+    it.
+    """
+    time.sleep(2)
+
+
 @when("I open another connection to PADRE")
 def connect_padre(context):
     """
@@ -422,7 +450,7 @@ def padre_request_raw(context, request, connection):
     loop = asyncio.get_event_loop()
     future = loop.create_future()
 
-    print("Request: {}".format(request))
+    request = replace_pwd_and_test_dir(context.tmpdir.name, request)
 
     loop.run_until_complete(
         do_send_to_padre(future, context.connections[int(connection)][1], request, loop)
@@ -513,6 +541,17 @@ def padre_raw_response(context, response):
     future = get_response(context.connections[0][0])
     assert_that(len(future.result()), equal_to(1), "Got one response")
     assert_that(future.result()[0], equal_to(response))
+
+
+@then("I receive a raw response containing the following entries")
+def padre_raw_response_containing(context):
+    """
+    I expect the correct response to a request
+    """
+    result = get_response(context.connections[0][0]).result()[0]
+    for row in context.table:
+        entry = row[0]
+        assert_that(result, matches_regexp(entry))
 
 
 @then(
@@ -717,6 +756,8 @@ def terminate_program(context):
     """
     Close PADRE
     """
+    context.padre.get_children()
+
     subprocess.run(
         ["kill", "-SIGINT", "{}".format(context.padre.process.pid)],
         stdout=subprocess.PIPE,
