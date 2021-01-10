@@ -240,11 +240,7 @@ impl PythonProcess {
         });
     }
 
-    fn step(
-        &self,
-        message: Message,
-        tx_done: Option<oneshot::Sender<Result<serde_json::Value>>>,
-    ) {
+    fn step(&self, message: Message, tx_done: Option<oneshot::Sender<Result<serde_json::Value>>>) {
         let stdin_tx = self.stdin_tx.clone();
         let analyser = self.analyser.clone();
 

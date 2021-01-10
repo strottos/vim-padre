@@ -19,8 +19,8 @@ endfunction
 
 function! padre#buffer#SetMainPadreKeyBindingsForCurrentBuffer()
   nnoremap <silent> <buffer> r :PadreRun<cr>
-  nnoremap <silent> <buffer> S :PadreStepIn<cr>
-  nnoremap <silent> <buffer> s :PadreStepOver<cr>
+  nnoremap <silent> <buffer> S :<C-U>execute v:count1 . " PadreStepIn"<cr>
+  nnoremap <silent> <buffer> s :<C-U>execute v:count1 . " PadreStepOver"<cr>
   nnoremap <silent> <buffer> C-s :PadreStepOut<cr>
   vnoremap <silent> <buffer> p y:PadrePrintVariable <C-R>"<cr>
   nnoremap <silent> <buffer> C :PadreContinue<cr>

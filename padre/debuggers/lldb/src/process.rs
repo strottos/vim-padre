@@ -264,11 +264,7 @@ impl LLDBProcess {
         });
     }
 
-    fn step(
-        &self,
-        message: Message,
-        tx_done: Option<oneshot::Sender<Result<serde_json::Value>>>,
-    ) {
+    fn step(&self, message: Message, tx_done: Option<oneshot::Sender<Result<serde_json::Value>>>) {
         let lldb_stdin_tx = self.lldb_stdin_tx.clone();
         let analyser = self.analyser.clone();
 

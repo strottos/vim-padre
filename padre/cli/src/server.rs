@@ -426,7 +426,10 @@ impl ConnectionResponse {
                         .unwrap()
                         .get_config("PrintVariableTimeout")
                         .unwrap() as u64,
-                    DebuggerCmd::StepIn(_) | DebuggerCmd::StepOver(_) | DebuggerCmd::StepOut | DebuggerCmd::Continue => {
+                    DebuggerCmd::StepIn(_)
+                    | DebuggerCmd::StepOver(_)
+                    | DebuggerCmd::StepOut
+                    | DebuggerCmd::Continue => {
                         config.lock().unwrap().get_config("StepTimeout").unwrap() as u64
                     }
                 };

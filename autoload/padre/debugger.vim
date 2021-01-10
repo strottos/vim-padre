@@ -171,7 +171,9 @@ function! padre#debugger#Breakpoint()
     if !empty(l:breakpointAdded)
       call s:SetBreakpointInDebugger(l:breakpointAdded['line'], l:breakpointAdded['file'])
     else
-      call padre#socket#Send({"cmd": "unbreakpoint", "file": a:file, "line": str2nr(a:line)}, function('padre#debugger#GenericCallback'))
+      let l:file = expand('%')
+      let l:line = getpos('.')[1]
+      call padre#socket#Send({"cmd": "unbreakpoint", "file": l:file, "line": getpos('.')[1]}, function('padre#debugger#GenericCallback'))
     endif
   endif
 endfunction
